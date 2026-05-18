@@ -594,6 +594,22 @@ def _validate_merged_skill(filepath: Path, slug: str) -> list[str]:
     if not has_english:
         errors.append(f"MISSING_BILINGUAL_DESC: {filepath}: description lacks English content")
 
+    # ── Description length check ──
+    # Extract only the description value (stop before next YAML field at column 0)
+    desc_value = desc_block
+    # Next YAML key appears after \n at column 0; description continuation lines are indented
+    next_key = re.search(r"\n[a-z][a-z_-]+:", desc_value)
+    if next_key:
+        desc_value = desc_value[:next_key.start()]
+    desc_text = desc_value.replace("description:", "", 1).strip()
+    desc_text = re.sub(r"^>\s*-?\s*", "", desc_text).strip()
+    total_len = len(desc_text)
+    if total_len > 300:
+        errors.append(
+            f"DESCRIPTION_TOO_LONG: {filepath}: "
+            f"{total_len} chars (max 300). Shorten to 1-2 sentences per language."
+        )
+
     # ── Unfilled placeholders ──
     placeholders = re.findall(r"\{[a-z_]+\}", content)
     # Filter out legitimate code/template references

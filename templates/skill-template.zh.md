@@ -1,10 +1,8 @@
 ---
 name: {person-slug}-wisdom
 description: >-
-  运用{person_name_zh}的思维框架分析问题与辅助决策。
-  当用户面对{primary_domain_zh}相关挑战，提及{person_name_zh}或其核心理念，
-  或需要{category_description_zh}类推理时触发。
-  关键词：{keyword_list_zh}
+  运用{person_name_zh}的{primary_domain_zh}框架处理{category_description_zh}。
+  触发：{person_name_zh}、{keyword_list_zh}
 argument-hint: <describe your situation or decision / 描述你面临的决策场景或困境>
 ---
 

@@ -1,15 +1,9 @@
 ---
 name: richard-feynman-wisdom
 description: >-
-  Apply Richard Feynman's thinking frameworks to analyze problems and make decisions.
-  Invoke when facing: scientific reasoning, learning challenges, intellectual honesty,
-  anti-self-deception, first-principles thinking, complexity simplification, or
-  uncertainty calibration. Keywords: Feynman, first principles, cargo cult science,
-  scientific integrity, uncertainty, Feynman technique, curiosity.
-  运用理查德·费曼的思维框架分析问题与辅助决策。
-  当用户面对科学推理、学习方法、知识诚实性、自我欺骗识别、第一性原理思考、
-  复杂性简化、不确定性校准等挑战时触发。
-  关键词：费曼、第一性原理、货物崇拜科学、科学诚信、不确定性、费曼技巧、好奇心、理查德费曼。
+  Apply Richard Feynman's thinking frameworks for scientific reasoning, first-principles thinking, and learning.
+  Triggers: Feynman, first principles, Feynman technique, cargo cult science, intellectual honesty.
+  运用费曼的思维框架处理科学推理、第一性原理思考与学习方法。触发：费曼、第一性原理、费曼技巧、科学诚信。
 argument-hint: <describe your situation or decision / 描述你面临的决策场景或困境>
 ---
 

@@ -399,8 +399,8 @@ python scripts/validate_output.py frameworks {slug}
 ---
 name: {person-slug}-wisdom
 description: >-
-  [English description and trigger keywords]
-  [中文描述与触发关键词]
+  [Short English description + triggers (1-2 sentences)]
+  [简短中文描述 + 触发词（1-2 句）]
 argument-hint: <describe your situation / 描述你的决策场景>
 ---
 
@@ -423,7 +423,7 @@ argument-hint: <describe your situation / 描述你的决策场景>
 
 合并注意事项：
 
-- Frontmatter `description` 必须同时包含中英文触发关键词
+- Frontmatter `description` 宜短小精悍（每语言 1-2 句），中英文各自独立简短。不要求覆盖所有触发场景，精确比全面更重要
 - `argument-hint` 使用双语形式
 - 两个 `## English` / `## 中文版` 区块各自独立完整，不含 frontmatter（frontmatter 已在上方统一处理）
 - 语言检测指令必须放在正文最顶部、两个语言区块之前

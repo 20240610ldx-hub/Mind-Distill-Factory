@@ -1,11 +1,9 @@
 ---
 name: wang-yangming-wisdom
 description: >-
-  Apply Wang Yangming's philosophy of innate moral knowing (liangzhi) and unity of knowledge-action (zhixing heyi) to analyze problems and make decisions.
-  Invoke when facing moral dilemmas, self-cultivation challenges, decision-action gaps, or crisis moments requiring inner clarity.
-  Keywords: Wang Yangming, Yangming, innate knowing, liangzhi, unity of knowledge and action, zhixing heyi, heart-mind, School of Mind, conscience, self-cultivation.
-  运用王阳明的致良知与知行合一思想分析问题与辅助决策。当用户面对道德抉择、自我修炼、知行脱节、逆境决策或需要心学思维时触发。
-  关键词：王阳明、阳明、良知、致良知、知行合一、心即理、心学、格物致知、事上磨炼。
+  Apply Wang Yangming's philosophy (liangzhi, zhixing heyi) for moral dilemmas and self-cultivation.
+  Triggers: Yangming, innate knowing, unity of knowledge-action, School of Mind.
+  运用王阳明的致良知与知行合一思想应对道德抉择与自我修炼。触发：阳明、良知、知行合一、心即理。
 argument-hint: <describe your situation or decision / 描述你面临的决策场景或困境>
 ---
 

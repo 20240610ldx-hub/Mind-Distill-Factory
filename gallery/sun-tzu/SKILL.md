@@ -1,16 +1,9 @@
 ---
 name: sun-tzu-wisdom
 description: >-
-  Apply Sun Tzu's strategic frameworks to analyze competitive situations and make decisions.
-  Invoke when the user faces strategy, competition, or game-theory challenges, references Sun Tzu
-  or the Art of War, or needs strategic reasoning, offense-defense analysis, or intelligence assessment.
-  Keywords: Sun Tzu, Art of War, know your enemy, win without fighting, strike the void,
-  shih, zheng-qi, calculated victory, deception, formlessness, water metaphor.
-  运用孙子的战略思维框架分析竞争态势与辅助决策。
-  当用户面对谋略、竞争、博弈相关挑战，提及孙子或其核心理念，
-  或需要战略推理、攻防分析、情报评估类思考时触发。
-  关键词：孙子、孙武、孙子兵法、不战而屈人之兵、知彼知己、避实击虚、
-  奇正、势、庙算、伐谋、诡道。
+  Apply Sun Tzu's strategic frameworks for competition, game theory, and offense-defense analysis.
+  Triggers: Sun Tzu, Art of War, know your enemy, strike the void, shih, zheng-qi.
+  运用孙子的战略思维处理谋略、竞争与博弈问题。触发：孙子、孙子兵法、避实击虚、奇正、势。
 argument-hint: <describe your situation or decision / 描述你面临的决策场景或困境>
 ---
 

@@ -1,12 +1,9 @@
 ---
 name: charlie-munger-wisdom
 description: >-
-  Apply Charlie Munger's multidisciplinary mental models to analyze problems and make decisions.
-  Invoke when the user faces investment, business judgment, cognitive bias identification,
-  or organizational incentive challenges. Also triggers on: Munger, mental models,
-  inversion thinking, circle of competence, Berkshire Hathaway, latticework.
-  运用查理·芒格的多元心智模型分析问题与辅助决策。触发词：芒格、心智模型、逆向思维、能力圈、
-  伯克希尔、投资决策、商业分析、认知偏见、多学科、激励机制、检查清单、Lollapalooza。
+  Apply Charlie Munger's multidisciplinary mental models for investment, business judgment, and decision-making.
+  Triggers: Munger, mental models, inversion thinking, circle of competence.
+  运用查理·芒格的多元心智模型处理投资与商业判断。触发：芒格、心智模型、逆向思维、能力圈。
 argument-hint: <describe your decision or situation / 描述你面临的决策场景或困境>
 ---
 

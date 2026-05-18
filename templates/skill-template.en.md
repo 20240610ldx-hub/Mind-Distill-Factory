@@ -1,10 +1,8 @@
 ---
 name: {person-slug}-wisdom
 description: >-
-  Apply {person_name_en}'s thinking frameworks to analyze problems and make decisions.
-  Invoke when the user faces {primary_domain_en} challenges, references {person_name_en}
-  or their core ideas, or needs {category_description_en} reasoning.
-  Keywords: {keyword_list_en}
+  Apply {person_name_en}'s {primary_domain_en} frameworks for {category_description_en}.
+  Triggers: {person_name_en}, {keyword_list_en}
 argument-hint: <describe your situation or decision / 描述你面临的决策场景或困境>
 ---
 

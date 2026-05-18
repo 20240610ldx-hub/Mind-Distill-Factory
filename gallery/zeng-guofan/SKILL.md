@@ -1,12 +1,9 @@
 ---
 name: zeng-guofan-wisdom
 description: >-
-  Apply Zeng Guofan's decision-making framework: self-discipline, talent management, resilience, and strategic patience.
-  Triggered by mentions of Zeng Guofan, Xiang Army, self-cultivation, diligence, resilience, or related decision scenarios.
-  Keywords: self-discipline, talent management, resilience, diligence, build strong camps, enter the arena
-  运用曾国藩的思维框架分析问题与辅助决策：自律修身、人才管理、逆境坚韧、以拙胜巧。
-  当用户面对自我修炼、团队管理、逆境应对等场景，提及曾国藩、湘军、家书、日课时触发。
-  关键词：自律修身、人才管理、逆境坚韧、以勤补拙、结硬寨打呆仗、躬身入局
+  Apply Zeng Guofan's framework for self-discipline, talent management, resilience, and strategic patience.
+  Triggers: Zeng Guofan, Xiang Army, self-cultivation, diligence, build strong camps.
+  运用曾国藩的自律修身、人才管理与逆境坚韧框架。触发：曾国藩、湘军、结硬寨打呆仗、躬身入局。
 argument-hint: <describe your situation or decision / 描述你面临的决策场景或困境>
 ---
 
