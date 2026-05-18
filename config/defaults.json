@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "output": {
+    "languages": ["zh", "en"],
+    "skill_install_path": "~/.claude/skills/{person-slug}-wisdom/",
+    "gallery_path": "./gallery/{person-slug}/",
+    "output_path": "./output/{person-slug}/"
+  },
+  "distillation": {
+    "min_principles": 5,
+    "max_principles": 8,
+    "min_reasoning_patterns": 3,
+    "max_reasoning_patterns": 5,
+    "min_blind_spots": 2,
+    "min_quotes": 5,
+    "max_quotes": 10
+  },
+  "source_strategy": {
+    "priority": "user-provided-first",
+    "user_source_path": "./sources/{person-slug}/raw/",
+    "processed_path": "./sources/{person-slug}/processed/",
+    "supported_formats": ["pdf", "txt", "md", "epub"],
+    "fallback": "web-search"
+  },
+  "quality": {
+    "require_source_attribution": true,
+    "require_blind_spots": true,
+    "require_bilingual_review": true,
+    "review_verdicts": ["PASS", "REVISE", "FAIL"]
+  }
+}

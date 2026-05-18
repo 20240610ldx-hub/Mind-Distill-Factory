@@ -1,0 +1,55 @@
+# Local secrets and machine state
+.env
+*.local.env
+evaluation/runtime/.env
+.claude/
+.vscode/
+.idea/
+
+# Python runtime artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+
+# Mind Distill local/private artifacts
+output/
+release-video/
+evaluation/reports/
+sources/*
+!sources/
+!sources/README.md
+
+# Heavy or third-party source/media files
+*.pdf
+*.epub
+*.mobi
+*.azw3
+*.ppt
+*.pptx
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.wav
+*.mp3
+*.flac
+*.ogg
+
+# Local logs and scratch files
+*.log
+*.tmp
+*.bak
+*.swp
+*-messages-below.txt
