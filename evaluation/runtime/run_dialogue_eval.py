@@ -25,6 +25,58 @@ DEFAULT_MODEL = "deepseek-v4-pro"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_ENV_FILE = Path("evaluation/runtime/.env")
 LLM_MODE_VALUES = {"auto", "off", "deepseek"}
+TEN_QUESTION_MODE_VALUES = {"auto", "off", "on"}
+SOUL_QUESTION_SCHEMA_VERSION = "MindDistillSoulQuestions-v1"
+SOUL_APPENDIX_NOTICE = "This appendix is not part of SkillEval-MDF benchmark scoring."
+SOUL_SUMMARY_HEADINGS = [
+    "\u6574\u4f53\u5370\u8c61",
+    "\u6700\u80fd\u663e\u51fa\u7075\u9b42\u7684\u56de\u7b54",
+    "\u503c\u5f97\u7528\u6237\u81ea\u884c\u5224\u65ad\u7684\u5730\u65b9",
+    "\u53ef\u80fd\u7684\u4e0d\u9002\u6216\u76f2\u70b9",
+    "\u7ed9\u7528\u6237\u7684\u81ea\u8bc4\u63d0\u793a",
+]
+SOUL_QUESTION_ARCHETYPES = [
+    {
+        "id": "regret",
+        "description": "Ask about a historically grounded regret, limitation, or unresolved personal failure.",
+    },
+    {
+        "id": "alternate_historical_road",
+        "description": "Ask the thinker to imagine one plausible alternate road inside their historical constraints.",
+    },
+    {
+        "id": "principle_life_contradiction",
+        "description": "Ask about a tension between an endorsed principle and the thinker's lived choices.",
+    },
+    {
+        "id": "hardest_compromise",
+        "description": "Ask about the hardest compromise, concession, or survival bargain they made.",
+    },
+    {
+        "id": "most_misunderstood_principle",
+        "description": "Ask about the principle later readers most easily simplify or misuse.",
+    },
+    {
+        "id": "decisive_moment",
+        "description": "Ask about one decisive moment that reveals the method under pressure.",
+    },
+    {
+        "id": "unique_personality_wisdom",
+        "description": "Ask a question that surfaces the thinker's distinctive personality-shaped wisdom.",
+    },
+    {
+        "id": "warning_against_imitation",
+        "description": "Ask what users should not imitate even if they admire the thinker.",
+    },
+    {
+        "id": "modern_use_boundary",
+        "description": "Ask how to use the method today without pretending the thinker personally witnessed the present.",
+    },
+    {
+        "id": "final_self_judgment",
+        "description": "Ask the thinker for a final self-judgment that leaves room for the reader's own evaluation.",
+    },
+]
 
 
 def load_env_file(path: Path, *, override: bool = False) -> bool:
@@ -481,6 +533,408 @@ def render_runtime_evaluation(slug: str, records: list[dict[str, Any]], judgment
     return "\n".join(lines).rstrip() + "\n"
 
 
+def truncate_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n...[truncated]..."
+
+
+def collect_soul_context(root: Path, slug: str, skill_text: str) -> dict[str, Any]:
+    output_dir = root / "output" / slug
+    context: dict[str, Any] = {
+        "slug": slug,
+        "skill_excerpt": truncate_text(skill_text, 50000),
+        "frameworks": {},
+        "principle_files": [],
+        "review_excerpt": "",
+    }
+    for name in ["framework_core.json", "frameworks.zh.json", "frameworks.en.json"]:
+        path = output_dir / name
+        text = read_text(path)
+        if text:
+            context["frameworks"][name] = truncate_text(text, 18000)
+    for path in sorted(output_dir.glob("principles_*.json")):
+        text = read_text(path)
+        if text:
+            context["principle_files"].append({
+                "path": str(path),
+                "content_excerpt": truncate_text(text, 12000),
+            })
+    review_text = read_text(output_dir / "review.md")
+    if review_text:
+        context["review_excerpt"] = truncate_text(review_text, 8000)
+    return context
+
+
+def build_soul_question_prompt(*, slug: str, language: str, context: dict[str, Any]) -> str:
+    question_shape = {
+        "questions": [
+            {
+                "id": "Q01",
+                "archetype": SOUL_QUESTION_ARCHETYPES[0]["id"],
+                "question": "...",
+                "why_this_question": "...",
+                "principle_or_source_anchor": "...",
+            }
+        ]
+    }
+    return (
+        "Generate a non-benchmark 'Soul Ten Questions' appendix for a Mind Distill Factory thinker skill.\n"
+        "The appendix is for human judgment after the scored runtime test. It must not mention scores, grades, "
+        "benchmark readiness, or numeric evaluation.\n\n"
+        f"Slug: {slug}\n"
+        f"Language code: {language}\n"
+        "If the language code is zh, write all question-facing fields in natural Chinese. Otherwise use English.\n\n"
+        "Generate exactly 10 questions in this exact archetype order. Tailor every question to the target thinker; "
+        "avoid generic philosophy prompts. Each question should ask the thinker directly, using a respectful interview "
+        "tone. Use specific works, events, principles, tensions, or source anchors from the supplied context. Do not "
+        "invent quotes or pretend a historical thinker witnessed events after their death.\n\n"
+        "===== ARCHETYPES =====\n"
+        f"{json.dumps(SOUL_QUESTION_ARCHETYPES, ensure_ascii=False, indent=2)}\n"
+        "===== END ARCHETYPES =====\n\n"
+        "Return ONLY valid JSON in this shape. Do not answer the questions.\n"
+        f"{json.dumps(question_shape, ensure_ascii=False, indent=2)}\n\n"
+        "===== TARGET CONTEXT =====\n"
+        f"{json.dumps(context, ensure_ascii=False)}\n"
+        "===== END TARGET CONTEXT ====="
+    )
+
+
+def normalize_soul_questions(data: Any) -> list[dict[str, Any]]:
+    raw_questions = data.get("questions") if isinstance(data, dict) else data
+    if not isinstance(raw_questions, list):
+        raise RuntimeError("DeepSeek soul-question generator did not return a questions list.")
+    if len(raw_questions) != len(SOUL_QUESTION_ARCHETYPES):
+        raise RuntimeError(
+            f"Expected {len(SOUL_QUESTION_ARCHETYPES)} soul questions, got {len(raw_questions)}."
+        )
+
+    normalized: list[dict[str, Any]] = []
+    for idx, (raw_item, archetype) in enumerate(zip(raw_questions, SOUL_QUESTION_ARCHETYPES), start=1):
+        if not isinstance(raw_item, dict):
+            raise RuntimeError(f"Soul question Q{idx:02d} is not an object.")
+        question = str(raw_item.get("question") or "").strip()
+        why = str(raw_item.get("why_this_question") or "").strip()
+        anchor = str(raw_item.get("principle_or_source_anchor") or "").strip()
+        if not question or not why or not anchor:
+            raise RuntimeError(
+                f"Soul question Q{idx:02d} must include question, why_this_question, and principle_or_source_anchor."
+            )
+        normalized.append({
+            "id": f"Q{idx:02d}",
+            "archetype": archetype["id"],
+            "archetype_description": archetype["description"],
+            "question": question,
+            "why_this_question": why,
+            "principle_or_source_anchor": anchor,
+        })
+    return normalized
+
+
+def generate_soul_questions(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    reasoning_effort: str,
+    root: Path,
+    slug: str,
+    skill_text: str,
+    language: str,
+) -> list[dict[str, Any]]:
+    prompt = build_soul_question_prompt(
+        slug=slug,
+        language=language,
+        context=collect_soul_context(root, slug, skill_text),
+    )
+    response = deepseek_chat(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        messages=[
+            {"role": "system", "content": "You generate strict JSON for a non-scored evaluation appendix."},
+            {"role": "user", "content": prompt},
+        ],
+        reasoning_effort=reasoning_effort,
+        json_mode=True,
+        max_tokens=7000,
+    )
+    content = assistant_content(response)
+    if not content:
+        raise RuntimeError("DeepSeek soul-question generator returned empty content.")
+    return normalize_soul_questions(parse_json_object(content))
+
+
+def answer_soul_questions(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    reasoning_effort: str,
+    skill_text: str,
+    questions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    system_prompt = (
+        build_system_prompt(skill_text)
+        + "\n\nYou are answering one independent Soul Ten Questions appendix item. "
+        "Treat each item as a standalone exchange. Do not reference other appendix questions. "
+        "Do not reveal hidden reasoning."
+    )
+    records: list[dict[str, Any]] = []
+    for question in questions:
+        response = deepseek_chat(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question["question"]},
+            ],
+            reasoning_effort=reasoning_effort,
+            max_tokens=3500,
+        )
+        answer = assistant_content(response)
+        if not answer:
+            raise RuntimeError(f"DeepSeek returned an empty answer for {question['id']}.")
+        item = dict(question)
+        item["answer"] = answer
+        item["model_metadata"] = {
+            "question_model": model,
+            "answer_model": model,
+            "reasoning_effort": reasoning_effort,
+        }
+        records.append(item)
+    return records
+
+
+def build_soul_summary_prompt(*, slug: str, language: str, records: list[dict[str, Any]]) -> str:
+    compact_records = []
+    for record in records:
+        compact_records.append({
+            "id": record["id"],
+            "archetype": record["archetype"],
+            "question": record["question"],
+            "why_this_question": record["why_this_question"],
+            "principle_or_source_anchor": record["principle_or_source_anchor"],
+            "answer_excerpt": truncate_text(record["answer"], 2500),
+        })
+    headings = [f"## {heading}" for heading in SOUL_SUMMARY_HEADINGS]
+    return (
+        "Write a brief subjective reading note for a non-benchmark Soul Ten Questions appendix.\n"
+        "Do not give a numeric score, grade, ranking, benchmark label, pass/fail verdict, or release recommendation. "
+        "The purpose is to leave space for the user to judge the skill alone.\n\n"
+        f"Slug: {slug}\n"
+        f"Language code: {language}\n"
+        "Use Chinese if the language code is zh; otherwise use English, but keep the five section headings exactly.\n\n"
+        "Use exactly these Markdown section headings in this order:\n"
+        + "\n".join(headings)
+        + "\n\n===== QUESTION AND ANSWER RECORDS =====\n"
+        + json.dumps(compact_records, ensure_ascii=False)
+        + "\n===== END RECORDS ====="
+    )
+
+
+def default_soul_summary() -> str:
+    body = [
+        "This appendix is for the user's private reading judgment and is not scored.",
+        "Look for whether the answer reveals a living method rather than a generic persona.",
+        "Notice where the response feels historically anchored and where it may still feel too smooth.",
+        "Any discomfort or blind spot should be treated as evidence for further human review.",
+        "Read one answer slowly and decide whether it changed how you would use the skill.",
+    ]
+    lines: list[str] = []
+    for heading, paragraph in zip(SOUL_SUMMARY_HEADINGS, body):
+        lines.extend([f"## {heading}", "", paragraph, ""])
+    return "\n".join(lines).rstrip()
+
+
+def ensure_soul_summary_headings(text: str) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return default_soul_summary()
+    if all(f"## {heading}" in stripped for heading in SOUL_SUMMARY_HEADINGS):
+        return stripped
+    return default_soul_summary()
+
+
+def generate_soul_summary(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    reasoning_effort: str,
+    slug: str,
+    language: str,
+    records: list[dict[str, Any]],
+) -> str:
+    response = deepseek_chat(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        messages=[
+            {"role": "system", "content": "You write concise human-facing evaluation notes without scores."},
+            {"role": "user", "content": build_soul_summary_prompt(slug=slug, language=language, records=records)},
+        ],
+        reasoning_effort=reasoning_effort,
+        max_tokens=3000,
+    )
+    return ensure_soul_summary_headings(assistant_content(response))
+
+
+def render_soul_markdown(
+    *,
+    slug: str,
+    model: str,
+    reasoning_effort: str,
+    generated_at: str,
+    records: list[dict[str, Any]],
+) -> str:
+    lines = [
+        f"# Soul Ten Questions Q/A - {slug}",
+        "",
+        SOUL_APPENDIX_NOTICE,
+        "",
+        f"Schema: `{SOUL_QUESTION_SCHEMA_VERSION}`",
+        "Benchmark Included: `false`",
+        f"Model: `{model}`",
+        f"Reasoning Effort: `{reasoning_effort}`",
+        f"Generated At: `{generated_at}`",
+        "",
+    ]
+    for record in records:
+        lines.extend([
+            f"## {record['id']} - {record['archetype']}",
+            "",
+            f"Anchor: `{record['principle_or_source_anchor']}`",
+            "",
+            f"Why this question: {record['why_this_question']}",
+            "",
+            f"**Q:** {record['question']}",
+            "",
+            f"**A:** {record['answer']}",
+            "",
+        ])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_soul_summary_markdown(*, slug: str, summary: str) -> str:
+    return "\n".join([
+        f"# Soul Ten Questions Summary - {slug}",
+        "",
+        SOUL_APPENDIX_NOTICE,
+        "",
+        ensure_soul_summary_headings(summary),
+        "",
+    ])
+
+
+def run_soul_appendix(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    reasoning_effort: str,
+    root: Path,
+    slug: str,
+    skill_path: Path,
+    skill_text: str,
+    language: str,
+    out_dir: Path,
+) -> dict[str, Path]:
+    generated_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    questions = generate_soul_questions(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        root=root,
+        slug=slug,
+        skill_text=skill_text,
+        language=language,
+    )
+    records = answer_soul_questions(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        skill_text=skill_text,
+        questions=questions,
+    )
+    summary = generate_soul_summary(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        slug=slug,
+        language=language,
+        records=records,
+    )
+
+    payload = {
+        "schema_version": SOUL_QUESTION_SCHEMA_VERSION,
+        "benchmark_included": False,
+        "metadata": {
+            "slug": slug,
+            "skill_path": str(skill_path),
+            "model": model,
+            "reasoning_effort": reasoning_effort,
+            "language": language,
+            "generated_at": generated_at,
+            "mode": "hybrid_archetype_deepseek_tailored",
+            "notice": SOUL_APPENDIX_NOTICE,
+        },
+        "archetypes": SOUL_QUESTION_ARCHETYPES,
+        "questions": records,
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / "ten-question-qa.json"
+    md_path = out_dir / "ten-question-qa.md"
+    summary_path = out_dir / "ten-question-summary.md"
+    write_json(json_path, payload)
+    md_path.write_text(
+        render_soul_markdown(
+            slug=slug,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            generated_at=generated_at,
+            records=records,
+        ),
+        encoding="utf-8",
+    )
+    summary_path.write_text(render_soul_summary_markdown(slug=slug, summary=summary), encoding="utf-8")
+    return {
+        "json": json_path,
+        "markdown": md_path,
+        "summary": summary_path,
+    }
+
+
+def should_run_soul_questions(
+    *,
+    ten_questions: str,
+    source: str,
+    smoke: bool,
+    limit: int | None,
+    import_existing: bool,
+    judge_existing_runtime: bool,
+    record_count: int,
+    standard_case_count: int,
+) -> bool:
+    if ten_questions == "off":
+        return False
+    if ten_questions == "on":
+        return True
+    return (
+        source == "generated"
+        and not smoke
+        and limit is None
+        and not import_existing
+        and not judge_existing_runtime
+        and standard_case_count > 0
+        and record_count == standard_case_count
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     env_parser = argparse.ArgumentParser(add_help=False)
     env_parser.add_argument("--root", default=".")
@@ -527,6 +981,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--import-existing", action="store_true")
     parser.add_argument("--judge-existing-runtime", action="store_true")
     parser.add_argument("--no-judge", action="store_true")
+    parser.add_argument(
+        "--ten-questions",
+        choices=sorted(TEN_QUESTION_MODE_VALUES),
+        default="auto",
+        help=(
+            "Generate the non-benchmark Soul Ten Questions appendix. "
+            "auto runs only after a full generated runtime test; on forces it; off disables it."
+        ),
+    )
     args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
@@ -551,6 +1014,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     llm_enabled = llm_mode != "off"
     api_key = env_value("MIND_DISTILL_EVAL_API_KEY", "DEEPSEEK_API_KEY") if llm_enabled else None
+    if args.ten_questions == "on" and not api_key:
+        print(
+            "ERROR: --ten-questions on requires MIND_DISTILL_EVAL_API_KEY or DEEPSEEK_API_KEY.",
+            file=sys.stderr,
+        )
+        return 2
     records: list[dict[str, Any]]
     source: str
     dialogue_path = out_dir / "runtime-dialogue-test.md"
@@ -650,6 +1119,38 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Wrote {dialogue_path}")
     print(f"Wrote {judgment_path}")
     print(f"Wrote {runtime_eval_path}")
+    if should_run_soul_questions(
+        ten_questions=args.ten_questions,
+        source=source,
+        smoke=args.smoke,
+        limit=args.limit,
+        import_existing=args.import_existing,
+        judge_existing_runtime=args.judge_existing_runtime,
+        record_count=len(records),
+        standard_case_count=len(cases),
+    ):
+        try:
+            soul_paths = run_soul_appendix(
+                api_key=api_key or "",
+                base_url=args.base_url,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                root=root,
+                slug=args.slug,
+                skill_path=skill_path,
+                skill_text=skill_text,
+                language=str(test_set.get("language") or "zh"),
+                out_dir=out_dir,
+            )
+        except Exception as exc:
+            if args.ten_questions == "on":
+                print(f"ERROR: failed to generate Soul Ten Questions appendix: {exc}", file=sys.stderr)
+                return 2
+            print(f"WARNING: skipped Soul Ten Questions appendix: {exc}", file=sys.stderr)
+        else:
+            print(f"Wrote {soul_paths['json']}")
+            print(f"Wrote {soul_paths['markdown']}")
+            print(f"Wrote {soul_paths['summary']}")
     return 0
 
 

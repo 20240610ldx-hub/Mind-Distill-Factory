@@ -116,6 +116,26 @@ Runtime output contract:
 - `runtime-judgment.json` stores judge scores and metadata with English JSON keys.
 - `runtime-evaluation.md` summarizes runtime failure modes.
 
+## Soul Ten Questions Appendix
+
+After a full generated DeepSeek runtime test, the runtime also creates a non-benchmark appendix by default:
+
+- `ten-question-qa.json` uses schema `MindDistillSoulQuestions-v1` and must set `benchmark_included: false`.
+- `ten-question-qa.md` is the human-readable Q/A dialogue.
+- `ten-question-summary.md` is a brief subjective reading note, not a scorecard.
+
+This appendix is intentionally separate from SkillEval-MDF scoring. It must not change `runtime-judgment.json`, `runtime_score_25`, score caps, grades, or benchmark-ready language. Treat it as a user-facing mirror for private judgment: the ten fixed archetypes cover regret, alternate historical road, principle-life contradiction, hardest compromise, misunderstood principle, decisive moment, unique personality wisdom, warning against imitation, modern-use boundary, and final self-judgment.
+
+Control it with:
+
+```bash
+python evaluation/runtime/run_dialogue_eval.py --slug <slug> --root . --ten-questions auto
+python evaluation/runtime/run_dialogue_eval.py --slug <slug> --root . --ten-questions on
+python evaluation/runtime/run_dialogue_eval.py --slug <slug> --root . --ten-questions off
+```
+
+`auto` runs only after a full generated runtime test. It skips smoke tests, limited runs, imported logs, and judge-existing-runtime runs unless `--ten-questions on` is explicitly used.
+
 To normalize existing logs without calling the API:
 
 ```bash

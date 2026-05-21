@@ -1,340 +1,283 @@
 # Mind Distill Factory
 
-A universal factory for distilling the decision-making frameworks of history's greatest thinkers into installable **Claude Code Skills**. Each Skill encodes a thinker's cognitive architecture as an executable reasoning algorithm — the AI internalizes their mental models, expression patterns, and value orientation, then responds in a first-person immersive voice as if that thinker is conversing directly with you.
+<p align="center">
+  <img src="docs/assets/readme/concept-hero.svg" alt="Mind Distill Factory concept illustration" width="100%">
+</p>
 
-> "I don't want a biography. I want to think like them." — every reader of *Poor Charlie's Almanack*
+Mind Distill Factory turns the sources, judgment habits, expressive texture, value orientation, and failure modes of important thinkers into installable **Codex Skills**.
 
----
+It is not a quote collection. It is not a biography generator. It is not theatrical roleplay. The goal is to build a small cognitive instrument: a `SKILL.md` that can respond from inside a thinker's way of seeing while remaining source-traceable, practically useful, and honest about its own limits.
 
-## What This Is
+[中文说明](README.zh.md) · [Main README](README.md)
 
-This is not a quote collection. It's not a biography generator. It's a **cognitive cloning pipeline**. Each Skill produced by this factory contains:
+## The Idea
 
-| Component | Description |
-|-----------|-------------|
-| **Filter-chain decision framework** | Sequential yes/no gates — not open-ended questions. Every step is a binary filter that narrows the decision space. |
-| **Expression DNA (8 dimensions)** | Sentence patterns, signature rhetoric, tonal baseline, certainty expression, humor style, taboo expressions, paragraph rhythm, conversational markers — with good/bad calibration examples. |
-| **Core principles (5–8)** | Each with source attribution, a decision rule ("When X, then Y"), a modern application scenario, and outcome logic. |
-| **Reasoning patterns (3–5)** | Characteristic cognitive moves — triggers, mental operations, and historical examples. |
-| **Blind spots with mitigations (2–4)** | Specific failure modes, not vague caveats. Each includes concrete mitigation advice and "when NOT to use" guidance. |
-| **Values & anti-patterns** | What the thinker actively pursues (≥2), what they actively reject (≥2), and unresolved internal tensions (≥1). |
-| **Signature quotes (5–10)** | Verbatim, source-anchored, each tagged with the conversational context where it lands hardest. |
-| **Source lineage** | Full attribution chain with confidence levels — user-provided first-hand sources get `high`, web-only quotes are capped at `medium`. |
+Most persona prompts imitate the surface: a few famous phrases, a tone label, and a list of slogans. That breaks quickly when a user asks a difficult second question.
 
----
+Mind Distill Factory treats a thinker as a method under pressure. It asks:
 
-## The Pipeline (7 Stages)
+- What did this person notice that others tended to miss?
+- Which principles were used when the stakes were real?
+- How did the life contradict, distort, or deepen the doctrine?
+- Where should a modern user borrow the method, and where should they stop?
 
-Every Skill travels through a gated pipeline. Between each stage, `validate_output.py` runs — if it fails, the pipeline stops.
+A good Skill should feel less like reading a report about a thinker and more like entering a disciplined conversation with a reconstructed mind.
 
-```
- Stage 0       Stage 1          Stage 2         Stage 3          Stage 4       Stage 5       Stage 6
- ┌───────┐    ┌────────────┐   ┌───────────┐   ┌─────────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
- │Intent │ →  │  Source    │ → │ Principle  │ → │  Framework  │ → │ Skill   │ → │ Quality │ → │ Install │
- │Clarify│    │Collection  │   │Extraction  │   │  Synthesis  │   │Assembly │   │ Review  │   │ & Ship  │
- └───────┘    └────────────┘   └───────────┘   └─────────────┘   └─────────┘   └─────────┘   └─────────┘
-     ✓              ✓                ✓               ✓               ✓             ✓             ✓
- checkpoint    checkpoint       checkpoint      checkpoint      checkpoint     checkpoint    user-facing
-```
+## What A Skill Contains
 
-### Stage 0 — Intent Clarification
+<p align="center">
+  <img src="docs/assets/readme/skill-anatomy.svg" alt="Anatomy of a distilled SKILL.md" width="100%">
+</p>
 
-**Actor: Orchestrator (you)**
+Codex discovers Skills by looking for exactly one file named `SKILL.md`. Because of that hard platform constraint, the final deliverable is a single file. Chinese and English frameworks are still synthesized independently, then assembled into language-aware sections inside that one discoverable artifact.
 
-Parses the thinker's name, detects user-provided source files in `sources/{slug}/raw/`, recommends a primary + secondary taxonomy category from the 10-category system, and initializes the output directory tree. If no user sources exist, asks whether to proceed via web search or wait for materials.
+| Component | Purpose |
+| --- | --- |
+| Filter-chain decision framework | Sequential yes/no gates that make the thinker usable in real decisions. |
+| Core principles | Source-anchored rules with modern scenarios and outcome logic. |
+| Reasoning patterns | Characteristic cognitive moves: triggers, mental operations, and historical examples. |
+| Expression DNA | Eight dimensions of voice: sentence patterns, rhetoric, tone, certainty, humor, taboos, paragraph rhythm, and conversational markers. |
+| Structural naturalness rules | Instructions that prevent template-shaped AI answers and preserve uneven, human-like response shape. |
+| Values and anti-patterns | What the thinker pursues, rejects, and leaves unresolved. |
+| Blind spots with mitigation | Failure modes, when not to use the Skill, and how to counterbalance it. |
+| Source lineage | Confidence-aware attribution. First-hand user materials can be high confidence; web-only quotes are capped. |
 
-### Stage 1 — Source Collection
+## Pipeline
 
-**Actors: 4 parallel source-researcher sub-agents**
+<p align="center">
+  <img src="docs/assets/readme/source-to-skill-pipeline.svg" alt="Source to Skill pipeline" width="100%">
+</p>
 
-| Agent | Task | Output |
-|-------|------|--------|
-| A — User sources | Read all files in `sources/{slug}/raw/`; extract quotes, principles, and behavioral records | `user_sources.json` |
-| B — Primary sources | Web search for the thinker's own writings, speeches, interviews, letters | `primary_sources.json` |
-| C — Secondary sources | Web search for authoritative biographies, academic analyses, deep profiles | `secondary_sources.json` |
-| D — Expression DNA | Search for speech transcripts, interview verbatims, original correspondence — focus on *how* they speak/write, not *what* they say. Uses `content_type: "expression_sample"`. | `expression_dna.json` |
+The pipeline is gated because a beautiful answer is not enough. Each stage produces reviewable artifacts, and `scripts/validate_output.py` enforces structural checks between stages.
 
-Agent D is **mandatory and non-skippable** — it's the foundation for anti-formula quality. If web search fails entirely, expression samples are extracted from user-provided PDFs.
+1. Clarify the thinker, slug, target language, taxonomy category, and source availability.
+2. Collect primary and secondary sources, including user-provided local files when present.
+3. Shard large local corpora through an indexer, bounded workers, and a reducer.
+4. Extract principles, quotes, reasoning patterns, blind spots, and evidence anchors.
+5. Build a shared evidence core, then synthesize Chinese and English frameworks independently.
+6. Assemble the final `SKILL.md`.
+7. Run quality review, validation, gallery sync, and optional runtime evaluation.
 
-Search tool fallback chain: `WebSearch` → `Tavily MCP` → `WebFetch` direct → annotate failure.
+The stable local-source contract is:
 
-### Stage 2 — Principle Extraction
-
-**Actors: 2–4 parallel principle-extractor sub-agents (one per source file)**
-
-Each extracts candidate principles, reasoning patterns, and notable quotes from its assigned source file. Every candidate passes a **three-tier uniqueness test**:
-
-1. **De-name test**: If you strip the thinker's name, is this still recognizably *their* idea — or just generic advice?
-2. **Input-evidence anchor**: Must have ≥2 supporting extracts from the *actual input files* (not the model's training data memory).
-3. **Methodology-level check**: Does it describe a concrete *how* (method), not just a *what* (value)?
-
-Outputs `principles_{source_type}.json` files (8–12 candidate principles per agent).
-
-### Stage 3 — Framework Synthesis
-
-**Actor: 1 framework-synthesizer sub-agent**
-
-This is the architecture step. The synthesizer:
-
-1. Cross-file deduplication (merge functionally identical principles)
-2. Distinctiveness ranking (by uniqueness score, evidence richness, actionability, cross-context applicability)
-3. Selection of 5–8 core principles
-4. Construction of a **sequential filter-chain** decision framework (4–5 steps, each a binary gate)
-5. Extraction of 3–5 characteristic reasoning patterns
-6. Identification of 2–4 blind spots with mitigation recommendations
-7. Synthesis of the 8-dimension Expression DNA
-8. Extraction of Values & Anti-Patterns (pursued / rejected / tensions)
-9. Compilation of 5–10 signature quotes with usage scenarios
-10. Calculation of overall `distill_confidence` score (1–5)
-
-Produces **two independent files**: `frameworks.zh.json` and `frameworks.en.json`. These are NOT translations — they may have different principle counts, different framework step orders, and different quote selections, each optimized for its target language and cultural context. They only share: person identity, category assignments, and equivalent blind-spot coverage.
-
-### Stage 4 — Skill Assembly
-
-**Actor: 1 skill-assembler sub-agent**
-
-Fills both language templates independently from their respective frameworks, then merges them into a single `SKILL.md` with a language-detection header. This constraint exists because **Claude Code's skill loader recognizes exactly `SKILL.md`** (case-sensitive) — files like `SKILL.zh.md` or `SKILL.en.md` are invisible.
-
-Merged file structure:
-```markdown
----
-name: {person-slug}-wisdom
-description: >- (bilingual, with trigger keywords in both languages)
-argument-hint: <describe your situation / 描述你的决策场景>
----
-
-# Language Detection · 语言检测
-
-CRITICAL: detect user's language → route to matching section
-
----
-
-## English
-(full English skill content from draft.en.md)
-
----
-
-## 中文版
-(full Chinese skill content from draft.zh.md)
+```text
+sources/{slug}/raw/                 # source files supplied by the user
+sources/{slug}/processed/           # structured intermediate artifacts
+sources/{slug}/processed/user_sources.json
 ```
 
-### Stage 5 — Quality Review
+### Artifact Flow
 
-**Actor: 1 quality-reviewer sub-agent**
+| Stage | Question | Typical artifacts |
+| --- | --- | --- |
+| Stage 0 | Who is being distilled, and what kind of wisdom is this? | slug, taxonomy category, source plan, target language |
+| Stage 1 | Are the materials reliable enough? | primary and secondary source findings, quote candidates |
+| Stage 1A | How do we process a large local corpus without overloading one context? | shard manifest, worker outputs, `user_sources.json` |
+| Stage 2 | Which claims are executable judgment rules? | principles, reasoning patterns, quotes, blind spots |
+| Stage 3 | How do the evidence anchors become a full cognitive framework? | framework core, `frameworks.zh.json`, `frameworks.en.json` |
+| Stage 4 | Can Codex discover and use it? | one final `SKILL.md` |
+| Stage 5 | Does it sound, reason, and self-limit correctly? | quality review and repair notes |
+| Stage 6 | Is the released copy the same artifact that passed review? | `gallery/{slug}/SKILL.md`, `gallery/index.json` |
 
-A 7-dimension red-team review producing a PASS / REVISE / FAIL verdict:
+This makes repair local. If the voice is strong but evidence is weak, return to Stage 2. If evidence is good but output shape is formulaic, repair Stage 4 or Stage 5. If Chinese and English versions feel cognitively mismatched, return to Stage 3 rather than translating one into the other.
 
-| Dimension | Weight | What it checks |
-|-----------|--------|----------------|
-| Accuracy | 25% | Source attribution correctness; hallucination detection |
-| Distinctiveness | 20% | De-name test; uniqueness scores ≥ 3 for ≥4/5 principles |
-| Actionability | 15% | Decision rules are concrete; filter steps are binary gates |
-| Expression Authenticity | 15% | First-person voice; all 8 DNA dimensions populated; calibration examples show meaningful ✅/❌ contrast |
-| Values Completeness | 10% | ≥2 pursued, ≥2 rejected, ≥1 tension; anti-patterns complement blind spots |
-| Bilingual Consistency | 10% | Equivalent blind-spot coverage; no missing sections in either language |
-| Format Compliance | 5% | Correct section titles; no unfilled placeholders; anti-formula + structural naturalness rules present |
+## Anti-Formula Design
 
-**PASS threshold**: composite score ≥ 3.5, accuracy ≥ 3, expression authenticity ≥ 3.
+The factory is built against a specific failure: AI tends to flatten every thinker into a neat, polite, consulting-style answer. Mind Distill Factory uses several mechanisms to resist that.
 
-**REVISE**: retries are limited to 2 rounds before escalation to FAIL.
+First-person immersion means the Skill should not constantly say "Munger believed" or "Sun Tzu would advise." It should answer from the thinker's method, while staying within documented boundaries.
 
-### Stage 6 — Installation
+Expression DNA forces specificity. "Analytical," "strategic," and "direct" are not enough. The Skill must capture sentence shape, rhetorical habits, baseline tone, certainty, humor, taboos, paragraph rhythm, and conversational markers.
 
-The orchestrator presents a summary (thinker info, principle list, review result), then offers four options: install, view-only, modify-then-install, or regenerate. Installation copies the merged `SKILL.md` to `~/.claude/skills/{slug}-wisdom/`, updates the gallery and `gallery/index.json`, then runs `validate_output.py gallery` to confirm sync.
+Structural naturalness prevents every response from becoming four balanced sections with equal-length paragraphs. The Skill is instructed to vary length, break symmetry, adapt depth to the prompt, and allow less polished transitions when that better fits the voice.
 
----
+Constructive value orientation keeps the output useful. When a user brings grievance, failure, or unfairness, the Skill may acknowledge reality, but it should move toward agency, repair, discipline, or action instead of staying in complaint.
 
-## Key Directories
+## Resemblance Is Not Enough
 
-```
-mind-distill-factory/
-│
-├── config/
-│   ├── taxonomy.json          # 10-category thinker classification system
-│   └── defaults.json          # Pipeline constraints & quality thresholds
-│
-├── commands/
-│   └── distill.md             # The /distill orchestrator (Stages 0–6)
-│
-├── agents/                    # 5 specialized sub-agent definitions
-│   ├── source-researcher.md   #   Stage 1: search→fetch→extract, 4 task types
-│   ├── principle-extractor.md #   Stage 2: extract + three-tier uniqueness test
-│   ├── framework-synthesizer.md # Stage 3: merge, rank, synthesize bilingual frameworks
-│   ├── skill-assembler.md     #   Stage 4: fill templates, merge into single SKILL.md
-│   └── quality-reviewer.md    #   Stage 5: 7-dimension red-team review
-│
-├── scripts/
-│   ├── validate_output.py     # Pipeline gatekeeper — validates at every stage
-│   ├── extract_pdf_text.py    # PDF → plain text (PyMuPDF / pypdf)
-│   ├── extract_pdf_with_cmap.py # PDF extraction with CMap handling for CJK fonts
-│   ├── extract_user_sources.py  # Structured passage extraction from PDF texts
-│   ├── build_user_sources.py    # Targeted key-passage extraction (used for Mao)
-│   └── fix_frameworks_schema.py # Schema migration / repair tool
-│
-├── templates/
-│   ├── skill-template.en.md   # English Skill template (with all section markers)
-│   ├── skill-template.zh.md   # Chinese Skill template
-│   └── examples/
-│       ├── charlie-munger.en.md # Hand-crafted English Skill (quality benchmark)
-│       └── charlie-munger.zh.md # Hand-crafted Chinese Skill
-│
-├── sources/{slug}/
-│   ├── raw/                   # User-provided source materials (PDF, TXT, MD, EPUB)
-│   └── processed/             # Structured extracts from Stage 1 sub-agents
-│       ├── user_sources.json
-│       ├── primary_sources.json
-│       ├── secondary_sources.json
-│       └── expression_dna.json  # ⚠️ Mandatory — drives anti-formula quality
-│
-├── output/{slug}/             # Development artifacts (intermediate + drafts)
-│   ├── principles_*.json      # Stage 2 output
-│   ├── frameworks.{zh,en}.json # Stage 3 output
-│   ├── draft.{zh,en}.md       # Stage 4 intermediate drafts
-│   ├── SKILL.md               # Stage 4 final merged deliverable
-│   └── review.md              # Stage 5 quality review report
-│
-├── gallery/{slug}/            # Installed Skills (single source of truth)
-│   └── SKILL.md
-├── gallery/index.json         # Gallery registry
-│
-└── CLAUDE.md                  # Project handbook — the authoritative spec
-```
+A Skill can sound like a thinker and still be weak. It may imitate catchphrases while failing to reason. It may quote accurately while being unable to handle a modern case. The factory therefore evaluates three layers:
 
----
+| Layer | What it checks |
+| --- | --- |
+| Evidence | Whether the advice traces back to sources rather than invented authority. |
+| Method | Whether new answers use the thinker's distinctive judgment moves. |
+| Personhood | Whether rhythm, hesitation, force, restraint, and limits form a credible presence. |
 
-## The 10-Category Taxonomy
-
-Every thinker maps to **1 primary + up to 2 secondary** categories:
-
-| ID | Category | Description | Example Thinkers |
-|----|----------|-------------|-----------------|
-| `strategy` | Strategy & Decision | Competitive thinking, risk assessment, decisive action under uncertainty | Sun Tzu, Clausewitz, John Boyd |
-| `philosophy` | Philosophy & Worldview | Epistemology, ethics as framework, meaning-making | Nietzsche, Zhuangzi, Seneca, Wittgenstein |
-| `governance` | Governance & Power | Political philosophy, institutional design, legitimacy | Machiavelli, Han Feizi, Lincoln, Lee Kuan Yew |
-| `enterprise` | Enterprise & Wealth | Business strategy, investment thinking, capital allocation | Charlie Munger, Rockefeller, Buffett, Andrew Grove |
-| `inquiry` | Inquiry & Discovery | Scientific method, intellectual rigor, paradigm shifts | Feynman, Darwin, Marie Curie, Ibn al-Haytham |
-| `creation` | Creation & Craft | Artistic process, aesthetic judgment, innovation | Da Vinci, Steve Jobs, Miyamoto Musashi, Coco Chanel |
-| `conduct` | Conduct & Character | Personal ethics, habit formation, integrity | Marcus Aurelius, Confucius, Franklin, Gandhi |
-| `resilience` | Adversity & Resilience | Crisis response, perseverance, suffering as teacher | Viktor Frankl, Mandela, Epictetus, Dostoevsky |
-| `pedagogy` | Teaching & Influence | Rhetoric, persuasion, mentorship, cultural transmission | Socrates, Maria Montessori, Dale Carnegie, Dewey |
-| `lifedesign` | Life Design & Balance | Health, relationships, daily routines, practical wisdom | Montaigne, Thoreau, Epicurus, Lin Yutang |
-
----
-
-## Anti-Formula Design (v4)
-
-The central quality problem with AI-generated Skills is that they read like templated reports — symmetrical paragraphs, numbered lists, uniform sentence length, perfect transitions. This project attacks that problem at three levels:
-
-### Level 1 — First-Person Immersion
-
-Skills respond in the thinker's voice ("I believe...", "In my experience..."), not third-person narration. This creates conversational texture and prevents the detached-analyst tone.
-
-### Level 2 — Expression DNA (8 Dimensions)
-
-| Dimension | What it captures |
-|-----------|-----------------|
-| Sentence patterns | Short vs. long; declarative vs. rhetorical; parallel structures |
-| Signature rhetoric | Analogies, reductio ad absurdum, quoting classics, data bombardment |
-| Tonal baseline | Direct / ironic / combative / calm / colloquial |
-| Certainty expression | "No doubt" type vs. "I suspect but am unsure" type |
-| Humor style | Deadpan / self-deprecating / satirical / black humor / none |
-| Taboo expressions | Words and sentence patterns this thinker would *never* use |
-| **Paragraph rhythm** | Alternation pattern between long analytical passages and short declarative paragraphs; single-sentence paragraph habits |
-| **Conversational markers** | Characteristic discourse markers, interjections, verbal tics — distinct from generic filler words |
-
-### Level 3 — Structural Naturalness Rules (5 mandatory instructions)
-
-1. **Vary sentence length >30%** — adjacent sentences must differ noticeably; every 3–5 sentences, insert a punchy short line (<15 chars) or a developed long one (>50 chars)
-2. **Uneven paragraphs** — length ranges 1–6 sentences; allow single-sentence paragraphs; never have 3+ consecutive paragraphs of similar length
-3. **Break symmetric structures** — no "First... Second... Third..."; max 2 parallel items; connect through semantic logic, not ordinal markers
-4. **Diversify paragraph entry points** — don't start every paragraph with its topic sentence; sometimes lead with an example, a verdict, or a concrete scenario
-5. **Allow imperfect transitions** — real conversation has slight jumps, "coming back to the point" moments, brief digressions that circle back
-
-Together, these three levels ensure that Skill outputs have the texture of human thought, not AI uniformity.
-
----
+The reviewer should ask hard questions. Could this paragraph be attributed to any generic productivity writer? Is the answer only an encyclopedia summary? Did the thinker's pain, hesitation, force, misjudgment, or unresolved tension actually enter the artifact? If not, the Skill is still a shell.
 
 ## Quality Gates
 
-Before a Skill enters the gallery, it must pass these gates — each enforced by `validate_output.py` and the quality-reviewer sub-agent:
+Before a Skill enters `gallery/`, it must pass checks for:
 
-| Gate | Requirement | Enforced by |
-|------|-------------|-------------|
-| Source attribution | Every principle traces to a specific source (book, speech, letter) | Stage 5 accuracy review |
-| Filter framework | Decision steps are binary gates, not open questions | Stage 3 synthesis + Stage 5 review |
-| Blind spots | ≥2 limitations, each with concrete mitigation advice | Stage 3 synthesis + validator schema |
-| Expression DNA | All 8 dimensions filled; good ✅ / bad ❌ calibration pair provided | Validator schema + Stage 5 expression review |
-| Structural naturalness | 5 rules present in Response Strategy | Stage 4 assembly + Stage 5 format review |
-| Anti-formula rules | 5 rules present in Response Strategy | Stage 4 assembly + Stage 5 format review |
-| Values completeness | ≥2 pursued, ≥2 rejected, ≥1 unresolved tension | Validator schema |
-| Bilingual description | Frontmatter description contains both Chinese and English trigger keywords | Validator schema |
-| Distill confidence | `score` ≥ 3 (on 1–5 scale) | Stage 3 synthesis + validator schema |
-| Gallery sync | `gallery/{slug}/SKILL.md` byte-identical to `output/{slug}/SKILL.md` | Validator `gallery` stage |
+| Gate | Requirement |
+| --- | --- |
+| Source traceability | Principles and quotes point to named materials. Web-only quotes cannot be high confidence. |
+| Uniqueness | The method must survive a de-name test, evidence-anchor test, and methodology-level test. |
+| Decision framework | Steps must be filter-type yes/no gates, not open-ended prompts. |
+| Bilingual cognition | Chinese and English frameworks are independently framed, not mechanically translated. |
+| Blind spots | Each failure mode includes mitigation advice and "when not to use" guidance. |
+| Expression DNA | The voice profile must distinguish this thinker from generic analytical prose. |
+| Structural naturalness | Anti-template response-shape rules must be present and complete. |
+| Values and anti-patterns | At least two pursued values, two rejected patterns, and one unresolved tension. |
 
----
+## Evaluation And Soul Ten Questions
 
-## Gallery
+<p align="center">
+  <img src="docs/assets/readme/runtime-evaluation-loop.svg" alt="Runtime evaluation loop" width="100%">
+</p>
 
-| Skill | Era | Taxonomy | Distilled | Method | Score |
-|-------|-----|----------|-----------|--------|-------|
-| **charlie-munger-wisdom** | 1924–2023 | Enterprise + Inquiry + Conduct | 2026-05-01 | hand-crafted | PASS |
-| **mao-zedong-wisdom** | 1893–1976 | Strategy + Governance + Philosophy | 2026-05-02 | pipeline | PASS · 4.35/5 |
+The `evaluation/` subtree is deliberately separate from the distillation pipeline. It can collect artifact facts, run DeepSeek-compatible runtime dialogue tests, judge outputs, and produce scorecards without changing the target Skill.
 
-**mao-zedong-wisdom** notes: 4 user-provided PDFs (55 MB, 8,400+ pages), 13 core works extracted (330K+ characters), 7 principles (zh) / 6 principles (en) with independent framework structures.
+The newest runtime extension is the non-benchmark **Soul Ten Questions** appendix:
 
----
+<p align="center">
+  <img src="docs/assets/readme/soul-ten-questions.svg" alt="Soul Ten Questions appendix" width="100%">
+</p>
+
+After a full generated runtime test, DeepSeek can create a separate human-reading appendix. Ten fixed archetypes constrain coverage: regret, alternate historical road, principle-life contradiction, hardest compromise, misunderstood principle, decisive moment, unique personality wisdom, warning against imitation, modern-use boundary, and final self-judgment. The actual questions are tailored to the thinker's history, tensions, blind spots, principles, and expressive personality.
+
+The appendix writes:
+
+```text
+evaluation/reports/{slug}/ten-question-qa.json
+evaluation/reports/{slug}/ten-question-qa.md
+evaluation/reports/{slug}/ten-question-summary.md
+```
+
+These files are explicitly non-scored. They do not alter `runtime-judgment.json`, `runtime_score_25`, score caps, grades, release language, or benchmark readiness. Their job is to leave the user with something more human than a number.
+
+The ten archetypes are:
+
+| Archetype | What it tries to reveal |
+| --- | --- |
+| regret | The wound that remains when the life is reconsidered. |
+| alternate historical road | How the thinker would re-evaluate a different path through history. |
+| principle-life contradiction | Where a doctrine was contradicted or strained by the life behind it. |
+| hardest compromise | The bargain that exposes the cost of the method. |
+| misunderstood principle | The teaching later users are most likely to flatten or misuse. |
+| decisive moment | The moment that formed the judgment architecture. |
+| unique personality wisdom | A personality trait that is itself a source of wisdom. |
+| warning against imitation | What should not be copied, because copying it would harm the user. |
+| modern-use boundary | Where the method should stop in contemporary use. |
+| final self-judgment | What the thinker might say if asked to render a verdict on himself. |
+
+This part is deliberately not scored. Scores can warn, but they cannot replace the user's own reading of whether an answer has the weight of a living mind.
 
 ## Usage
 
-### Distill a New Thinker
+Run local tests:
 
+```powershell
+python -m unittest discover -s tests -v
 ```
+
+Use the `/distill` command in a Codex workflow:
+
+```text
 /distill "Charlie Munger"
-/distill 孙子
-/distill Seneca
+/distill Sun Tzu
+/distill 王阳明
 ```
 
-The orchestrator walks through source detection, taxonomy recommendation, and all 7 pipeline stages.
+Validate stages manually:
 
-### Manual Validation
-
-```bash
-python scripts/validate_output.py sources charlie-munger
-python scripts/validate_output.py principles mao-zedong
-python scripts/validate_output.py frameworks mao-zedong
-python scripts/validate_output.py skill mao-zedong
-python scripts/validate_output.py gallery mao-zedong
+```powershell
+python scripts\validate_output.py sources charlie-munger
+python scripts\validate_output.py principles mao-zedong
+python scripts\validate_output.py frameworks mao-zedong
+python scripts\validate_output.py skill mao-zedong
+python scripts\validate_output.py gallery mao-zedong
 ```
 
-### Prerequisites
+Configure runtime evaluation:
 
-- **Claude Code** — for skill execution and sub-agent orchestration
-- **Python 3.9+** — for validation scripts (standard library only; no pip dependencies required)
-- **PyMuPDF** or **pypdf** (optional) — only needed for PDF source extraction
+```powershell
+Copy-Item evaluation\runtime\.env.example evaluation\runtime\.env
+# Edit evaluation\runtime\.env locally. Do not commit it.
 
----
+python evaluation\runtime\run_dialogue_eval.py --slug zeng-guofan --root . --ten-questions auto
+python evaluation\scripts\collect_artifacts.py --slug zeng-guofan --root . --out evaluation\reports\zeng-guofan\artifact-facts.json
+```
 
-## Design Principles
+For offline engineering checks:
 
-1. **First-person immersion** — "I've always maintained X", not "Munger said X"
-2. **Filter chains, not questionnaires** — every decision step narrows the space with a yes/no gate
-3. **Independent bilingual framing** — zh and en versions are separate cognitive constructions, not translations
-4. **Anti-formula by construction** — structural naturalness is mandatory, not aspirational
-5. **User sources over web search** — first-hand materials always outrank web-collected quotes in confidence
-6. **Constructive value orientation** — briefly acknowledge adversity, then pivot to self-empowerment and actionable paths
-7. **No thinker is infallible** — every Skill carries its own blind spots and anti-patterns
-8. **Validation at every gate** — no bad intermediate artifact can poison downstream stages
+```powershell
+$env:MIND_DISTILL_EVAL_LLM = "off"
+python -m unittest discover -s tests -v
+```
 
----
+Common runtime settings:
 
-## Naming Conventions
+| Variable | Meaning |
+| --- | --- |
+| `MIND_DISTILL_EVAL_LLM=off` | Never call an external model. Best for local tests. |
+| `MIND_DISTILL_EVAL_LLM=auto` | Call an external model only when a key exists. |
+| `MIND_DISTILL_EVAL_LLM=deepseek` | Require a DeepSeek-compatible API. |
+| `MIND_DISTILL_EVAL_API_KEY` | Evaluation-only API key. It should not appear in reports. |
+| `MIND_DISTILL_EVAL_BASE_URL` | Defaults to `https://api.deepseek.com`. |
+| `MIND_DISTILL_EVAL_MODEL` | Example default is `deepseek-v4-pro`. |
+| `MIND_DISTILL_EVAL_REASONING_EFFORT` | Forwarded to compatible model APIs. |
 
-- **Person slugs**: lowercase, hyphenated — `charlie-munger`, `sun-tzu`, `wang-yangming`
-- **Skill names**: `{person-slug}-wisdom` — `charlie-munger-wisdom`, `mao-zedong-wisdom`
-- **Source files**: `{source-abbrev}_{content-type}.{ext}` — `poor_charlies_almanack_quotes.txt`
+When installing a Skill, keep the final filename as `SKILL.md`. A common Codex layout is:
 
----
+```text
+~/.codex/skills/{person-slug}-wisdom/SKILL.md
+```
+
+Do not install `SKILL.zh.md`, `README.md`, or draft files as the final Skill. Codex will not discover those as the active Skill entrypoint.
+
+## Debate Arena
+
+`debate_arena/` lets two Skills argue through structured roles: profiler, topic generator, debaters, fact checker, and judge. It is useful for seeing how two distilled methods diverge when they face the same problem.
+
+Dry run:
+
+```powershell
+python -m debate_arena run --llm fake --issues 3 --out output\debate_arena\dry_run.md
+```
+
+For real runs, set `DEBATE_ARENA_API_KEY` or `OPENAI_API_KEY`. See [debate_arena/README.md](debate_arena/README.md).
+
+## Gallery
+
+The public gallery currently includes:
+
+| Thinker | Primary use |
+| --- | --- |
+| Charlie Munger | Multidisciplinary mental models, inversion, business and investment judgment. |
+| Chiang Kai-shek | Strategic endurance, organizational reform, weak-side diplomacy, self-discipline. |
+| Mao Zedong | Contradiction analysis, investigation, underdog strategy, protracted struggle. |
+| Richard Feynman | First principles, scientific honesty, learning by explanation. |
+| Sun Tzu | Competitive strategy, positioning, deception, timing, force economy. |
+| Wang Yangming | Innate knowing, unity of knowledge and action, moral self-cultivation. |
+| Zeng Guofan | Self-discipline, talent judgment, resilience, strategic patience. |
+
+## Public Release Boundary
+
+This repository is the public engineering surface. It includes templates, orchestration contracts, evaluator code, gallery Skills, README visuals, and tests. It intentionally excludes:
+
+- `.env`, `evaluation/runtime/.env`, and all API keys.
+- Local evaluation reports under `evaluation/reports/`.
+- Intermediate outputs under `output/`.
+- Release-video working files.
+- Copyrighted books, PDFs, scans, recordings, private archives, or local source corpora.
+
+## Repository Map
+
+```text
+agents/         Subagent contracts for extraction, synthesis, review, and assembly
+commands/       The /distill orchestration command
+config/         Taxonomy and defaults
+debate_arena/   Two-Skill debate runner
+docs/assets/    Public README and project images
+evaluation/     Standalone SkillEval-MDF evaluator
+gallery/        Released installable Skills
+scripts/        Validators, source processing, and utility scripts
+sources/        Public placeholder plus local-source contract
+templates/      Skill templates and hand-crafted examples
+tests/          Regression tests
+```
 
 ## License
 
-MIT — the wisdom belongs to the thinkers; the distillation methodology belongs to everyone.
+Code and documentation are released under the MIT License. The thinkers' works belong to their authors and rights holders; the open-source contribution here is the distillation method, engineering pipeline, and reusable Skill structure.

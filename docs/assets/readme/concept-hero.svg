@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 620" role="img" aria-labelledby="title desc">
+  <title id="title">Mind Distill Factory concept illustration</title>
+  <desc id="desc">A hand-drawn cognitive distillery turns source books and notes into installable wisdom skill cards.</desc>
+  <defs>
+    <linearGradient id="paper" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff9ed"/>
+      <stop offset="1" stop-color="#f2e4c8"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" x2="1">
+      <stop offset="0" stop-color="#c8efe9" stop-opacity=".35"/>
+      <stop offset=".55" stop-color="#e8ffff" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#8bcac4" stop-opacity=".35"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 .045"/>
+      </feComponentTransfer>
+    </filter>
+    <style>
+      .ink{fill:none;stroke:#1d2a32;stroke-width:3.1;stroke-linecap:round;stroke-linejoin:round}
+      .thin{fill:none;stroke:#1d2a32;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+      .soft{fill:#fff9ed;stroke:#1d2a32;stroke-width:2.2;stroke-linejoin:round}
+      .muted{fill:#e7d3aa;stroke:#1d2a32;stroke-width:2.2;stroke-linejoin:round}
+      .teal{fill:#bfe7df;stroke:#1d2a32;stroke-width:2.2;stroke-linejoin:round}
+      .label{font:600 27px Georgia,serif;fill:#1d2a32}
+      .small{font:500 19px Inter,Arial,sans-serif;fill:#36515a}
+      .tiny{font:500 15px Inter,Arial,sans-serif;fill:#4f6469}
+    </style>
+  </defs>
+  <rect width="1400" height="620" fill="#f7efe0"/>
+  <rect width="1400" height="620" filter="url(#grain)"/>
+  <path d="M35 498 C190 462 316 488 470 450 C650 406 780 412 935 446 C1088 480 1220 472 1362 438" fill="none" stroke="#d8c39c" stroke-width="5" stroke-linecap="round"/>
+
+  <g transform="translate(84 360) rotate(-6)">
+    <path class="muted" d="M0 86 L260 86 L230 0 L18 13 Z"/>
+    <path class="thin" d="M38 34 L199 16 M50 50 L212 34 M63 66 L190 54"/>
+    <path class="thin" d="M112 9 C96 30 96 54 122 82"/>
+    <text class="tiny" x="55" y="108">source fragments</text>
+  </g>
+  <g transform="translate(184 210) rotate(-12)">
+    <path class="soft" d="M0 40 C56 9 112 8 170 37 L168 142 C112 107 58 111 0 150 Z"/>
+    <path class="soft" d="M170 37 C227 6 281 14 338 48 L338 154 C279 120 223 112 168 142 Z"/>
+    <path class="thin" d="M37 58 C77 44 106 45 143 59 M38 78 C83 64 112 68 146 82 M205 58 C247 49 279 57 312 78 M202 83 C250 72 281 78 315 97"/>
+    <text class="tiny" x="83" y="184">books, letters, talks</text>
+  </g>
+
+  <g transform="translate(470 86)">
+    <path class="teal" d="M112 42 C168 52 205 91 208 151 L208 365 C208 415 165 455 112 455 C58 455 16 415 16 365 L16 151 C19 92 56 52 112 42 Z"/>
+    <path class="ink" d="M76 41 L76 18 L148 18 L148 41"/>
+    <path class="thin" d="M62 124 C111 94 157 101 181 143 C202 181 173 225 124 222 C80 219 55 251 83 282 C112 313 171 295 184 350"/>
+    <path class="thin" d="M68 160 C126 132 171 159 166 205 M68 329 C124 362 170 345 184 299"/>
+    <circle cx="78" cy="182" r="8" fill="#1d2a32"/>
+    <circle cx="154" cy="258" r="8" fill="#1d2a32"/>
+    <circle cx="103" cy="344" r="8" fill="#1d2a32"/>
+    <text class="small" x="42" y="500">embodied reasoning</text>
+  </g>
+
+  <g transform="translate(615 290)">
+    <path class="ink" d="M0 8 C74 -16 126 -13 190 13 C263 43 320 39 386 8"/>
+    <path class="thin" d="M0 42 C74 18 126 21 190 47 C263 77 320 73 386 42"/>
+    <path class="thin" d="M214 18 L252 38 L214 60"/>
+  </g>
+
+  <g transform="translate(792 94)">
+    <path class="soft" d="M42 0 H456 C479 0 498 19 498 42 V363 C498 386 479 405 456 405 H42 C19 405 0 386 0 363 V42 C0 19 19 0 42 0 Z"/>
+    <path class="thin" d="M32 80 H466 M136 36 H362"/>
+    <text class="label" x="134" y="56">SKILL.md</text>
+    <g transform="translate(42 112)">
+      <rect class="teal" width="176" height="74" rx="16"/>
+      <text class="small" x="24" y="31">filter-chain</text>
+      <text class="tiny" x="24" y="55">yes/no gates</text>
+    </g>
+    <g transform="translate(268 112)">
+      <rect class="muted" width="176" height="74" rx="16"/>
+      <text class="small" x="25" y="31">expression DNA</text>
+      <text class="tiny" x="25" y="55">voice texture</text>
+    </g>
+    <g transform="translate(42 220)">
+      <rect class="muted" width="176" height="74" rx="16"/>
+      <text class="small" x="25" y="31">source anchors</text>
+      <text class="tiny" x="25" y="55">traceable claims</text>
+    </g>
+    <g transform="translate(268 220)">
+      <rect class="teal" width="176" height="74" rx="16"/>
+      <text class="small" x="25" y="31">blind spots</text>
+      <text class="tiny" x="25" y="55">mitigations</text>
+    </g>
+    <path class="thin" d="M74 336 C156 361 340 362 424 336"/>
+    <text class="tiny" x="171" y="363">one installable file</text>
+  </g>
+
+  <g transform="translate(1048 470)">
+    <path class="ink" d="M0 0 C44 35 93 35 138 0 C183 -35 234 -35 278 0"/>
+    <path class="thin" d="M139 -42 V45"/>
+    <text class="small" x="-6" y="74">human judgment, not only scores</text>
+  </g>
+
+  <text class="label" x="72" y="88">Mind Distill Factory</text>
+  <text class="small" x="74" y="124">source truth into living, usable cognitive artifacts</text>
+</svg>

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 410" role="img" aria-labelledby="title desc">
+  <title id="title">Source to Skill pipeline</title>
+  <desc id="desc">A clean line diagram showing the Mind Distill Factory pipeline from raw sources to gallery release.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#26343b"/>
+    </marker>
+    <style>
+      .bg{fill:#fbfaf7}
+      .box{fill:#fff;stroke:#26343b;stroke-width:2.2;rx:18}
+      .soft{fill:#e8f3f1;stroke:#26343b;stroke-width:2.2;rx:18}
+      .gold{fill:#f6ecd8;stroke:#26343b;stroke-width:2.2;rx:18}
+      .line{fill:none;stroke:#26343b;stroke-width:2.2;marker-end:url(#arrow)}
+      .thin{fill:none;stroke:#78909a;stroke-width:1.5}
+      .title{font:700 22px Inter,Arial,sans-serif;fill:#17242a}
+      .text{font:500 15px Inter,Arial,sans-serif;fill:#465960}
+      .tag{font:700 13px Inter,Arial,sans-serif;fill:#6b5a33}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="410"/>
+  <text class="title" x="48" y="52">From sources to an installable mind-skill</text>
+  <text class="text" x="48" y="82">The factory is gated: each stage creates reviewable artifacts before the next stage runs.</text>
+
+  <g transform="translate(52 132)">
+    <rect class="gold" width="160" height="120"/>
+    <text class="tag" x="22" y="31">STAGE 1</text>
+    <text class="title" x="22" y="62">Sources</text>
+    <text class="text" x="22" y="89">books, letters,</text>
+    <text class="text" x="22" y="110">talks, interviews</text>
+  </g>
+  <path class="line" d="M226 192 H304"/>
+  <g transform="translate(318 132)">
+    <rect class="box" width="160" height="120"/>
+    <text class="tag" x="22" y="31">STAGE 1A</text>
+    <text class="title" x="22" y="62">Shard</text>
+    <text class="text" x="22" y="89">indexer, workers,</text>
+    <text class="text" x="22" y="110">reducer</text>
+  </g>
+  <path class="line" d="M492 192 H570"/>
+  <g transform="translate(584 132)">
+    <rect class="soft" width="160" height="120"/>
+    <text class="tag" x="22" y="31">STAGE 2</text>
+    <text class="title" x="22" y="62">Principles</text>
+    <text class="text" x="22" y="89">source-anchored</text>
+    <text class="text" x="22" y="110">decision rules</text>
+  </g>
+  <path class="line" d="M758 192 H836"/>
+  <g transform="translate(850 132)">
+    <rect class="box" width="160" height="120"/>
+    <text class="tag" x="22" y="31">STAGE 3</text>
+    <text class="title" x="22" y="62">Frameworks</text>
+    <text class="text" x="22" y="89">independent zh/en</text>
+    <text class="text" x="22" y="110">cognitive framing</text>
+  </g>
+  <path class="line" d="M1024 192 H1102"/>
+  <g transform="translate(1116 132)">
+    <rect class="gold" width="112" height="120"/>
+    <text class="tag" x="18" y="31">STAGE 4-6</text>
+    <text class="title" x="18" y="62">SKILL.md</text>
+    <text class="text" x="18" y="89">reviewed</text>
+    <text class="text" x="18" y="110">gallery</text>
+  </g>
+
+  <path class="thin" d="M130 292 H1160"/>
+  <g transform="translate(142 308)">
+    <circle cx="0" cy="0" r="5" fill="#26343b"/>
+    <text class="text" x="18" y="5">validate_output.py checkpoints</text>
+  </g>
+  <g transform="translate(442 308)">
+    <circle cx="0" cy="0" r="5" fill="#26343b"/>
+    <text class="text" x="18" y="5">confidence-aware source lineage</text>
+  </g>
+  <g transform="translate(770 308)">
+    <circle cx="0" cy="0" r="5" fill="#26343b"/>
+    <text class="text" x="18" y="5">quality-reviewer before release</text>
+  </g>
+</svg>

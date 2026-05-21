@@ -52,6 +52,8 @@ GRADE_LABELS = {
     "F": "not recommended",
 }
 
+SOUL_QUESTION_SCHEMA_VERSION = "MindDistillSoulQuestions-v1"
+
 
 def read_text(path: Path) -> str:
     try:
@@ -231,6 +233,45 @@ def summarize_principles(paths: list[Path]) -> dict[str, Any]:
     }
 
 
+def summarize_soul_appendix(json_path: Path, markdown_path: Path, summary_path: Path) -> dict[str, Any]:
+    data = read_json(json_path)
+    if not isinstance(data, dict):
+        return {
+            "exists": json_path.exists() or markdown_path.exists() or summary_path.exists(),
+            "schema_version": None,
+            "benchmark_included": None,
+            "non_scored": False,
+            "question_count": 0,
+            "markdown_exists": markdown_path.exists(),
+            "summary_exists": summary_path.exists(),
+            "valid_non_benchmark_appendix": False,
+        }
+    questions = data.get("questions")
+    question_count = len(questions) if isinstance(questions, list) else 0
+    benchmark_included = data.get("benchmark_included")
+    schema_version = data.get("schema_version")
+    valid_questions = False
+    if isinstance(questions, list) and len(questions) == 10:
+        ids = [item.get("id") for item in questions if isinstance(item, dict)]
+        valid_questions = len(ids) == 10 and len(set(ids)) == 10
+    return {
+        "exists": True,
+        "schema_version": schema_version,
+        "benchmark_included": benchmark_included,
+        "non_scored": benchmark_included is False,
+        "question_count": question_count,
+        "markdown_exists": markdown_path.exists(),
+        "summary_exists": summary_path.exists(),
+        "valid_non_benchmark_appendix": bool(
+            schema_version == SOUL_QUESTION_SCHEMA_VERSION
+            and benchmark_included is False
+            and valid_questions
+            and markdown_path.exists()
+            and summary_path.exists()
+        ),
+    }
+
+
 def collect_facts(root: Path, slug: str) -> dict[str, Any]:
     output_dir = root / "output" / slug
     gallery_dir = root / "gallery" / slug
@@ -253,9 +294,13 @@ def collect_facts(root: Path, slug: str) -> dict[str, Any]:
     runtime_report_dir = root / "evaluation" / "reports" / slug
     runtime_dialogue_path = runtime_report_dir / "runtime-dialogue-test.md"
     runtime_judgment_path = runtime_report_dir / "runtime-judgment.json"
+    soul_json_path = runtime_report_dir / "ten-question-qa.json"
+    soul_markdown_path = runtime_report_dir / "ten-question-qa.md"
+    soul_summary_path = runtime_report_dir / "ten-question-summary.md"
     runtime_judgment = read_json(runtime_judgment_path)
     if not isinstance(runtime_judgment, dict):
         runtime_judgment = None
+    soul_appendix = summarize_soul_appendix(soul_json_path, soul_markdown_path, soul_summary_path)
 
     gallery_index = read_json(root / "gallery" / "index.json")
     gallery_entry = None
@@ -351,6 +396,11 @@ def collect_facts(root: Path, slug: str) -> dict[str, Any]:
             "dialogue_logs": [file_info(path) for path in dialogue_paths],
             "runtime_dialogue": file_info(runtime_dialogue_path),
             "runtime_judgment": file_info(runtime_judgment_path),
+            "soul_ten_questions": {
+                "json": file_info(soul_json_path),
+                "markdown": file_info(soul_markdown_path),
+                "summary": file_info(soul_summary_path),
+            },
             "principle_files": [file_info(path) for path in principle_paths],
             "frameworks": {lang: file_info(path) for lang, path in framework_paths.items()},
         },
@@ -377,6 +427,7 @@ def collect_facts(root: Path, slug: str) -> dict[str, Any]:
             "runtime_record_count": (runtime_judgment or {}).get("metadata", {}).get("record_count"),
             "runtime_source": (runtime_judgment or {}).get("metadata", {}).get("source"),
         },
+        "soul_ten_questions": soul_appendix,
         "validation": validation,
         "critical_gates": critical_gates,
     }
@@ -795,6 +846,13 @@ def render_report(facts: dict[str, Any], scorecard: dict[str, Any]) -> str:
         f"Largest Risk: `{weakest['metric']}`",
         f"Next Priority: `{next_priority(scorecard)}`",
     ]
+    soul_appendix = facts.get("soul_ten_questions") or {}
+    if soul_appendix.get("exists"):
+        lines.append(
+            "Soul Ten Questions Appendix: "
+            f"`present; non-scored={soul_appendix.get('non_scored')}; "
+            f"questions={soul_appendix.get('question_count')}`"
+        )
     if scorecard["critical_gates"] or scorecard.get("score_caps"):
         lines.extend([
             "",
@@ -902,6 +960,13 @@ def initial_assessment(facts: dict[str, Any], scorecard: dict[str, Any]) -> str:
         f"Dialogue logs: `{facts['runtime']['dialogue_log_count']}`; dialogue turns: `{facts['runtime']['dialogue_turn_count']}`.",
         f"Gallery sync: `{facts['checks']['output_gallery_hash_sync']}`.",
     ]
+    soul_appendix = facts.get("soul_ten_questions") or {}
+    if soul_appendix.get("exists"):
+        parts.append(
+            "Soul Ten Questions appendix: "
+            f"`present; non-scored={soul_appendix.get('non_scored')}; "
+            f"valid={soul_appendix.get('valid_non_benchmark_appendix')}`."
+        )
     gallery_entry = facts.get("gallery_entry") or {}
     if gallery_entry.get("distill_method") == "hand-crafted":
         parts.append("The gallery entry is marked `hand-crafted`, so limited pipeline artifacts should be expected.")

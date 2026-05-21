@@ -1,163 +1,172 @@
 <p align="center">
-  <img src="docs/assets/mind-distill-factory-hero.png" alt="Mind Distill Factory hero banner" width="100%">
+  <img src="docs/assets/readme/concept-hero.svg" alt="Mind Distill Factory concept illustration" width="100%">
 </p>
 
 # Mind Distill Factory · 思维蒸馏工厂
 
-Mind Distill Factory distills the decision frameworks, reasoning patterns, expression style, and value orientation of major thinkers into installable **Codex Skills**.
+Mind Distill Factory turns a thinker's sources, habits of judgment, voice texture, and failure modes into installable **Codex Skills**.
 
-思维蒸馏工厂把重要思想家的决策框架、推理模式、表达质感与价值取向，蒸馏为可安装的 **Codex Skill**。
+思维蒸馏工厂把思想家的原始材料、判断习惯、表达质感和失效边界，蒸馏成可安装的 **Codex Skill**。
 
-This is not a quote collection or biography generator. The goal is an executable reasoning artifact: the Skill responds from a first-person immersive perspective, using the thinker's cognitive framework while preserving practical, constructive guidance.
+This project is not a quote shelf, not a biography generator, and not a roleplay costume. Its aim is more demanding: build a small cognitive instrument that can answer from inside a thinker's way of seeing, while staying traceable, useful, and honest about its limits.
 
-这不是名言汇编，也不是传记生成器。目标是可执行的认知工件：Skill 以第一人称沉浸视角回应，内化思想家的判断框架，同时保持建设性的行动导向。
+Detailed docs: [中文说明](README.zh.md) · [English documentation](README.en.md)
 
-Deep docs: [English](README.en.md) · [中文](README.zh.md)
+## Why It Exists
+
+Most AI persona prompts stop at surface imitation: famous phrases, a few slogans, and a tone that collapses after the second question. Mind Distill Factory treats a thinker as a working method. It asks:
+
+- What did this person repeatedly notice that others missed?
+- Which principles were actually used under pressure?
+- Where did the method fail, harden, or contradict the life behind it?
+- How should a modern user borrow the wisdom without copying the wound?
+
+The finished Skill should feel less like reading a report and more like holding a disciplined conversation with a mind that has been carefully reconstructed.
 
 ## What It Produces
 
-Each finished Skill is a single `SKILL.md` because Codex skill discovery requires that exact filename. Bilingual cognition is still built independently: Chinese and English frameworks are synthesized separately, then assembled into one installable file with language-aware sections.
+<p align="center">
+  <img src="docs/assets/readme/skill-anatomy.svg" alt="Anatomy of a distilled SKILL.md" width="100%">
+</p>
 
-每个最终 Skill 都是单个 `SKILL.md`，因为 Codex 只识别这个文件名。中英文框架仍然独立合成，不是互译；最终再合并为一个可安装文件。
+Codex skill discovery requires exactly one file named `SKILL.md`. This project still builds Chinese and English cognition independently, then assembles both into that single discoverable file.
 
-| Artifact | Purpose |
+| Component | What it does |
 | --- | --- |
-| Filter-chain decision framework | Step-by-step yes/no gates, not vague open-ended questions. |
-| Expression DNA | 8 dimensions of voice: sentence pattern, rhetoric, tone, certainty, humor, taboos, paragraph rhythm, conversational markers. |
-| Core principles | Source-anchored decision rules with modern scenarios and outcome logic. |
-| Blind spots | Known failure modes with mitigation advice and "when not to use" guidance. |
-| Values and anti-patterns | What the thinker pursues, rejects, and leaves unresolved. |
-| Source lineage | Confidence-aware attribution from user-provided and researched sources. |
+| Filter-chain decision framework | Step-by-step yes/no gates that make the thinker usable for real decisions. |
+| Expression DNA | Eight dimensions of voice: sentence patterns, rhetoric, tone, certainty, humor, taboos, paragraph rhythm, and conversational markers. |
+| Core principles | Source-anchored rules with modern application scenarios and outcome logic. |
+| Reasoning patterns | Repeated cognitive moves: what triggers them, what mental action they perform, and where they appear in the record. |
+| Blind spots with mitigation | Known failure modes, when not to use the Skill, and how to counterbalance it. |
+| Values and anti-patterns | What the thinker actively pursues, rejects, and never fully resolves. |
+| Source lineage | Confidence-aware attribution. User-provided first-hand sources can be high confidence; web-only quotes are capped. |
 
-## Pipeline
+## How The Factory Works
 
-```mermaid
-flowchart LR
-  A["0. Intent Clarification"] --> B["1. Source Collection"]
-  B --> C["1A. Local Source Sharding"]
-  C --> D["2. Principle Extraction"]
-  D --> E["3. Framework Core"]
-  E --> F["3B. zh/en Independent Synthesis"]
-  F --> G["4. Skill Assembly"]
-  G --> H["5. Quality Review"]
-  H --> I["6. Gallery Release"]
+<p align="center">
+  <img src="docs/assets/readme/source-to-skill-pipeline.svg" alt="Source to Skill pipeline" width="100%">
+</p>
+
+The distillation pipeline is gated. It does not let an attractive draft skip source accountability or structural review.
+
+1. Clarify the thinker, slug, language target, and source availability.
+2. Collect primary and secondary sources, including local user-provided files when present.
+3. Shard large local corpora through indexer, worker, and reducer stages.
+4. Extract principles, reasoning patterns, quotes, blind spots, and evidence anchors.
+5. Build a shared evidence core, then synthesize Chinese and English frameworks independently.
+6. Assemble the final `SKILL.md`.
+7. Run quality review, validation, gallery sync, and optional runtime evaluation.
+
+The stable local-source contract is:
+
+```text
+sources/{slug}/raw/                 # local materials you provide
+sources/{slug}/processed/           # structured extracts
+sources/{slug}/processed/user_sources.json
 ```
 
-The local-source path uses indexer, bounded shard workers, and reducer stages so a large corpus does not go through one oversized agent. The stable local contract is `sources/{slug}/processed/user_sources.json`.
+## Evaluation
 
-本地大语料不会交给单个超大 agent，而是经过索引、受控分片 worker、汇总 reducer。稳定的本地契约是 `sources/{slug}/processed/user_sources.json`。
+<p align="center">
+  <img src="docs/assets/readme/runtime-evaluation-loop.svg" alt="Runtime evaluation loop" width="100%">
+</p>
 
-## Quality Gates
+The evaluator is intentionally separate from the distillation pipeline. It can inspect static artifacts, run DeepSeek-compatible dialogue tests, judge runtime behavior, and produce scorecards without mutating the Skill itself.
 
-Before a Skill enters `gallery/`, it must pass the project gates:
+The newest appendix is the non-benchmark **Soul Ten Questions** artifact. After a full generated runtime test, DeepSeek can ask and answer ten tailored questions about regret, alternate history, contradiction, compromise, misunderstood principles, decisive moments, unique personality wisdom, warnings against imitation, modern-use boundaries, and final self-judgment.
 
-| Gate | Requirement |
-| --- | --- |
-| Source traceability | Every principle must trace to a specific source. |
-| Quote confidence | Web-only quotes are capped at low/medium confidence. |
-| Decision structure | Framework steps must be filter gates. |
-| Bilingual framing | Chinese and English frameworks are independently synthesized. |
-| Blind spots | Each blind spot includes mitigation advice. |
-| Anti-formula quality | Expression DNA and structural naturalness rules must be present. |
-| Gallery integrity | Final gallery Skill must match the reviewed release artifact. |
+<p align="center">
+  <img src="docs/assets/readme/soul-ten-questions.svg" alt="Soul Ten Questions appendix" width="100%">
+</p>
 
-Run the core checks:
-
-```powershell
-python -m unittest discover -s tests
-python scripts\validate_output.py skill zeng-guofan
-```
-
-## Gallery
-
-| Skill | Status | Notes |
-| --- | --- | --- |
-| `mao-zedong-wisdom` | Pipeline release | Strategy, governance, philosophy. |
-| `sun-tzu-wisdom` | Pipeline release | Strategy with independent zh/en frameworks. |
-| `wang-yangming-wisdom` | Pipeline release | Philosophy, conduct, resilience. |
-| `zeng-guofan-wisdom` | Pipeline release | Conduct, governance, resilience. |
-| `chiang-kai-shek-wisdom` | Pipeline release | Governance, strategy, resilience. |
-| `richard-feynman-wisdom` | Pipeline release | Inquiry, pedagogy, conduct. |
-| `charlie-munger-wisdom` | Legacy reference | Hand-crafted early example; not a current v4 pipeline benchmark. |
-
-Installable Skills live under `gallery/{person-slug}/SKILL.md`.
+This appendix is for private human reading. It does not change `runtime-judgment.json`, `runtime_score_25`, score caps, grades, or benchmark readiness.
 
 ## Quick Start
 
-Use the `/distill` command in a Codex-style workflow:
+Clone and smoke-test the public toolchain:
+
+```powershell
+git clone https://github.com/20240610ldx-hub/Mind-Distill-Factory.git
+cd Mind-Distill-Factory
+python -m unittest discover -s tests -v
+```
+
+Use the `/distill` command from a Codex workflow:
 
 ```text
 /distill "Sun Tzu"
 /distill 王阳明
 ```
 
-For local source-first distillation, place lawful source files under:
-
-```text
-sources/{person-slug}/raw/
-```
-
-Then follow the staged validators:
+Validate pipeline stages manually:
 
 ```powershell
 python scripts\validate_output.py sources <person-slug>
 python scripts\validate_output.py principles <person-slug>
 python scripts\validate_output.py frameworks <person-slug>
 python scripts\validate_output.py skill <person-slug>
+python scripts\validate_output.py gallery <person-slug>
 ```
+
+Run runtime evaluation when you have configured a DeepSeek-compatible key locally:
+
+```powershell
+Copy-Item evaluation\runtime\.env.example evaluation\runtime\.env
+# Edit evaluation\runtime\.env locally. Do not commit it.
+
+python evaluation\runtime\run_dialogue_eval.py --slug <person-slug> --root . --ten-questions auto
+python evaluation\scripts\collect_artifacts.py --slug <person-slug> --root . --out evaluation\reports\<person-slug>\artifact-facts.json
+```
+
+For deterministic local tests, keep external model calls off:
+
+```powershell
+$env:MIND_DISTILL_EVAL_LLM = "off"
+python -m unittest discover -s tests -v
+```
+
+## Gallery
+
+The public gallery contains installable `SKILL.md` artifacts for:
+
+| Thinker | Skill focus |
+| --- | --- |
+| Charlie Munger | Multidisciplinary mental models, inversion, business judgment. |
+| Chiang Kai-shek | Strategic endurance, organizational reform, weak-side diplomacy. |
+| Mao Zedong | Contradiction analysis, investigation, underdog strategy. |
+| Richard Feynman | First principles, scientific honesty, learning by explanation. |
+| Sun Tzu | Competitive strategy, positioning, deception, timing. |
+| Wang Yangming | Conscience, unity of knowledge and action, moral self-cultivation. |
+| Zeng Guofan | Self-discipline, talent judgment, patience under pressure. |
 
 ## Debate Arena
 
-`debate_arena` runs two Skills against each other with deterministic dry runs or OpenAI-compatible model backends.
+The `debate_arena/` package lets two Skills argue a topic through structured roles: profiler, topic generator, debaters, fact checker, and judge.
 
 ```powershell
-python -m debate_arena run --llm fake --issues 3 --out .\output\debate_arena\dry_run.md
+python -m debate_arena run --llm fake --issues 3 --out output\debate_arena\dry_run.md
 ```
 
-Default participants live here:
-
-```text
-debate_arena/
-  skills/
-    skill_a/
-      SKILL.md
-    skill_b/
-      SKILL.md
-```
-
-For real runs, set API credentials in your shell or a local env file that is not committed:
-
-```dotenv
-DEBATE_ARENA_LLM=openai
-DEBATE_ARENA_API_KEY=
-DEBATE_ARENA_BASE_URL=https://api.openai.com/v1
-DEBATE_ARENA_MODEL=gpt-4.1-mini
-```
+For real runs, set `DEBATE_ARENA_API_KEY` or `OPENAI_API_KEY`. See [debate_arena/README.md](debate_arena/README.md).
 
 ## Public Release Boundary
 
-This public repository is the lean OSS release. It intentionally excludes:
+This repository is the public engineering surface. It includes templates, orchestration contracts, evaluator code, gallery Skills, diagrams, and tests. It intentionally excludes local secrets, private source corpora, generated reports, release-video working files, and paid runtime outputs.
 
-- `sources/` raw corpora
-- `output/` intermediate artifacts
-- `release-video/` media production files
-- local `.env` files and `.claude/` settings
-- runtime reports, PDFs, audio, video, PPTX files, and cache files
-
-The MIT license applies to the code and documentation in this repository. It does not grant rights to third-party books, PDFs, recordings, scans, source corpora, or media assets used locally during distillation.
-
-本仓库的 MIT 许可只覆盖仓库内代码与文档，不覆盖本地蒸馏过程中使用的第三方书籍、PDF、录音、扫描件、语料或媒体素材。
+The MIT license applies to the code and documentation in this repository. It does not grant rights to third-party books, PDFs, recordings, scans, or other materials used privately during distillation.
 
 ## Repository Map
 
 ```text
-agents/        Distillation subagent definitions
-commands/      The /distill orchestration command
-config/        Taxonomy and defaults
-debate_arena/  Two-skill debate runner
-evaluation/    Independent evaluator tooling
-gallery/       Released installable Skills
-scripts/       Validators and pipeline utilities
-templates/     Skill templates and examples
-tests/         Unit tests
+agents/         Subagent contracts for extraction, synthesis, review, and assembly
+commands/       The /distill orchestration command
+config/         Taxonomy and defaults
+debate_arena/   Two-Skill debate runner
+docs/assets/    Public README and project images
+evaluation/     Standalone SkillEval-MDF runtime and artifact evaluator
+gallery/        Released installable Skills
+scripts/        Validators, source processing, and utility scripts
+sources/        Public placeholder plus local-source contract
+templates/      Skill templates and hand-crafted examples
+tests/          Regression tests
 ```

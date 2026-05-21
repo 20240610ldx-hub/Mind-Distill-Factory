@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 640" role="img" aria-labelledby="title desc">
+  <title id="title">Soul Ten Questions appendix</title>
+  <desc id="desc">A hand-drawn diagram of ten question archetypes orbiting a thinker and a human reader.</desc>
+  <defs>
+    <style>
+      .bg{fill:#fbfaf7}
+      .paper{fill:#fffaf0;stroke:#24333a;stroke-width:2;rx:18}
+      .blue{fill:#e8f3f1;stroke:#24333a;stroke-width:2;rx:18}
+      .rose{fill:#f8dfd5;stroke:#24333a;stroke-width:2;rx:18}
+      .line{fill:none;stroke:#24333a;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .soft{fill:none;stroke:#9aa8a6;stroke-width:1.5;stroke-dasharray:7 7}
+      .title{font:700 25px Inter,Arial,sans-serif;fill:#17242a}
+      .label{font:700 16px Inter,Arial,sans-serif;fill:#17242a}
+      .text{font:500 13px Inter,Arial,sans-serif;fill:#52646a}
+      .small{font:600 12px Inter,Arial,sans-serif;fill:#6d5c37}
+    </style>
+  </defs>
+  <rect class="bg" width="1240" height="640"/>
+  <text class="title" x="54" y="56">Soul Ten Questions: a mirror after the measurement</text>
+  <text class="text" x="54" y="84">Fixed archetypes keep coverage honest. The actual questions are tailored to the thinker's life, tensions, and voice.</text>
+
+  <g transform="translate(505 164)">
+    <circle cx="115" cy="115" r="108" fill="#f6ecd8" stroke="#24333a" stroke-width="2"/>
+    <path class="line" d="M78 154 C83 104 144 104 151 154"/>
+    <circle cx="115" cy="86" r="38" fill="#fffaf0" stroke="#24333a" stroke-width="2"/>
+    <path class="soft" d="M36 203 C94 240 164 239 220 203"/>
+    <text class="label" x="61" y="266">the embodied thinker</text>
+  </g>
+
+  <g transform="translate(528 470)">
+    <rect class="rose" width="184" height="74"/>
+    <text class="label" x="28" y="33">Human reader</text>
+    <text class="text" x="28" y="55">private judgment</text>
+  </g>
+  <path class="line" d="M620 386 V470"/>
+
+  <g transform="translate(66 140)">
+    <rect class="paper" width="190" height="66"/>
+    <text class="small" x="18" y="27">01</text><text class="label" x="50" y="27">Regret</text>
+    <text class="text" x="18" y="49">what still hurts</text>
+  </g>
+  <g transform="translate(286 94)">
+    <rect class="blue" width="190" height="66"/>
+    <text class="small" x="18" y="27">02</text><text class="label" x="50" y="27">Other road</text>
+    <text class="text" x="18" y="49">history otherwise</text>
+  </g>
+  <g transform="translate(724 94)">
+    <rect class="paper" width="190" height="66"/>
+    <text class="small" x="18" y="27">03</text><text class="label" x="50" y="27">Contradiction</text>
+    <text class="text" x="18" y="49">principle versus life</text>
+  </g>
+  <g transform="translate(944 140)">
+    <rect class="blue" width="210" height="66"/>
+    <text class="small" x="18" y="27">04</text><text class="label" x="50" y="27">Compromise</text>
+    <text class="text" x="18" y="49">the hardest bargain</text>
+  </g>
+  <g transform="translate(80 274)">
+    <rect class="blue" width="210" height="66"/>
+    <text class="small" x="18" y="27">05</text><text class="label" x="50" y="27">Misread principle</text>
+    <text class="text" x="18" y="49">what people flatten</text>
+  </g>
+  <g transform="translate(948 274)">
+    <rect class="paper" width="210" height="66"/>
+    <text class="small" x="18" y="27">06</text><text class="label" x="50" y="27">Decisive moment</text>
+    <text class="text" x="18" y="49">where judgment formed</text>
+  </g>
+  <g transform="translate(130 410)">
+    <rect class="paper" width="210" height="66"/>
+    <text class="small" x="18" y="27">07</text><text class="label" x="50" y="27">Unique wisdom</text>
+    <text class="text" x="18" y="49">personality as method</text>
+  </g>
+  <g transform="translate(370 512)">
+    <rect class="blue" width="190" height="66"/>
+    <text class="small" x="18" y="27">08</text><text class="label" x="50" y="27">Do not imitate</text>
+    <text class="text" x="18" y="49">warning label</text>
+  </g>
+  <g transform="translate(682 512)">
+    <rect class="paper" width="210" height="66"/>
+    <text class="small" x="18" y="27">09</text><text class="label" x="50" y="27">Modern boundary</text>
+    <text class="text" x="18" y="49">where use should stop</text>
+  </g>
+  <g transform="translate(920 410)">
+    <rect class="blue" width="210" height="66"/>
+    <text class="small" x="18" y="27">10</text><text class="label" x="50" y="27">Self-judgment</text>
+    <text class="text" x="18" y="49">final inner verdict</text>
+  </g>
+
+  <path class="soft" d="M256 173 C365 185 441 206 514 246"/>
+  <path class="soft" d="M476 127 C526 161 558 181 580 205"/>
+  <path class="soft" d="M724 127 C684 164 657 185 636 207"/>
+  <path class="soft" d="M944 173 C836 188 760 211 690 249"/>
+  <path class="soft" d="M290 307 C386 304 455 300 512 288"/>
+  <path class="soft" d="M948 307 C854 304 784 300 728 288"/>
+  <path class="soft" d="M340 443 C420 405 478 370 536 330"/>
+  <path class="soft" d="M560 545 C586 486 604 435 613 386"/>
+  <path class="soft" d="M682 545 C654 486 637 435 628 386"/>
+  <path class="soft" d="M920 443 C822 405 760 370 700 330"/>
+</svg>

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 560" role="img" aria-labelledby="title desc">
+  <title id="title">Anatomy of a distilled skill</title>
+  <desc id="desc">A diagram explaining the required parts of a Mind Distill Factory SKILL.md file.</desc>
+  <defs>
+    <style>
+      .bg{fill:#fbfaf7}
+      .card{fill:#fff;stroke:#233039;stroke-width:2;rx:18}
+      .accent{fill:#e8f3f1;stroke:#233039;stroke-width:2;rx:18}
+      .warm{fill:#f6ecd8;stroke:#233039;stroke-width:2;rx:18}
+      .line{fill:none;stroke:#233039;stroke-width:2;stroke-linecap:round}
+      .muted{fill:none;stroke:#a4aaa9;stroke-width:1.4;stroke-linecap:round}
+      .title{font:700 24px Inter,Arial,sans-serif;fill:#17242a}
+      .label{font:700 18px Inter,Arial,sans-serif;fill:#17242a}
+      .text{font:500 14px Inter,Arial,sans-serif;fill:#52646a}
+      .mono{font:700 18px ui-monospace,SFMono-Regular,Consolas,monospace;fill:#17242a}
+    </style>
+  </defs>
+  <rect class="bg" width="1180" height="560"/>
+  <text class="title" x="50" y="56">A finished Skill is not a prompt. It is a small cognitive instrument.</text>
+  <text class="text" x="50" y="84">Codex discovers exactly one file: SKILL.md. Everything important must live inside it.</text>
+
+  <g transform="translate(410 126)">
+    <rect class="card" width="360" height="322"/>
+    <text class="mono" x="118" y="48">SKILL.md</text>
+    <path class="muted" d="M44 78 H316 M44 120 H316 M44 162 H316 M44 204 H316 M44 246 H316"/>
+    <text class="text" x="52" y="106">Language detection</text>
+    <text class="text" x="52" y="148">English section</text>
+    <text class="text" x="52" y="190">Chinese section</text>
+    <text class="text" x="52" y="232">Response strategy</text>
+    <text class="text" x="52" y="274">Known blind spots</text>
+  </g>
+
+  <g transform="translate(54 142)">
+    <rect class="accent" width="252" height="104"/>
+    <text class="label" x="24" y="36">Filter chain</text>
+    <text class="text" x="24" y="64">Sequential yes/no gates.</text>
+    <text class="text" x="24" y="84">No vague final question.</text>
+  </g>
+  <path class="line" d="M306 194 C350 194 360 214 410 214"/>
+
+  <g transform="translate(54 314)">
+    <rect class="warm" width="252" height="104"/>
+    <text class="label" x="24" y="36">Source lineage</text>
+    <text class="text" x="24" y="64">Every principle traces back</text>
+    <text class="text" x="24" y="84">to a named source.</text>
+  </g>
+  <path class="line" d="M306 366 C350 366 360 346 410 346"/>
+
+  <g transform="translate(874 142)">
+    <rect class="warm" width="252" height="104"/>
+    <text class="label" x="24" y="36">Expression DNA</text>
+    <text class="text" x="24" y="64">Sentence, rhetoric, tone,</text>
+    <text class="text" x="24" y="84">rhythm, markers.</text>
+  </g>
+  <path class="line" d="M874 194 C826 194 816 214 770 214"/>
+
+  <g transform="translate(874 314)">
+    <rect class="accent" width="252" height="104"/>
+    <text class="label" x="24" y="36">Blind spots</text>
+    <text class="text" x="24" y="64">Failure modes plus practical</text>
+    <text class="text" x="24" y="84">mitigation advice.</text>
+  </g>
+  <path class="line" d="M874 366 C826 366 816 346 770 346"/>
+
+  <g transform="translate(302 478)">
+    <rect class="card" width="576" height="44"/>
+    <text class="text" x="28" y="28">Independent zh/en frameworks are synthesized separately, then assembled into this single discoverable file.</text>
+  </g>
+</svg>

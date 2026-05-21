@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 520" role="img" aria-labelledby="title desc">
+  <title id="title">Runtime evaluation loop</title>
+  <desc id="desc">A diagram showing DeepSeek runtime testing, judging, scoring, and the separate non-scored Soul Ten Questions appendix.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L7,3 z" fill="#26343b"/>
+    </marker>
+    <style>
+      .bg{fill:#fbfaf7}
+      .box{fill:#fff;stroke:#26343b;stroke-width:2.1;rx:18}
+      .soft{fill:#e8f3f1;stroke:#26343b;stroke-width:2.1;rx:18}
+      .warm{fill:#f6ecd8;stroke:#26343b;stroke-width:2.1;rx:18}
+      .human{fill:#f8dfd5;stroke:#26343b;stroke-width:2.1;rx:18}
+      .line{fill:none;stroke:#26343b;stroke-width:2.1;marker-end:url(#arrow)}
+      .dash{fill:none;stroke:#7a8d92;stroke-width:2;stroke-dasharray:8 8;marker-end:url(#arrow)}
+      .title{font:700 23px Inter,Arial,sans-serif;fill:#17242a}
+      .label{font:700 18px Inter,Arial,sans-serif;fill:#17242a}
+      .text{font:500 14px Inter,Arial,sans-serif;fill:#52646a}
+      .tag{font:700 12px Inter,Arial,sans-serif;fill:#806538}
+    </style>
+  </defs>
+  <rect class="bg" width="1220" height="520"/>
+  <text class="title" x="48" y="55">Runtime evaluation has a scored lane and a human-reading lane.</text>
+  <text class="text" x="48" y="84">The new Soul Ten Questions appendix never changes scorecards, caps, grades, or benchmark labels.</text>
+
+  <g transform="translate(72 150)">
+    <rect class="box" width="190" height="112"/>
+    <text class="tag" x="24" y="30">INPUT</text>
+    <text class="label" x="24" y="60">Active SKILL.md</text>
+    <text class="text" x="24" y="86">the candidate skill</text>
+  </g>
+  <path class="line" d="M272 206 H352"/>
+  <g transform="translate(366 150)">
+    <rect class="soft" width="190" height="112"/>
+    <text class="tag" x="24" y="30">GENERATE</text>
+    <text class="label" x="24" y="60">12-case dialogue</text>
+    <text class="text" x="24" y="86">standard zh set</text>
+  </g>
+  <path class="line" d="M566 206 H646"/>
+  <g transform="translate(660 150)">
+    <rect class="warm" width="190" height="112"/>
+    <text class="tag" x="24" y="30">JUDGE</text>
+    <text class="label" x="24" y="60">DeepSeek rubric</text>
+    <text class="text" x="24" y="86">runtime-judgment.json</text>
+  </g>
+  <path class="line" d="M860 206 H940"/>
+  <g transform="translate(954 150)">
+    <rect class="box" width="190" height="112"/>
+    <text class="tag" x="24" y="30">SCORED</text>
+    <text class="label" x="24" y="60">Scorecard</text>
+    <text class="text" x="24" y="86">caps and release label</text>
+  </g>
+
+  <path class="dash" d="M462 270 C462 330 596 352 666 352"/>
+  <g transform="translate(680 300)">
+    <rect class="human" width="310" height="132"/>
+    <text class="tag" x="24" y="30">NON-BENCHMARK</text>
+    <text class="label" x="24" y="62">Soul Ten Questions</text>
+    <text class="text" x="24" y="90">ten independent one-question sessions</text>
+    <text class="text" x="24" y="112">plus a subjective reading note</text>
+  </g>
+  <path class="dash" d="M998 366 C1054 366 1090 332 1118 278"/>
+  <text class="text" x="1018" y="370">mentioned only as</text>
+  <text class="text" x="1018" y="389">non-scored artifact</text>
+</svg>

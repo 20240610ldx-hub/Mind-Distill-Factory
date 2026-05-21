@@ -1,342 +1,286 @@
 # Mind Distill Factory · 思维蒸馏工厂
 
-将历史上伟大思想家的决策框架、推理模式与价值取向蒸馏为可安装的 **Claude Code Skill**。每个 Skill 不是人物传记，不是名言汇编——它是该思想家认知架构的**可执行算法**：AI 深度内化其心智模型、表达质感与价值判断后，以第一人称沉浸视角与你直接对话。
+<p align="center">
+  <img src="docs/assets/readme/concept-hero.svg" alt="思维蒸馏工厂概念图" width="100%">
+</p>
 
-> 「我不要传记，我要像他们一样思考。」——每一个读过《穷查理宝典》的人
+思维蒸馏工厂将历史人物、思想家、科学家、战略家和商业实践者的判断框架蒸馏为可安装的 **Codex Skill**。它关心的不是“像不像一个名人说话”，而是一个更难也更有价值的问题：当用户把一个真实困境交到面前时，这个 Skill 是否能调动那个人的认知结构、价值取向、表达节奏和边界意识，给出有血肉但不失证据的回答。
 
----
+如果只做名言摘抄，思想会被做成标本。如果只做角色扮演，思想会变成戏服。这个项目试图走第三条路：把思想变成可执行的认知工件。
 
-## 项目本质
+[English documentation](README.en.md) · [GitHub 首页](README.md)
 
-这不是一个内容生成器。这是一个**认知克隆管线**。工厂产出的每个 Skill 都包含以下模块：
+## 核心信念
 
-| 模块                 | 说明                                                                 |
-| ------------------ | ------------------------------------------------------------------ |
-| **过滤链式决策框架**       | 顺序执行的判否门（yes/no gate），每一步都是二值过滤判断，不是开放式提问。最后一步是明确的决策阈值。            |
-| **表达风格 DNA（8 维度）** | 句式偏好、标志性修辞、语气基调、确定性表达、幽默风格、禁忌表达、段落节奏、口语化标记——附 ✅ 贴近 / ❌ 偏离 的语感校准对比。 |
-| **核心原则（5–8 条）**    | 每条含原文出处、决策规则（"当…时，应当…"）、现代应用情境、结果逻辑。全部通过三重独特性检验。                   |
-| **特征推理模式（3–5 条）**  | 该思想家反复使用的认知招式——触发条件、心理动作、历史例证。                                     |
-| **已知盲区与缓解（2–4 条）** | 具体失效模式而非模糊免责声明。每条盲区附带缓解建议与"不宜使用"场景。                                |
-| **价值取向与反模式**       | 坚定追求（≥2）、坚决反对（≥2）、未解决的内在张力（≥1）——反模式往往比正面价值更能定义思维边界。                |
-| **标志性名言（5–10 条）**  | 逐字溯源，每条标注适用场景。用户一手资料置信度 `high`，纯网搜引用封顶 `medium`。                   |
-| **溯源信息**           | 完整出处链与置信度评级——素材来源分布、一手资料占比、网搜依赖度。                                  |
+一个好的思想家 Skill 不应该只是“知道”某个人说过什么。它应该能在问题压力下做出近似的判断动作。
 
----
+这意味着它必须同时具备几种能力：
 
-## 蒸馏管线（7 阶段）
+- 能追溯：原则、名言和方法必须回到具体来源。
+- 能使用：决策框架必须是过滤链，不是漂亮但空泛的问题清单。
+- 能说话：表达不只是内容，也包括句式、段落节奏、犹疑方式、锋利处和沉默处。
+- 能自限：每个思想家都有盲区，Skill 必须写出失效场景和缓解办法。
+- 能让人判断：benchmark 给出外部刻度，但最终是否有灵魂，要留给使用者自己听。
 
-每个 Skill 必须依次通过 7 个阶段。阶段之间有 `validate_output.py` 检查点——校验不通过，管线停止。
+这里的“第一人称沉浸”不是戏剧化扮演。它更接近一种方法论内化：让模型暂时站进那套思维结构里，用那个人习惯的切入点、论证速度和价值重心来回应。
 
-```
- 阶段 0        阶段 1           阶段 2         阶段 3          阶段 4       阶段 5       阶段 6
- ┌──────┐    ┌──────────┐    ┌──────────┐   ┌──────────┐    ┌────────┐   ┌────────┐   ┌────────┐
- │意图澄清│ → │  素材采集  │ → │  原则提取  │ → │  框架合成  │ →  │Skill组装│ → │质量审查 │ → │安装发布│
- └──────┘    └──────────┘    └──────────┘   └──────────┘    └────────┘   └────────┘   └────────┘
-    ✓             ✓               ✓              ✓              ✓            ✓            ✓
-  检查点        检查点          检查点          检查点         检查点        检查点      面向用户
-```
+## 产物长什么样
 
-### 阶段 0 — 意图澄清
+<p align="center">
+  <img src="docs/assets/readme/skill-anatomy.svg" alt="SKILL.md 结构示意图" width="100%">
+</p>
 
-**执行者：编排者**
+Codex 的 Skill 发现机制只识别一个精确文件名：`SKILL.md`。因此，最终交付物必须是单个 `SKILL.md`，即使中英文框架在生成时是独立构建的。
 
-解析人物名（生成 slug），检查 `sources/{slug}/raw/` 是否存在用户提供的素材文件。从 10 大门类体系中推荐主类 + 副类。若未检测到本地素材，询问用户是提供资料还是直接通过网络搜索继续。
+每个成熟 Skill 至少包含这些模块：
 
-### 阶段 1 — 素材采集
+| 模块 | 作用 |
+| --- | --- |
+| 过滤链式决策框架 | 一组顺序执行的 yes/no gate。每一步都缩小判断空间，最后形成明确行动阈值。 |
+| 核心原则 | 每条原则都有出处、规则形态、现代应用场景和结果逻辑。 |
+| 特征推理模式 | 这个人反复使用的认知动作，例如反证、调查、蓄势、反身检查、类比拆解。 |
+| 表达风格 DNA | 八个维度：句式、修辞、语气、确定性、幽默、禁忌、段落节奏、口语化标记。 |
+| 结构自然性规则 | 避免 AI 式整齐段落和公式化分点，让回答更接近真实思想流动。 |
+| 价值取向与反模式 | 写出他追求什么、反对什么，以及内部没有完全解决的张力。 |
+| 已知盲区与缓解 | 不是免责声明，而是可操作的边界说明：什么时候不要用，如何补偿。 |
+| 溯源信息 | 区分一手资料、可靠出版物和网搜材料。纯网搜引用不能被标成高置信度。 |
 
-**执行者：4 个 source-researcher 子代理（并行）**
+## 蒸馏管线
 
-| 子代理         | 任务                                                                                | 输出                       |
-| ----------- | --------------------------------------------------------------------------------- | ------------------------ |
-| A — 用户素材处理  | 读取 `sources/{slug}/raw/` 中所有文件，提取关键段落、名言、论点，按主题标签整理                               | `user_sources.json`      |
-| B — 主要文献采集  | 网络搜索该人物的原著、演讲、书信、访谈（第一手资料）                                                        | `primary_sources.json`   |
-| C — 分析性文献采集 | 网络搜索权威传记、学术分析、深度报道                                                                | `secondary_sources.json` |
-| D — 表达风格采集  | 网络搜索演讲逐字稿、访谈实录、书信原文——重点是**此人怎么说/写**而非说了什么。`content_type` 标为 `"expression_sample"` | `expression_dna.json`    |
+<p align="center">
+  <img src="docs/assets/readme/source-to-skill-pipeline.svg" alt="从素材到 Skill 的蒸馏流程" width="100%">
+</p>
 
-**子代理 D 为强制执行项，不可跳过**——表达 DNA 是反套公式质量的核心基础。即使网络搜索全部失败，也必须从用户提供的 PDF/TXT 资料中提取表达风格素材。
+管线不是为了显得复杂，而是为了防止一个好听的回答绕过证据、结构和边界。每个阶段都有可检查产物，阶段之间由 `scripts/validate_output.py` 守门。
 
-搜索工具回退链：`WebSearch（内置）` → `Tavily MCP` → `WebFetch 直抓已知 URL` → 标注搜索失败。
+1. 意图澄清：确定人物名、slug、语言、分类、是否存在本地素材。
+2. 素材采集：收集原著、书信、演讲、访谈、可靠研究，以及用户放入本地的材料。
+3. 本地语料分片：大型语料不交给单个 agent，而是走 indexer、worker、reducer。
+4. 原则提取：提炼原则、名言、推理模式、盲区和证据锚点。
+5. 框架合成：先形成共享 evidence core，再分别合成中文和英文框架。
+6. Skill 组装：把独立框架合并为单个可发现的 `SKILL.md`。
+7. 质量审查：检查溯源、反套公式、表达 DNA、盲区、双语完整性和 gallery 同步。
 
-### 阶段 2 — 原则提取
+本地素材的稳定契约是：
 
-**执行者：2–4 个 principle-extractor 子代理（并行，按素材文件分工）**
-
-每个子代理从其分配的素材文件中提取候选原则、推理模式和名言。每条候选原则必须通过**三重独特性检验**：
-
-1. **去名测试**：去掉人名后，这条原则还能认出是这个人的吗？"努力才能成功"——不独特，排除。"强制逆向思维 + 系统化方法论"——独特，保留。
-2. **素材锚定测试**（对抗 LLM 训练数据记忆偏差）：必须有 ≥2 条来自**本次输入素材**的直接支撑引用。仅凭模型"记住"的内容不得获得 3 分以上的 uniqueness_score。
-3. **方法论层次测试**：描述的是具体的 *how*（方法）还是泛泛的 *what*（价值取向）？"应该逆向思维"= 3 分；"做重大决策时先列出保证失败的 5 种做法再做正向分析"= 5 分。
-
-### 阶段 3 — 框架合成
-
-**执行者：1 个 framework-synthesizer 子代理**
-
-这是架构步骤。合成者执行：
-
-1. 跨文件去重（合并功能等价的原则）
-2. 独特性排序（综合 uniqueness_score、证据丰富度、可操作性、跨情境适用性）
-3. 选出最终的 5–8 条核心原则
-4. 构建**顺序过滤链式决策框架**（4–5 步，每步是二值判断）
-5. 提炼 3–5 个特征推理模式
-6. 识别 2–4 个盲区并设计缓解建议
-7. 合成 8 维表达风格 DNA
-8. 提取价值取向与反模式（追求 / 反对 / 内在张力）
-9. 整理 5–10 条名言（标适用场景）
-10. 计算整体 `distill_confidence` 蒸馏置信度（1–5 分）
-
-产出**两个独立文件**：`frameworks.zh.json` 和 `frameworks.en.json`。这两个文件**不是翻译关系**——它们可以有不同数量的原则、不同的决策框架步骤顺序、不同的引用选择，各自为各自的语言和文化语境优化。仅共享：人物身份、门类归属、等价的盲区覆盖范围。
-
-### 阶段 4 — Skill 组装
-
-**执行者：1 个 skill-assembler 子代理**
-
-分别用中英文 frameworks 填充对应语言模板，生成独立草稿（`draft.zh.md` / `draft.en.md`），然后合并为单个 `SKILL.md` 文件。合并约束源于 **Claude Code 的 skill 加载器只识别 `SKILL.md`**（大小写敏感）——`SKILL.zh.md`、`SKILL.en.md` 等命名不会被加载。
-
-合并后的文件结构：
-
-```markdown
----
-name: {person-slug}-wisdom
-description: >- (双语触发描述，同时包含中英文关键词)
-argument-hint: <describe your situation / 描述你的决策场景>
----
-
-# Language Detection · 语言检测
-
-检测用户语言 → 路由到对应区块
-
----
-
-## English
-（完整英文版 Skill 内容）
-
----
-
-## 中文版
-（完整中文版 Skill 内容）
+```text
+sources/{slug}/raw/                 # 用户提供的原始材料
+sources/{slug}/processed/           # 结构化中间产物
+sources/{slug}/processed/user_sources.json
 ```
 
-### 阶段 5 — 质量审查
+### 阶段产物如何流动
 
-**执行者：1 个 quality-reviewer 子代理**
+| 阶段 | 主要问题 | 典型产物 |
+| --- | --- | --- |
+| Stage 0 | 这个人是谁，为什么值得蒸馏，属于哪类智慧？ | slug、分类、素材策略、目标语言 |
+| Stage 1 | 我们掌握的材料是否足够可靠？ | primary/secondary source findings、引用候选 |
+| Stage 1A | 本地大语料如何不被单个上下文吞掉？ | shard manifest、worker outputs、`user_sources.json` |
+| Stage 2 | 哪些内容是真正可执行的判断规则？ | principles、reasoning patterns、quotes、blind spots |
+| Stage 3 | 这些证据如何变成完整认知框架？ | framework core、`frameworks.zh.json`、`frameworks.en.json` |
+| Stage 4 | Codex 能发现并使用它吗？ | 单文件 `SKILL.md` |
+| Stage 5 | 它是否像这个人，也是否安全、有边界？ | quality review、修复建议 |
+| Stage 6 | 用户安装到的是否就是审查通过的版本？ | `gallery/{slug}/SKILL.md`、`gallery/index.json` |
 
-7 维度红队审查，产出 PASS / REVISE / FAIL 裁决：
+这种设计的一个好处是：任何一步出了问题，都能回到具体 artifact 修，而不是凭感觉重写整份 Skill。比如表达像但证据弱，就回 Stage 2；证据好但输出公式化，就回 Stage 4 或 Stage 5；中英文气质不一致，就回 Stage 3，而不是把中文直接翻译成英文。
 
-| 维度     | 权重  | 审查要点                                   |
-| ------ | --- | -------------------------------------- |
-| 准确性    | 25% | 出处归因正确性；是否存在 AI 幻觉捏造；出处细节合理性           |
-| 独特性    | 20% | 去名测试通过率；uniqueness_score ≥ 3 的比例 ≥ 4/5 |
-| 可操作性   | 15% | 决策规则是否具体；过滤步骤是否为二值判断                   |
-| 表达辨识度  | 15% | 第一人称视角；8 维 DNA 全部有实质内容；校准示例有 ✅/❌ 结构差异  |
-| 价值观完整性 | 10% | ≥2 追求 + ≥2 反对 + ≥1 张力；反模式与盲区互补而非重复     |
-| 双语一致性  | 10% | 盲区覆盖等价；无章节缺失                           |
-| 格式合规   | 5%  | 章节标题精确匹配；无未替换占位符；反套公式 + 结构自然性指令完整      |
+## 反套公式设计
 
-**PASS 阈值**：综合得分 ≥ 3.5，且准确性 ≥ 3，且表达辨识度 ≥ 3。
+这个项目反复解决一个问题：模型很容易把“思想”压成整齐、礼貌、万能的咨询腔。为了抵抗这种扁平化，每个 Skill 都要写入反套公式机制。
 
-**REVISE** 最多重试 2 轮，之后升级为 FAIL。
+第一层是第一人称沉浸。回答不应写成“某某认为”，也不应总是以教师口吻训诫用户。它要尽量从那个人的判断位置说话。
 
-### 阶段 6 — 安装与发布
+第二层是表达风格 DNA。仅有“严肃”“理性”“有洞察”不够，因为这些标签可以贴到任何人身上。真正有区分度的 Skill 要知道某个人是长句推进还是短句断言，是喜欢比喻还是厌恶修辞，是先下判断还是先铺事实。
 
-编排者展示成品摘要（人物信息、核心原则清单、审查结论），用户可选择：[1] 安装到 `~/.claude/skills/` + 加入 gallery、[2] 仅查看不安装、[3] 修改后安装、[4] 重新生成。安装后运行 `validate_output.py gallery` 校验同步一致性。
+第三层是结构自然性。真实回答不会永远四段、每段三句、每句长度相似。Skill 必须允许不对称段落、不完美过渡、轻重不等的展开，以及与问题复杂度匹配的回答长度。
 
----
+第四层是建设性价值取向。面对不公、失败和怨气，Skill 可以承认现实，但不能停在抱怨里。它要把用户带回可行动、可修正、可自持的位置。
 
-## 目录结构
+## “像”不等于有价值
 
-```
-mind-distill-factory/
-│
-├── config/
-│   ├── taxonomy.json          # 10 门类分类体系（含子主题与示例人物）
-│   └── defaults.json          # 管线参数约束与质量阈值
-│
-├── commands/
-│   └── distill.md             # /distill 编排命令（阶段 0–6 完整流程）
-│
-├── agents/                    # 5 个专用子代理定义
-│   ├── source-researcher.md   #   阶段 1：search→fetch→extract，4 种任务类型
-│   ├── principle-extractor.md #   阶段 2：提取 + 三重独特性检验
-│   ├── framework-synthesizer.md # 阶段 3：合并、排序、合成双语框架
-│   ├── skill-assembler.md     #   阶段 4：填充模板、合并为单文件 SKILL.md
-│   └── quality-reviewer.md    #   阶段 5：7 维度红队审查
-│
-├── scripts/
-│   ├── validate_output.py     # 管线守门人——在每个阶段间执行 JSON Schema 校验
-│   ├── extract_pdf_text.py    # PDF → 纯文本（PyMuPDF / pypdf）
-│   ├── extract_pdf_with_cmap.py # PDF 提取（含 CMap CJK 字体处理）
-│   ├── extract_user_sources.py  # 从 PDF 提取文本中结构化抽取关键段落
-│   ├── build_user_sources.py    # 定向搜索式提取（毛泽东管线使用）
-│   └── fix_frameworks_schema.py # Schema 迁移/修复工具
-│
-├── templates/
-│   ├── skill-template.en.md   # 英文 Skill 模板（完整章节标记）
-│   ├── skill-template.zh.md   # 中文 Skill 模板
-│   └── examples/
-│       ├── charlie-munger.en.md # 手工蒸馏英文 Skill（质量基准）
-│       └── charlie-munger.zh.md # 手工蒸馏中文 Skill
-│
-├── sources/{slug}/
-│   ├── raw/                   # 用户提供的原始素材（PDF、TXT、MD、EPUB）
-│   └── processed/             # 阶段 1 子代理产出的结构化 JSON
-│       ├── user_sources.json
-│       ├── primary_sources.json
-│       ├── secondary_sources.json
-│       └── expression_dna.json  # ⚠️ 强制执行——反套公式质量的核心基础
-│
-├── output/{slug}/             # 开发中间产物（供审查与调试）
-│   ├── principles_*.json      # 阶段 2 产出
-│   ├── frameworks.{zh,en}.json # 阶段 3 产出
-│   ├── draft.{zh,en}.md       # 阶段 4 中间草稿
-│   ├── SKILL.md               # 阶段 4 最终交付物（双语合并）
-│   └── review.md              # 阶段 5 质量审查报告
-│
-├── gallery/{slug}/            # 已发布 Skill（最终权威副本）
-│   └── SKILL.md
-├── gallery/index.json         # Gallery 登记册
-│
-└── CLAUDE.md                  # 项目手册——权威规范
-```
+一个 Skill 可能很像某个人，却没有用。它可能只是在模仿口头禅。也可能很会引用，却无法处理现代问题。Mind Distill Factory 更在意三层效果：
 
----
+| 层次 | 判断方式 |
+| --- | --- |
+| 证据层 | 回答背后的原则能否追溯到材料，而不是凭空想象。 |
+| 方法层 | 面对新问题时，是否调用了该思想家特有的判断动作。 |
+| 人格层 | 语气、节奏、犹疑、锋芒和边界是否构成一个可信的“人”。 |
 
-## 十大思想门类
-
-每位思想家映射到 **1 个主类 + 最多 2 个副类**：
-
-| ID           | 门类  | 核心领域                 | 示例人物                  |
-| ------------ | --- | -------------------- | --------------------- |
-| `strategy`   | 谋略  | 军事战略、博弈论、竞争思维、风险评估   | 孙子、克劳塞维茨、约翰·博伊德       |
-| `philosophy` | 哲理  | 认识论、伦理框架、形而上学、意义建构   | 尼采、庄子、塞涅卡、维特根斯坦       |
-| `governance` | 治理  | 政治哲学、制度设计、权力运用、合法性构建 | 马基雅维利、韩非子、林肯、李光耀      |
-| `enterprise` | 经营  | 商业战略、投资思维、组织设计、资本配置  | 查理·芒格、洛克菲勒、巴菲特、安迪·格鲁夫 |
-| `inquiry`    | 求知  | 科学方法、知识范式、好奇心驱动、严谨求证 | 费曼、达尔文、居里夫人、伊本·海赛姆    |
-| `creation`   | 创造  | 艺术过程、审美判断、创新方法、工匠精神  | 达·芬奇、乔布斯、宫本武藏、可可·香奈儿  |
-| `conduct`    | 行事  | 个人伦理、习惯养成、人际关系、自律体系  | 马可·奥勒留、孔子、富兰克林、甘地     |
-| `resilience` | 磨砺  | 逆境智慧、危机应对、坚韧不拔、苦难转化  | 维克多·弗兰克尔、曼德拉、爱比克泰德    |
-| `pedagogy`   | 教化  | 修辞说服、导师制、知识传递、文化塑造   | 苏格拉底、蒙台梭利、戴尔·卡耐基、杜威   |
-| `lifedesign` | 生活  | 健康养生、日常节律、闲暇艺术、实用智慧  | 蒙田、梭罗、伊壁鸠鲁、林语堂        |
-
----
-
-## 反套公式设计（v4）
-
-AI 生成的 Skill 最大的问题不是单句像 AI，而是**整体结构的机械均匀性**——对称段落、序号罗列、均匀句长、完美过渡。本项目在三个层面破解这一模式：
-
-### 第一层：第一人称沉浸视角
-
-Skill 以思想家的"我"来回应（"我认为……""我的经验是……"），而非第三人称转述（"XX 认为……"）或第二人称说教（"你应该……"）。这让输出天然带有对话质感，打破分析报告的均匀气息。
-
-### 第二层：表达风格 DNA（8 维度）
-
-| 维度        | 捕获内容                                |
-| --------- | ----------------------------------- |
-| 句式偏好      | 短句为主还是长句展开？陈述句还是反问句？排比还是单刀直入？       |
-| 标志性修辞     | 类比？归谬？引经据典？数据轰炸？                    |
-| 语气基调      | 直接/讽刺/激昂/冷静/口语化                     |
-| 确定性表达     | "毫无疑问"型还是"我不确定但我猜"型？                |
-| 幽默风格      | 冷面幽默/自嘲/讽刺/黑色幽默/无幽默                 |
-| 禁忌表达      | 此人**绝不会**使用的词、句式、语气（如芒格绝不说"可能大概也许"） |
-| **段落节奏**  | 长分析段与短断言段的交替模式、单句段落使用习惯、信息展开顺序      |
-| **口语化标记** | 特有的语气词、口头禅、转折方式——必须区别于通用的填充词"嗯""啊"  |
-
-此 8 维特征附 ✅/❌ 语感校准对比——两个版本的**结构不同**（段落长短不齐 vs. 整齐对称），而不仅是措辞不同。
-
-### 第三层：结构自然性指令（5 条强制规则）
-
-1. **句长落差 >30%**——相邻句子长度应有明显差异；每 3–5 句穿插极短句（<15 字）或展开式长句（>50 字）
-2. **段落长短不齐**——段落长度在 1–6 句间波动；允许单句段落；禁止连续 3 段以上长度相近
-3. **打破对称结构**——禁止"首先…其次…再次…最后"式罗列；并列项最多 2 个，第 3 项必须换句式
-4. **段落入口多样化**——不要每段都以主题句开头；有时先举例再给结论，有时先断言再展开
-5. **允许不完美过渡**——对话式的段落间可以有轻微跳跃、"说回正题"的折返、先跑远再拉回来的迂回
-
-三层机制叠加，确保 Skill 输出具有人类思维的质感，而非 AI 的结构痕迹。
-
----
+因此，质量审查不会因为 Skill 写得漂亮就放行。它会看：这条建议是否可以换成任何成功学作者的名字？这段话是否只是在复述百科？这个人真正痛苦、迟疑、强硬或误判的地方有没有进入模型？如果没有，Skill 还只是外壳。
 
 ## 质量门槛
 
-Skill 进入 gallery 前必须通过以下门槛（由 `validate_output.py` 和 quality-reviewer 联合执行）：
+进入 `gallery/` 前，一个 Skill 必须经得起这些检查：
 
-| 门槛             | 要求                                                         | 执行者                             |
-| -------------- | ---------------------------------------------------------- | ------------------------------- |
-| 出处溯源           | 每条原则有具体出处（书名/演讲名/书信名）                                      | 阶段 5 accuracy 审查                |
-| 过滤器框架          | 决策步骤为二值判断（是/否），非开放式提问                                      | 阶段 3 合成 + 阶段 5 审查               |
-| 盲区描述           | ≥2 条，具体且附带缓解建议                                             | 阶段 3 合成 + 校验器 Schema            |
-| 表达 DNA 完整      | 8 维全部填写；✅/❌ 校准对存在                                          | 校验器 Schema + 阶段 5 expression 审查 |
-| 结构自然性          | 5 条规则完整存在于响应策略中                                            | 阶段 4 组装 + 阶段 5 format 审查        |
-| 反套公式           | 5 条规则完整存在于响应策略中                                            | 阶段 4 组装 + 阶段 5 format 审查        |
-| 价值观完整          | ≥2 追求 + ≥2 反对 + ≥1 张力                                      | 校验器 Schema                      |
-| 双语 description | Frontmatter description 同时包含中英文触发关键词                       | 校验器 Schema                      |
-| 蒸馏置信度          | `score` ≥ 3（满分 5）                                          | 阶段 3 合成 + 校验器 Schema            |
-| Gallery 同步     | `gallery/{slug}/SKILL.md` 与 `output/{slug}/SKILL.md` 逐字节一致 | 校验器 `gallery` 阶段                |
+| 门槛 | 要求 |
+| --- | --- |
+| 溯源 | 原则和引用要回到具体材料；网页二手引用不得冒充高置信度。 |
+| 独特性 | 通过去姓名测试、证据锚点测试、方法层级测试，避免通用鸡汤。 |
+| 决策框架 | 必须是过滤链式 yes/no gate，不能以开放式问题收尾。 |
+| 双语认知 | 中文和英文框架独立生成，不把一种语言机械翻译成另一种。 |
+| 盲区 | 每个盲区必须带缓解建议和不宜使用场景。 |
+| 表达 DNA | 必须具体到能把这个人与普通分析腔区分开。 |
+| 结构自然性 | 必须包含完整规则，防止输出变成机械模板。 |
+| 价值与反模式 | 至少写出两个追求、两个反对和一个内在张力。 |
 
----
+## Evaluation 与灵魂十问
 
-## Gallery · 已蒸馏 Skill
+<p align="center">
+  <img src="docs/assets/readme/runtime-evaluation-loop.svg" alt="runtime evaluation 流程" width="100%">
+</p>
 
-| Skill                     | 时代        | 门类           | 蒸馏日期       | 方式   | 质量            |
-| ------------------------- | --------- | ------------ | ---------- | ---- | ------------- |
-| **charlie-munger-wisdom** | 1924–2023 | 经营 + 求知 + 行事 | 2026-05-01 | 手工蒸馏 | PASS          |
-| **mao-zedong-wisdom**     | 1893–1976 | 谋略 + 治理 + 哲理 | 2026-05-02 | 管线蒸馏 | PASS · 4.35/5 |
+`evaluation/` 是独立评估系统，不嵌入 `/distill` 主流程。它可以做静态 artifact 汇总、DeepSeek runtime 对话测试、judge 打分和 scorecard 生成。这样做的原因很简单：生产和评估不能互相替自己背书。
 
-**mao-zedong-wisdom** 备注：用户提供 4 份 PDF（55MB，8400+ 页），提取 13 篇核心著作（33 万+ 字），中文 7 条原则 / 英文 6 条原则独立框架。
+这次更新新增了非 benchmark 的 **灵魂十问** 附录：
 
----
+<p align="center">
+  <img src="docs/assets/readme/soul-ten-questions.svg" alt="灵魂十问示意图" width="100%">
+</p>
+
+它在完整 DeepSeek runtime 测试后生成，但不参与分数。十类问题固定覆盖遗憾、另一条历史道路、原则与人生矛盾、最难妥协、最被误解的原则、决定性时刻、独特人格智慧、不可模仿之处、现代使用边界和最终自我审判。实际问题则由 DeepSeek 按该思想家的历史、原则、张力和表达气质量身定制。
+
+产物包括：
+
+```text
+evaluation/reports/{slug}/ten-question-qa.json
+evaluation/reports/{slug}/ten-question-qa.md
+evaluation/reports/{slug}/ten-question-summary.md
+```
+
+这些文件明确标记 `benchmark_included: false`。它们不会改变 `runtime-judgment.json`、`runtime_score_25`、score cap、grade 或 benchmark readiness。它们的目的不是替用户判定“好坏”，而是在分数之后留下一面镜子。
+
+十个 archetype 的作用如下：
+
+| Archetype | 想逼近的问题 |
+| --- | --- |
+| regret | 如果把一生放回手心，哪里仍然刺痛？ |
+| alternate historical road | 如果历史有另一条路，他会怎样重估自己的选择？ |
+| principle-life contradiction | 哪条原则被他自己的生活反驳或折磨过？ |
+| hardest compromise | 哪次妥协最能暴露他的方法代价？ |
+| misunderstood principle | 后人最容易把哪条原则用窄、用歪、用粗？ |
+| decisive moment | 哪个时刻塑造了他的判断骨架？ |
+| unique personality wisdom | 哪种人格特质本身就是智慧来源？ |
+| warning against imitation | 什么地方不能学，学了会害人？ |
+| modern-use boundary | 放到现代世界，方法应当在哪里停下？ |
+| final self-judgment | 如果由他自己给自己判词，会说什么？ |
+
+这部分故意不打分。因为有些东西分数可以提醒，但不能替用户感受。一个回答有没有“活人的重量”，最后仍要由读者自己判断。
 
 ## 使用方式
 
-### 蒸馏新人物
+运行本地测试：
 
-在 Claude Code 中输入：
-
+```powershell
+python -m unittest discover -s tests -v
 ```
+
+在 Codex 工作流中蒸馏新人：
+
+```text
 /distill "Charlie Munger"
 /distill 孙子
-/distill 塞涅卡
+/distill 王阳明
 ```
 
-编排者将引导你完成素材检测、门类推荐和全部 7 个管线阶段。
+手动验证各阶段：
 
-### 手动校验
-
-```bash
-python scripts/validate_output.py sources charlie-munger
-python scripts/validate_output.py principles mao-zedong
-python scripts/validate_output.py frameworks mao-zedong
-python scripts/validate_output.py skill mao-zedong
-python scripts/validate_output.py gallery mao-zedong
+```powershell
+python scripts\validate_output.py sources charlie-munger
+python scripts\validate_output.py principles mao-zedong
+python scripts\validate_output.py frameworks mao-zedong
+python scripts\validate_output.py skill mao-zedong
+python scripts\validate_output.py gallery mao-zedong
 ```
 
-### 运行环境
+配置 runtime 评估：
 
-- **Claude Code** — Skill 执行与子代理编排
-- **Python 3.9+** — 校验脚本（仅依赖标准库，无需 pip 安装）
-- **PyMuPDF** 或 **pypdf**（可选）— 仅 PDF 素材提取时使用
+```powershell
+Copy-Item evaluation\runtime\.env.example evaluation\runtime\.env
+# 编辑 evaluation\runtime\.env，填入本地密钥；不要提交该文件
 
----
+python evaluation\runtime\run_dialogue_eval.py --slug zeng-guofan --root . --ten-questions auto
+python evaluation\scripts\collect_artifacts.py --slug zeng-guofan --root . --out evaluation\reports\zeng-guofan\artifact-facts.json
+```
 
-## 设计原则
+如果只想做不联网的工程测试：
 
-1. **第一人称沉浸**——"我一直强调 X"，而非"XX 曾经说过 X"
-2. **过滤链而非问卷**——每一步用判否门缩小决策空间，最后一步是明确的决策阈值
-3. **双语独立成篇**——中英文版本是各自独立的认知构建，不是互译
-4. **反套公式内置**——结构自然性是强制要求，不是锦上添花
-5. **用户素材优先**——一手资料在置信度上永远高于网络引用
-6. **建设性价值导向**——面对不公困境时简要承认现实，重心放在"如何强大自己、如何争取主动"
-7. **没有完人**——每个 Skill 都自带盲区描述和反模式警示
-8. **每步必校验**——不良中间产物无法污染下游阶段
+```powershell
+$env:MIND_DISTILL_EVAL_LLM = "off"
+python -m unittest discover -s tests -v
+```
 
----
+常用 runtime 配置：
 
-## 命名规范
+| 变量 | 含义 |
+| --- | --- |
+| `MIND_DISTILL_EVAL_LLM=off` | 不调用外部模型，适合本地测试。 |
+| `MIND_DISTILL_EVAL_LLM=auto` | 有 key 时才调用外部模型。 |
+| `MIND_DISTILL_EVAL_LLM=deepseek` | 要求使用 DeepSeek-compatible API。 |
+| `MIND_DISTILL_EVAL_API_KEY` | 评估专用密钥，不写入报告。 |
+| `MIND_DISTILL_EVAL_BASE_URL` | 默认 `https://api.deepseek.com`。 |
+| `MIND_DISTILL_EVAL_MODEL` | 默认示例为 `deepseek-v4-pro`。 |
+| `MIND_DISTILL_EVAL_REASONING_EFFORT` | 传递给兼容接口的 reasoning effort。 |
 
-- **人物 slug**：小写、连字符连接——`charlie-munger`、`sun-tzu`、`wang-yangming`
-- **Skill 名称**：`{person-slug}-wisdom`——`charlie-munger-wisdom`、`mao-zedong-wisdom`
-- **素材文件名**：`{source-abbrev}_{content-type}.{ext}`——`poor_charlies_almanack_quotes.txt`
+安装 Skill 时，请确保目标目录中最终文件名仍然是 `SKILL.md`。例如 Codex 常见结构是：
 
----
+```text
+~/.codex/skills/{person-slug}-wisdom/SKILL.md
+```
+
+不要把 `SKILL.zh.md`、`README.md` 或 draft 文件当成最终 Skill；Codex 的发现机制不会把它们当作可用 Skill。
+
+## Debate Arena
+
+`debate_arena/` 可以让两个 Skill 围绕同一议题进行结构化辩论。它把参与者画像、议题生成、正反论证、交叉质询、事实核查和裁判报告分开，适合检查两个思想框架在冲突场景中的差异。
+
+快速 dry run：
+
+```powershell
+python -m debate_arena run --llm fake --issues 3 --out output\debate_arena\dry_run.md
+```
+
+真实运行时设置 `DEBATE_ARENA_API_KEY` 或 `OPENAI_API_KEY`。详细说明见 [debate_arena/README.md](debate_arena/README.md)。
+
+## Gallery
+
+公开仓库当前包含这些可安装 Skill：
+
+| 人物 | 主要用途 |
+| --- | --- |
+| Charlie Munger | 多元心智模型、逆向思维、商业与投资判断。 |
+| Chiang Kai-shek | 战略忍耐、组织整顿、弱势方外交、自我约束。 |
+| Mao Zedong | 矛盾分析、调查研究、以弱胜强、持久战。 |
+| Richard Feynman | 第一性原理、科学诚实、学习解释法。 |
+| Sun Tzu | 竞争策略、虚实、势、奇正、时机。 |
+| Wang Yangming | 致良知、知行合一、道德困境和自我修炼。 |
+| Zeng Guofan | 自律、识人用人、逆境韧性、长期主义。 |
+
+## 公开发布边界
+
+本仓库是公开工程面：模板、编排协议、评估代码、gallery Skill、README 配图和测试可以公开。以下内容不应进入公开仓库：
+
+- `.env`、`evaluation/runtime/.env`、任何 API key。
+- `evaluation/reports/` 中的本地评估结果。
+- `output/` 中的中间产物。
+- `release-video/` 工作素材。
+- 受版权限制的书籍、PDF、扫描件、音视频或私有 source corpus。
+
+## 目录结构
+
+```text
+agents/         提取、合成、审查和组装子代理协议
+commands/       /distill 编排命令
+config/         分类体系和默认配置
+debate_arena/   双 Skill 辩论运行器
+docs/assets/    README 和项目公开视觉资产
+evaluation/     独立 SkillEval-MDF 评估系统
+gallery/        已发布可安装 Skill
+scripts/        校验、素材处理和工具脚本
+sources/        公开占位与本地素材契约
+templates/      Skill 模板和手工示例
+tests/          回归测试
+```
 
 ## License
 
-MIT — 智慧属于思想家；蒸馏方法属于所有人。
+代码与文档采用 MIT License。思想属于思想家本人，原始书籍和材料的版权属于其权利人；这个项目开源的是蒸馏方法、工程管线和可复用 Skill 结构。
