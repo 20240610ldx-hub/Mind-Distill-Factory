@@ -431,10 +431,18 @@ def validate_frameworks(slug: str) -> list[str]:
 
 
 def is_v6_skill(content: str) -> bool:
-    """v6 包由 frontmatter 的 format_version 判定；无此字段一律按 legacy 处理。"""
+    """v6 包由 frontmatter 的 format_version 判定；无此字段一律按 legacy 处理。
+
+    只在解析出的 frontmatter 块内匹配，避免正文中示例代码块（如文档自身讲解
+    v6 格式时贴出的 ```yaml 片段）触发误判。
+    """
+    match = SKILL_FRONTMATTER_PATTERN.search(content)
+    if not match:
+        return False
+    frontmatter = match.group(1)
     return bool(re.search(
-        rf"^format_version:\s*{PACKAGE_SCHEMA['format_version']}\s*$",
-        content, re.MULTILINE,
+        rf"^[ \t]*format_version[ \t]*:[ \t]*{PACKAGE_SCHEMA['format_version']}[ \t]*$",
+        frontmatter, re.MULTILINE,
     ))
 
 
