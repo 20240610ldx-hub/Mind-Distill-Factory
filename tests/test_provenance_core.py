@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,6 +66,30 @@ class CorpusTests(unittest.TestCase):
     def test_longest_verbatim_prefix_is_zero_when_nothing_matches(self) -> None:
         corpus = [("a.txt", "毋得彼此推诿")]
         self.assertEqual(prov.longest_verbatim_prefix("完全不相干的句子", corpus), 0)
+
+    def test_load_corpus_preserves_undecodable_bytes_as_replacement_chars(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            raw = root / "sources" / "demo" / "raw"
+            raw.mkdir(parents=True)
+            data = "张居正考成法".encode("gbk") + b"abc"
+            (raw / "bad.txt").write_bytes(data)
+            corpus = prov.load_corpus("demo", root)
+            self.assertEqual(len(corpus), 1)
+            self.assertIn("�", corpus[0][1])
+
+
+class VariantFolderTests(unittest.TestCase):
+    def test_get_variant_folder_returns_none_when_converter_construction_fails(self) -> None:
+        fake_opencc = types.ModuleType("opencc")
+
+        class BrokenOpenCC:
+            def __init__(self, *args, **kwargs) -> None:
+                raise RuntimeError("simulated broken opencc data files")
+
+        fake_opencc.OpenCC = BrokenOpenCC  # type: ignore[attr-defined]
+        with mock.patch.dict(sys.modules, {"opencc": fake_opencc}):
+            self.assertIsNone(prov.get_variant_folder())
 
 
 if __name__ == "__main__":

@@ -32,12 +32,13 @@ TEXT_SUFFIXES = (".txt", ".md")
 
 
 def get_variant_folder() -> Callable[[str], str] | None:
-    """返回繁→简转换函数；opencc 未安装时返回 None（降级为不折叠）。"""
+    """返回繁→简转换函数；opencc 未安装或初始化失败时返回 None（降级为不折叠）。"""
     try:
         import opencc  # type: ignore
-    except ImportError:
+
+        converter = opencc.OpenCC("t2s")
+    except Exception:
         return None
-    converter = opencc.OpenCC("t2s")
     return converter.convert
 
 
@@ -62,7 +63,7 @@ def load_corpus(slug: str, root: Path) -> list[tuple[str, str]]:
         for path in sorted(base.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
                 continue
-            text = path.read_text(encoding="utf-8", errors="ignore")
+            text = path.read_text(encoding="utf-8", errors="replace")
             corpus.append((path.name, normalize(text)))
     return corpus
 
@@ -79,7 +80,14 @@ def find_verbatim(needle: str, corpus: list[tuple[str, str]]) -> str | None:
 
 
 def longest_verbatim_prefix(needle: str, corpus: list[tuple[str, str]]) -> int:
-    """返回 needle 归一化后能在语料中逐字命中的最长前缀长度，用于报告分歧位置。"""
+    """返回 needle 归一化后最长前缀的长度，使该前缀作为子串出现在语料某处。
+
+    注意：匹配是不锚定的（unanchored）——只判断 needle[:L] 是否作为子串出现在
+    语料的任意位置，不要求它出现在 needle 原本引用的上下文里。因此，当前缀较短
+    （相对 needle 总长而言）时，命中很可能只是常见字词的巧合重叠，基本不代表
+    存在逐字依据；只有当返回值接近 len(normalize(needle)) 时才说明大部分文本
+    确有逐字来源。本函数返回的是诊断性提示，不是精确的分歧位置（divergence
+    offset）。"""
     probe = normalize(needle)
     for length in range(len(probe), 0, -1):
         prefix = probe[:length]
