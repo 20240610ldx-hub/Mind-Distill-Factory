@@ -1,19 +1,35 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "output": {
-    "languages": ["zh", "en"],
+    "languages": ["zh"],
     "skill_install_path": "~/.claude/skills/{person-slug}-wisdom/",
     "gallery_path": "./gallery/{person-slug}/",
-    "output_path": "./output/{person-slug}/"
+    "output_path": "./output/{person-slug}/",
+    "english_on_demand": true,
+    "english_install_path": "~/.claude/skills/{person-slug}-wisdom-en/"
+  },
+  "package_budget": {
+    "format_version": 6,
+    "skill_max_lines": 500,
+    "reference_dir": "references",
+    "required_refs": ["cases.md", "evidence.md", "voice.md"],
+    "cases_max_tokens": 4000,
+    "evidence_max_tokens": 3000,
+    "voice_max_tokens": 2000,
+    "dossier_in_install_dir": false
   },
   "distillation": {
-    "min_principles": 5,
-    "max_principles": 8,
+    "min_principles": 8,
+    "max_principles": 11,
+    "principle_target_chars": 900,
     "min_reasoning_patterns": 3,
     "max_reasoning_patterns": 5,
     "min_blind_spots": 2,
     "min_quotes": 5,
-    "max_quotes": 10
+    "max_quotes": 10,
+    "min_cases_per_cluster": 2,
+    "min_counter_cases": 1,
+    "min_voice_samples": 20
   },
   "source_strategy": {
     "priority": "user-provided-first",
@@ -25,7 +41,8 @@
   "quality": {
     "require_source_attribution": true,
     "require_blind_spots": true,
-    "require_bilingual_review": true,
+    "require_bilingual_review": false,
+    "require_provenance_gates": true,
     "review_verdicts": ["PASS", "REVISE", "FAIL"]
   }
 }

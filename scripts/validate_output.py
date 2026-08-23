@@ -10,6 +10,7 @@ Stages:
   principles — validate output/{slug}/principles_*.json
   frameworks — validate output/{slug}/frameworks.{zh,en}.json
   skill     — validate output/{slug}/SKILL.md frontmatter and bilingual structure
+  package   — validate the v6 package: output/{slug}/SKILL.md + references/ (gates P1-P6)
   gallery   — validate gallery/{slug}/SKILL.md and ensure it matches output/{slug}/SKILL.md
 """
 
@@ -81,6 +82,17 @@ FRAMEWORK_CORE_SCHEMA = {
                         "confidence_factors", "expression_dna_raw_summary",
                         "alignment_contract"],
     "min_clusters": 1,
+}
+
+PACKAGE_SCHEMA = {
+    "skill_max_lines": 500,
+    "reference_dir": "references",
+    "required_refs": ["cases.md", "evidence.md", "voice.md"],
+    "min_cases_per_cluster": 2,
+    "min_counter_cases": 1,
+    "core_sections": ["身份卡", "响应策略", "核心原则", "决策框架",
+                      "已知盲区", "表达风格 DNA", "价值取向与反模式", "溯源"],
+    "format_version": 6,
 }
 
 SKILL_FRONTMATTER_PATTERN = re.compile(
@@ -491,6 +503,188 @@ def validate_gallery(slug: str) -> list[str]:
     return errors
 
 
+# ── v6 包闸门（P3–P6）────────────────────────────────────────────────
+
+BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:md|json|py|txt))`")
+CASE_ID_RE = re.compile(r"case_id:\s*([A-Za-z0-9_-]+)")
+CASE_CLUSTER_RE = re.compile(r"^\*\*对应原则簇：\*\*\s*(\S+)\s*$", re.MULTILINE)
+CASE_HEADING_RE = re.compile(r"^###\s+.*$", re.MULTILINE)
+
+
+def check_p3_paths(skill_md: Path) -> list[str]:
+    """P3：SKILL.md 中每个反引号路径必须解析到实际文件。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    base = skill_md.parent
+    errors = []
+    for match in BACKTICK_PATH_RE.finditer(skill_md.read_text(encoding="utf-8")):
+        rel = match.group(1)
+        if (base / rel).exists() or Path(rel).exists():
+            continue
+        errors.append(f"P3_DANGLING_PATH: {skill_md}: `{rel}` 无法解析到实际文件")
+    return errors
+
+
+def _parse_cases(cases_md: Path) -> list[dict]:
+    text = cases_md.read_text(encoding="utf-8")
+    headings = list(CASE_HEADING_RE.finditer(text))
+    cases = []
+    for i, match in enumerate(headings):
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
+        block = text[match.start():end]
+        case_id = CASE_ID_RE.search(block)
+        cluster = CASE_CLUSTER_RE.search(block)
+        cases.append({
+            "case_id": case_id.group(1) if case_id else None,
+            "cluster": cluster.group(1) if cluster else None,
+            "is_counter": "反例" in block,
+        })
+    return cases
+
+
+def check_p4_cases(cases_md: Path, cluster_ids: list[str]) -> list[str]:
+    """P4：每个 principle cluster ≥2 例；全库 ≥1 反例。"""
+    if not cases_md.exists():
+        return [f"MISSING: {cases_md}"]
+    cases = _parse_cases(cases_md)
+    errors = []
+    for case in cases:
+        if not case["case_id"]:
+            errors.append(f"P4_MISSING_CASE_ID: {cases_md}: 存在无 case_id 的案例")
+    for cluster_id in cluster_ids:
+        count = sum(1 for c in cases if c["cluster"] == cluster_id)
+        if count < PACKAGE_SCHEMA["min_cases_per_cluster"]:
+            errors.append(
+                f"P4_TOO_FEW_CASES: {cases_md}: cluster '{cluster_id}' 只有 {count} 例 "
+                f"< {PACKAGE_SCHEMA['min_cases_per_cluster']}"
+            )
+    counters = sum(1 for c in cases if c["is_counter"])
+    if counters < PACKAGE_SCHEMA["min_counter_cases"]:
+        errors.append(f"P4_NO_COUNTER_CASE: {cases_md}: 全库反例数 {counters} < 1")
+    return errors
+
+
+def check_p5_index(skill_md: Path, cases_md: Path) -> list[str]:
+    """P5：SKILL.md 案例索引与 cases.md 的 case_id 必须双向一一对应。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    if not cases_md.exists():
+        return [f"MISSING: {cases_md}"]
+    indexed = set(CASE_ID_RE.findall(skill_md.read_text(encoding="utf-8")))
+    section = re.search(
+        r"^##\s*案例索引\s*$(.*?)(?=^##\s|\Z)",
+        skill_md.read_text(encoding="utf-8"),
+        re.MULTILINE | re.DOTALL,
+    )
+    if section:
+        for line in section.group(1).splitlines():
+            if line.strip().startswith("|"):
+                for cell in line.split("|"):
+                    token = cell.strip()
+                    if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)+", token):
+                        indexed.add(token)
+    actual = {c["case_id"] for c in _parse_cases(cases_md) if c["case_id"]}
+    errors = []
+    for orphan in sorted(indexed - actual):
+        errors.append(f"P5_INDEX_ORPHAN: {skill_md}: 索引引用了不存在的 case_id '{orphan}'")
+    for missing in sorted(actual - indexed):
+        errors.append(f"P5_CASE_NOT_INDEXED: {cases_md}: case_id '{missing}' 未出现在案例索引中")
+    return errors
+
+
+def check_p6_core(skill_md: Path) -> list[str]:
+    """P6：核心自足——≤500 行，8 个必需章节齐备且非空（不检查指针，那是 P3 的事）。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    content = skill_md.read_text(encoding="utf-8")
+    errors = []
+    line_count = len(content.splitlines())
+    if line_count > PACKAGE_SCHEMA["skill_max_lines"]:
+        errors.append(
+            f"P6_TOO_LONG: {skill_md}: {line_count} 行 > "
+            f"{PACKAGE_SCHEMA['skill_max_lines']} 行上限"
+        )
+    headings = list(re.finditer(r"^#{2,4}\s*(.+?)\s*$", content, re.MULTILINE))
+    for name in PACKAGE_SCHEMA["core_sections"]:
+        hit = None
+        for i, match in enumerate(headings):
+            if name in match.group(1):
+                end = headings[i + 1].start() if i + 1 < len(headings) else len(content)
+                hit = content[match.end():end].strip()
+                break
+        if hit is None:
+            errors.append(f"P6_MISSING_SECTION: {skill_md}: 缺少必需章节 '{name}'")
+        elif not hit:
+            errors.append(f"P6_EMPTY_SECTION: {skill_md}: 章节 '{name}' 为空")
+    return errors
+
+
+def validate_package(slug: str) -> list[str]:
+    """v6 包整体校验：结构 + P1–P6 六道闸门。"""
+    root = Path(".")
+    output_dir = root / "output" / slug
+    skill_md = output_dir / "SKILL.md"
+    refs_dir = output_dir / PACKAGE_SCHEMA["reference_dir"]
+    errors: list[str] = []
+
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+
+    content = skill_md.read_text(encoding="utf-8")
+    if f"format_version: {PACKAGE_SCHEMA['format_version']}" not in content:
+        errors.append(
+            f"NOT_V6: {skill_md}: frontmatter 缺少 "
+            f"'format_version: {PACKAGE_SCHEMA['format_version']}'"
+        )
+    if re.search(r"^##\s+English", content, re.MULTILINE):
+        errors.append(f"V6_HAS_ENGLISH_BLOCK: {skill_md}: v6 包不得含 '## English' 区块")
+
+    for name in PACKAGE_SCHEMA["required_refs"]:
+        if not (refs_dir / name).exists():
+            errors.append(f"MISSING: {refs_dir / name}")
+
+    errors.extend(check_p3_paths(skill_md))
+    errors.extend(check_p6_core(skill_md))
+
+    cases_md = refs_dir / "cases.md"
+    evidence_md = refs_dir / "evidence.md"
+
+    cluster_ids: list[str] = []
+    core_file = output_dir / "framework_core.json"
+    if core_file.exists():
+        try:
+            core = read_json_file(core_file)
+            cluster_ids = [
+                c.get("cluster_id") for c in core.get("principle_clusters", [])
+                if c.get("cluster_id")
+            ]
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            errors.append(f"PARSE_ERROR: {core_file}: {e}")
+
+    if cases_md.exists():
+        errors.extend(check_p4_cases(cases_md, cluster_ids))
+        errors.extend(check_p5_index(skill_md, cases_md))
+
+    if evidence_md.exists():
+        prov = _load_provenance()
+        errors.extend(prov.check_p1_quote_closure(skill_md, evidence_md))
+        errors.extend(prov.check_p2_corpus_closure(evidence_md, slug, root))
+
+    return errors
+
+
+def _load_provenance():
+    """按路径加载同目录的 verify_provenance 模块（scripts/ 不是包）。"""
+    import importlib.util
+    path = Path(__file__).resolve().parent / "verify_provenance.py"
+    spec = importlib.util.spec_from_file_location("verify_provenance", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _validate_merged_skill(filepath: Path, slug: str) -> list[str]:
     """Validate a merged bilingual SKILL.md file."""
     errors = []
@@ -667,6 +861,7 @@ STAGES = {
     "principles": validate_principles,
     "frameworks": validate_frameworks,
     "skill": validate_skill,
+    "package": validate_package,
     "gallery": validate_gallery,
 }
 
