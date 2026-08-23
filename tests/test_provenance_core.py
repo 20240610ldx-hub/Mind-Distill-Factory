@@ -92,5 +92,151 @@ class VariantFolderTests(unittest.TestCase):
             self.assertIsNone(prov.get_variant_folder())
 
 
+class EvidenceParseTests(unittest.TestCase):
+    CARD = (
+        "# 证据卡\n\n"
+        "### 原则 1：立限考成\n\n"
+        "> 如此，月有考，岁有稽，不惟使声必中实，事可责成\n\n"
+        "- 出处：《请稽查章奏随事考成以修实政疏》（万历元年）\n"
+        "- confidence：high\n\n"
+        "### 原则 2：尚实黜虚\n\n"
+        "> 毋得彼此推诿，徒托空言\n\n"
+        "- 出处：《陈六事疏·省议论》\n"
+        "- confidence：high\n"
+        "- textual_note：底本作「推护」，据全集本正为「推诿」\n"
+    )
+
+    def test_parses_two_cards(self) -> None:
+        cards = prov.parse_evidence_cards(self.CARD)
+        self.assertEqual(len(cards), 2)
+        self.assertEqual(cards[0]["title"], "原则 1：立限考成")
+
+    def test_captures_blockquote_as_verbatim(self) -> None:
+        cards = prov.parse_evidence_cards(self.CARD)
+        self.assertEqual(cards[0]["verbatim"], "如此，月有考，岁有稽，不惟使声必中实，事可责成")
+
+    def test_captures_fields(self) -> None:
+        cards = prov.parse_evidence_cards(self.CARD)
+        self.assertEqual(cards[0]["fields"]["confidence"], "high")
+
+    def test_detects_textual_note(self) -> None:
+        cards = prov.parse_evidence_cards(self.CARD)
+        self.assertNotIn("textual_note", cards[0]["fields"])
+        self.assertIn("textual_note", cards[1]["fields"])
+
+
+class SkillQuoteExtractionTests(unittest.TestCase):
+    SKILL = (
+        "## 核心原则\n\n"
+        "#### 原则 1：立限考成\n\n"
+        "**理念：** 我见章奏堆积如山，「空文」二字最误国。\n\n"
+        "**原文出处：**「如此，月有考，岁有稽」——《请稽查章奏疏》\n\n"
+        "## 标志性名言\n\n"
+        "- 「毋得彼此推诿，徒托空言」——《陈六事疏》\n"
+    )
+
+    def test_extracts_principle_source_quote(self) -> None:
+        quotes = prov.extract_skill_quotes(self.SKILL)
+        self.assertIn("如此，月有考，岁有稽", [q for _, q in quotes])
+
+    def test_extracts_signature_quote(self) -> None:
+        quotes = prov.extract_skill_quotes(self.SKILL)
+        self.assertIn("毋得彼此推诿，徒托空言", [q for _, q in quotes])
+
+    def test_ignores_emphasis_brackets_in_prose(self) -> None:
+        quotes = prov.extract_skill_quotes(self.SKILL)
+        self.assertNotIn("空文", [q for _, q in quotes])
+
+
+class GateTests(unittest.TestCase):
+    def _write(self, root: Path, skill: str, evidence: str, corpus: str) -> None:
+        out = root / "output" / "demo"
+        out.mkdir(parents=True)
+        (out / "SKILL.md").write_text(skill, encoding="utf-8")
+        refs = out / "references"
+        refs.mkdir()
+        (refs / "evidence.md").write_text(evidence, encoding="utf-8")
+        raw = root / "sources" / "demo" / "raw"
+        raw.mkdir(parents=True)
+        (raw / "corpus.txt").write_text(corpus, encoding="utf-8")
+
+    def test_p1_passes_when_quote_is_in_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write(
+                root,
+                "**原文出处：**「如此，月有考，岁有稽」——《疏》\n",
+                "### 原则 1：甲\n\n> 如此，月有考，岁有稽\n\n- confidence：high\n",
+                "如此，月有考，岁有稽，不惟使声必中实。",
+            )
+            errors = prov.check_p1_quote_closure(
+                root / "output" / "demo" / "SKILL.md",
+                root / "output" / "demo" / "references" / "evidence.md",
+            )
+            self.assertEqual(errors, [])
+
+    def test_p1_fails_when_quote_missing_from_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write(
+                root,
+                "**原文出处：**「如此则月有考，名必中实」——《疏》\n",
+                "### 原则 1：甲\n\n> 如此，月有考，岁有稽\n\n- confidence：high\n",
+                "如此，月有考，岁有稽。",
+            )
+            errors = prov.check_p1_quote_closure(
+                root / "output" / "demo" / "SKILL.md",
+                root / "output" / "demo" / "references" / "evidence.md",
+            )
+            self.assertEqual(len(errors), 1)
+            self.assertTrue(errors[0].startswith("P1_QUOTE_NOT_IN_EVIDENCE"))
+
+    def test_p2_fails_on_stitched_quote_and_reports_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write(
+                root,
+                "**原文出处：**「甲」——《疏》\n",
+                "### 原则 1：甲\n\n> 如此则月有考，岁有稽，名必中实，事可责成\n\n- confidence：high\n",
+                "如此，月有考，岁有稽，不惟使声必中实，事可责成。",
+            )
+            errors = prov.check_p2_corpus_closure(
+                root / "output" / "demo" / "references" / "evidence.md", "demo", root
+            )
+            self.assertEqual(len(errors), 1)
+            self.assertTrue(errors[0].startswith("P2_NOT_IN_CORPUS"))
+            self.assertIn("最长逐字前缀=2", errors[0])
+
+    def test_p2_downgrades_to_warning_when_textual_note_present(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write(
+                root,
+                "**原文出处：**「甲」——《疏》\n",
+                "### 原则 1：甲\n\n> 如此则月有考\n\n"
+                "- confidence：high\n- textual_note：底本讹字，据received text 正之\n",
+                "如此，月有考。",
+            )
+            errors = prov.check_p2_corpus_closure(
+                root / "output" / "demo" / "references" / "evidence.md", "demo", root
+            )
+            self.assertEqual(len(errors), 1)
+            self.assertTrue(errors[0].startswith("WARNING:"))
+
+    def test_p2_passes_when_verbatim(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write(
+                root,
+                "**原文出处：**「甲」——《疏》\n",
+                "### 原则 1：甲\n\n> 月有考，岁有稽\n\n- confidence：high\n",
+                "如此，月有考，岁有稽，不惟使声必中实。",
+            )
+            errors = prov.check_p2_corpus_closure(
+                root / "output" / "demo" / "references" / "evidence.md", "demo", root
+            )
+            self.assertEqual(errors, [])
+
+
 if __name__ == "__main__":
     unittest.main()

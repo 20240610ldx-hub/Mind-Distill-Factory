@@ -94,3 +94,103 @@ def longest_verbatim_prefix(needle: str, corpus: list[tuple[str, str]]) -> int:
         if any(prefix in text for _, text in corpus):
             return length
     return 0
+
+
+# ── 证据卡解析 ──────────────────────────────────────────────────────
+
+CARD_SPLIT_RE = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
+FIELD_RE = re.compile(r"^-\s*([A-Za-z_]+|出处|语料位置|现代转译)\s*[：:]\s*(.+?)\s*$", re.MULTILINE)
+BLOCKQUOTE_RE = re.compile(r"^>\s?(.*?)\s*$", re.MULTILINE)
+
+
+def parse_evidence_cards(text: str) -> list[dict]:
+    """把 evidence.md 解析成卡片列表。每张卡的引文取其 blockquote 内容。"""
+    cards: list[dict] = []
+    matches = list(CARD_SPLIT_RE.finditer(text))
+    for i, match in enumerate(matches):
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end]
+        quote_lines = [m.group(1) for m in BLOCKQUOTE_RE.finditer(body) if m.group(1)]
+        fields = {m.group(1): m.group(2) for m in FIELD_RE.finditer(body)}
+        cards.append({
+            "title": match.group(1),
+            "verbatim": "\n".join(quote_lines).strip(),
+            "fields": fields,
+        })
+    return cards
+
+
+# ── SKILL.md 引文提取 ───────────────────────────────────────────────
+
+BRACKET_QUOTE_RE = re.compile(r"「([^」]+)」")
+SOURCE_LINE_RE = re.compile(r"^\*\*原文出处：\*\*(.*)$", re.MULTILINE)
+QUOTES_SECTION_RE = re.compile(r"^##\s*标志性名言\s*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL)
+
+
+def extract_skill_quotes(text: str) -> list[tuple[str, str]]:
+    """只从两处结构化位置提取引文：原文出处行、标志性名言章节。"""
+    found: list[tuple[str, str]] = []
+    for match in SOURCE_LINE_RE.finditer(text):
+        inner = BRACKET_QUOTE_RE.search(match.group(1))
+        if inner:
+            found.append(("原文出处", inner.group(1)))
+    section = QUOTES_SECTION_RE.search(text)
+    if section:
+        for line in section.group(1).splitlines():
+            stripped = line.strip()
+            if not stripped.startswith(("-", "*", "|")):
+                continue
+            inner = BRACKET_QUOTE_RE.search(stripped)
+            if inner:
+                found.append(("标志性名言", inner.group(1)))
+    return found
+
+
+# ── P1 / P2 闸门 ────────────────────────────────────────────────────
+
+def check_p1_quote_closure(skill_md: Path, evidence_md: Path) -> list[str]:
+    """P1：SKILL.md 中每条引文必须逐字出现在 evidence.md 的某张卡里。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    if not evidence_md.exists():
+        return [f"MISSING: {evidence_md}"]
+    cards = parse_evidence_cards(evidence_md.read_text(encoding="utf-8"))
+    haystack = [normalize(card["verbatim"]) for card in cards]
+    errors: list[str] = []
+    for label, quote in extract_skill_quotes(skill_md.read_text(encoding="utf-8")):
+        probe = normalize(quote)
+        if not probe:
+            continue
+        if not any(probe in card_text for card_text in haystack):
+            errors.append(
+                f"P1_QUOTE_NOT_IN_EVIDENCE: {skill_md} [{label}]: 「{quote}」"
+                f" 未逐字出现在 {evidence_md.name}"
+            )
+    return errors
+
+
+def check_p2_corpus_closure(evidence_md: Path, slug: str, root: Path) -> list[str]:
+    """P2：evidence.md 中每条逐字原文必须逐字出现在语料中。"""
+    if not evidence_md.exists():
+        return [f"MISSING: {evidence_md}"]
+    corpus = load_corpus(slug, root)
+    if not corpus:
+        return [f"EMPTY_CORPUS: sources/{slug}/ 下没有可读的 .txt/.md 语料"]
+    errors: list[str] = []
+    for card in parse_evidence_cards(evidence_md.read_text(encoding="utf-8")):
+        verbatim = card["verbatim"]
+        if not normalize(verbatim):
+            continue
+        if find_verbatim(verbatim, corpus):
+            continue
+        prefix = longest_verbatim_prefix(verbatim, corpus)
+        message = (
+            f"P2_NOT_IN_CORPUS: {evidence_md.name} [{card['title']}]: "
+            f"「{verbatim[:32]}」未逐字出现在语料中（最长逐字前缀={prefix}字）"
+        )
+        if "textual_note" in card["fields"]:
+            errors.append(f"WARNING: {message} — 已记 textual_note，人工裁决在案")
+        else:
+            errors.append(message)
+    return errors
