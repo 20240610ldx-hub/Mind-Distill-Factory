@@ -1,0 +1,42 @@
+# credentials & local env
+.env
+*.local.env
+evaluation/runtime/.env
+
+# copyrighted raw sources & derived full-text extracts
+sources/
+
+# intermediate artifacts: unsanitized test dialogues, forensics, scratch
+output/
+
+# evaluation dialogue reports (tester privacy & sensitive probes)
+evaluation/reports/
+
+# private retrospective (publish the .public version only)
+docs/retrospective-mao-distillation.zh.md
+
+# python cache
+__pycache__/
+*.pyc
+
+# windows junk
+*.lnk
+Thumbs.db
+
+# ── added 2026-08-23 for v6 work: bulk assets, never tracked ──
+# 11GB working dir; these are large binaries/media, not source.
+tools/
+release-video/
+release-video-v2/
+release-video-v3/
+assets/
+*.pptx
+temp/
+.playwright-mcp/
+cabinet/
+
+# root-level scratch & session transcripts (same category as evaluation/reports/)
+_temp_*.txt
+*-local-command-*-messages-*.txt
+shard_*_actual.json
+shard_*_special_find.json

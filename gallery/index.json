@@ -1,0 +1,437 @@
+{
+  "version": "1.0",
+  "description": "Mind Distill Factory — Gallery Index",
+  "skills": [
+    {
+      "slug": "charlie-munger",
+      "name_zh": "查理·芒格",
+      "name_en": "Charlie Munger",
+      "name_original": "Charles Thomas Munger",
+      "primary_category": "enterprise",
+      "secondary_categories": [
+        "inquiry",
+        "conduct"
+      ],
+      "era": "1924-2023",
+      "distilled_on": "2026-05-01",
+      "distill_method": "hand-crafted",
+      "review_status": "PASS",
+      "skill_dir": "gallery/charlie-munger/",
+      "install_path": "charlie-munger-wisdom",
+      "notes": "legacy reference：首个手工蒸馏示例，已不再作为 v4 管线质量基准；需后续重蒸馏补齐 sources/frameworks/runtime。"
+    },
+    {
+      "slug": "mao-zedong",
+      "name_zh": "毛泽东",
+      "name_en": "Mao Zedong",
+      "name_original": "毛泽东",
+      "primary_category": "strategy",
+      "secondary_categories": [
+        "governance",
+        "philosophy"
+      ],
+      "era": "1893-1976",
+      "distilled_on": "2026-05-02",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/mao-zedong/",
+      "install_path": "mao-zedong-wisdom",
+      "notes": "首个管线蒸馏成果。用户提供4份PDF（55MB/8400+页），提取13篇核心著作（33万字）。质量评分4.35/5。中文7原则/英文6原则独立框架。"
+    },
+    {
+      "slug": "sun-tzu",
+      "name_zh": "孙子",
+      "name_en": "Sun Tzu",
+      "name_original": "孙武 (约前544–前496)",
+      "primary_category": "strategy",
+      "secondary_categories": [
+        "philosophy",
+        "governance"
+      ],
+      "era": "c. 544-496 BCE",
+      "distilled_on": "2026-05-14",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/sun-tzu/",
+      "install_path": "sun-tzu-wisdom",
+      "notes": "用户提供5份素材（曹操注本、史记传记、Giles英译、曹操略解、钮先钟三论）。质量评分4.7/5。中文7原则/英文6原则独立框架。4个已知盲区含缓解建议。"
+    },
+    {
+      "slug": "wang-yangming",
+      "name_zh": "王阳明",
+      "name_en": "Wang Yangming",
+      "name_original": "王守仁 (1472-1529)",
+      "primary_category": "philosophy",
+      "secondary_categories": [
+        "conduct",
+        "resilience"
+      ],
+      "era": "1472-1529",
+      "distilled_on": "2026-05-15",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/wang-yangming/",
+      "install_path": "wang-yangming-wisdom",
+      "notes": "用户提供6份素材（传习录、大学问、书信选、奏疏选、杜维明英文传记、冈田武彦传记）。质量评分4.8/5。中文7原则/英文6原则独立框架。3个已知盲区含缓解建议。龙场悟道→极境反转法的方法论提炼为亮点。"
+    },
+    {
+      "slug": "zeng-guofan",
+      "name_zh": "曾国藩",
+      "name_en": "Zeng Guofan",
+      "name_original": "曾国藩 (1811-1872)",
+      "primary_category": "conduct",
+      "secondary_categories": [
+        "governance",
+        "resilience"
+      ],
+      "era": "1811-1872",
+      "distilled_on": "2026-05-16",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/zeng-guofan/",
+      "install_path": "zeng-guofan-wisdom",
+      "notes": "用户提供中华书局《曾国藩全集》12册PDF素材。质量评分4.2/5。中文7原则/英文6原则独立框架。3个已知盲区含缓解建议。结硬寨打呆仗、打脱牙和血吞为高辨识度原则。85%素材来自用户一手文献。"
+    },
+    {
+      "slug": "chiang-kai-shek",
+      "name_zh": "蒋介石",
+      "name_en": "Chiang Kai-shek",
+      "name_original": "蒋中正 (1887-1975)",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "strategy",
+        "resilience"
+      ],
+      "era": "1887-1975",
+      "distilled_on": "2026-05-17",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/chiang-kai-shek/",
+      "install_path": "chiang-kai-shek-wisdom",
+      "notes": "用户提供蒋介石相关日记、讲话与研究材料。质量评分4.75/5。中文7原则/英文8原则独立框架。强调自力自主、忍耐待机、弱势方外交、退省建攻与修身纪律。已补充 runtime 反序数结构约束，DeepSeek 12轮对话评测为Full Runtime Evaluation。"
+    },
+    {
+      "slug": "lu-xun",
+      "name_zh": "鲁迅",
+      "name_en": "Lu Xun",
+      "name_original": "周树人 (1881-1936)",
+      "primary_category": "pedagogy",
+      "secondary_categories": [
+        "creation",
+        "resilience"
+      ],
+      "era": "1881-1936",
+      "distilled_on": "2026-05-19",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/lu-xun/",
+      "install_path": "lu-xun-wisdom",
+      "notes": "用户提供22份PDF+15份TXT素材（杂文集7+小说3+散文2+书信+传记3+学术分析3+回忆录2）。15个分片worker提取247条候选，合并去重为60条摘录。质量评分4.875/5——管线迄今最高分。中文7原则/英文8原则独立框架。5个已知盲区含缓解建议。表达DNA 8维完整。首个教化(pedagogy)类蒸馏。"
+    },
+    {
+      "slug": "richard-feynman",
+      "name_zh": "理查德·费曼",
+      "name_en": "Richard Feynman",
+      "name_original": "Richard Phillips Feynman (1918-1988)",
+      "primary_category": "inquiry",
+      "secondary_categories": [
+        "pedagogy",
+        "conduct"
+      ],
+      "era": "1918-1988",
+      "distilled_on": "2026-05-16",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/richard-feynman/",
+      "install_path": "richard-feynman-wisdom",
+      "notes": "用户提供13份PDF素材（自传、演讲、信件、讲义、传记）。106条素材摘录，30条候选原则。中文8原则/英文8原则独立框架。4个已知盲区含缓解建议。表达DNA 8维完整。首个inquiry类蒸馏。"
+    },
+    {
+      "slug": "seneca",
+      "name_zh": "塞涅卡",
+      "name_en": "Seneca",
+      "name_original": "Lucius Annaeus Seneca",
+      "primary_category": "philosophy",
+      "secondary_categories": [
+        "resilience",
+        "conduct"
+      ],
+      "era": "公元前4年—公元65年，罗马帝国早期",
+      "distilled_on": "2026-05-20",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/seneca/",
+      "install_path": "seneca-wisdom",
+      "notes": "Updated Seneca skill with verified stoic principles and full runtime dialogues."
+    },
+    {
+      "slug": "zhang-xueliang",
+      "name_zh": "张学良",
+      "name_en": "Zhang Xueliang",
+      "name_original": "张学良 (1901-2001)",
+      "primary_category": "strategy",
+      "secondary_categories": [
+        "resilience",
+        "conduct"
+      ],
+      "era": "1901-2001",
+      "distilled_on": "2026-05-23",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/zhang-xueliang/",
+      "install_path": "zhang-xueliang-wisdom",
+      "notes": "用户提供口述历史、西安事变回忆录、幽禁日记等素材。质量评分5.00/5.00——管线满分首例。中文7原则/英文7原则独立框架。4个已知盲区含缓解建议。表达DNA 8维完整（东北军旅口语+口述史节奏）。100%用户提供来源，85%一手史料。"
+    },
+    {
+      "slug": "su-shi",
+      "name_zh": "苏轼",
+      "name_en": "Su Shi",
+      "name_original": "苏轼，字子瞻，号东坡居士 (1037-1101)",
+      "primary_category": "resilience",
+      "secondary_categories": [
+        "creation",
+        "lifedesign"
+      ],
+      "era": "1037-1101",
+      "distilled_on": "2026-05-29",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/su-shi/",
+      "install_path": "su-shi-wisdom",
+      "notes": "用户提供10份OCR素材（诗集/词集/文集/东坡志林一手 + 林语堂/李一冰/王水照/朱刚/宋史二手，约4.8M tokens、94分片）。因 sonnet/opus 子代理撞 1M 上下文信用点门槛、haiku 实测不可信（在干净文集上谎报乱码），全程由编排者内联提取（grep 定位承重墙作品→靶向读取窗口）。user_sources 46条全 high + expression_dna 12条 + secondary 5条。中文7原则/英文7原则独立框架。3个已知盲区含缓解建议。决策框架首关'辨可变(可争取 vs 不可逆)'为建设性价值导向兜底（防旷达沦为认命）。质量评分4/5。⚠️ Stage5 为编排者自审（项目硬规矩要求独立子代理，因门槛破例），建议门槛解除后补独立 sonnet 复审。首个 lifedesign 副类蒸馏。"
+    },
+    {
+      "slug": "abraham-lincoln",
+      "name_zh": "亚伯拉罕·林肯",
+      "name_en": "Abraham Lincoln",
+      "name_original": "Abraham Lincoln (1809-1865)",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "pedagogy",
+        "resilience"
+      ],
+      "era": "1809-1865",
+      "distilled_on": "2026-05-31",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/abraham-lincoln/",
+      "install_path": "abraham-lincoln-wisdom",
+      "notes": "用户分批提供raw一手素材：演讲全文（葛底斯堡/两次就职/House Divided/Cooper Union/LD辩论）+书信（致Greeley/Hooker/Grant/Conkling/Speed/Bixby）+Collected Works(Basler) + Goodwin/White/Donald三传记二手(采样佐证)。素材约1.96M tokens，编排者按sample-first内联提取（grep定位承重墙演讲/书信→靶向读取），user_sources 40条全high + expression_dna 12 + secondary 9。中文7原则/英文7原则独立框架。3个已知盲区含缓解(1858种族局限诚实入盲区+用林肯'新观点显得为真就采纳'的自我修正机制缓解)。决策框架=林肯六重过滤链(全yes/no门)。质量评分4.75/5(隔离general-purpose子代理冷审)。首个由用户分批提供raw素材的治理类蒸馏。"
+    },
+    {
+      "slug": "lee-kuan-yew",
+      "name_zh": "李光耀",
+      "name_en": "Lee Kuan Yew",
+      "name_original": "Lee Kuan Yew (李光耀, 1923-2015)",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "strategy",
+        "resilience"
+      ],
+      "era": "1923-2015",
+      "distilled_on": "2026-05-31",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/lee-kuan-yew/",
+      "install_path": "lee-kuan-yew-wisdom",
+      "notes": "用户提供一手素材：From Third World to First、Hard Truths(32h访谈)、李光耀回忆录中文版、NAS可溯源演讲(1966/1999/2009) + Barr《The Beliefs Behind the Man》二手。约1.79M tokens/40分片，编排者定向采样6分片内联提取，user_sources 33全high + expression_dna 12(三声调) + secondary 11(Barr,盲区矿)。中文7原则/英文6原则独立框架。决策框架=生存过滤链(6关全yes/no门)。3个已知盲区含缓解(文化-基因决定论/唯才滑向无制衡/效率换自由)并保留Barr平衡裁断。质量评分4.60/5(隔离general-purpose子代理冷审+1轮修订)。关键设计:任人唯贤原则内联其威权阴影,批判而不抹黑。⚠️zh语态部分取自回忆录中译本(译者转写),真实华语演讲偏薄。"
+    },
+    {
+      "slug": "han-feizi",
+      "name_zh": "韩非子",
+      "name_en": "Han Feizi",
+      "name_original": "韩非（约前280年—前233年）",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "philosophy",
+        "strategy"
+      ],
+      "era": "战国末期，七雄争霸进入尾声，秦国即将一统天下的前夜",
+      "distilled_on": "2026-05-31",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/han-feizi/",
+      "install_path": "han-feizi-wisdom",
+      "notes": "Distilled skill for Han Feizi."
+    },
+    {
+      "slug": "clausewitz",
+      "name_zh": "??????????",
+      "name_en": "Carl von Clausewitz",
+      "name_original": "Carl von Clausewitz (1780-1831)",
+      "primary_category": "strategy",
+      "secondary_categories": [
+        "governance",
+        "philosophy"
+      ],
+      "era": "1780-1831",
+      "distilled_on": "2026-06-02",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/clausewitz/",
+      "install_path": "clausewitz-wisdom",
+      "notes": "?????? Clausewitz ????????Stage1A 20 ? shard ?????????sources/principles/frameworks/skill/gallery ????????? PASS???? 4.1/5????????????????????????????????????????????????"
+    },
+    {
+      "slug": "john-von-neumann",
+      "name_zh": "约翰·冯·诺依曼",
+      "name_en": "John von Neumann",
+      "name_original": "John von Neumann / Neumann János Lajos (1903-1957)",
+      "primary_category": "inquiry",
+      "secondary_categories": [
+        "strategy",
+        "creation"
+      ],
+      "era": "1903-1957",
+      "distilled_on": "2026-06-02",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/john-von-neumann/",
+      "install_path": "john-von-neumann-wisdom",
+      "notes": "用户提供17份OCR素材（~1.9M tokens/39分片：一手随笔 The Mathematician/Can We Survive Technology?/计算机与人脑/书信选 + 二手 Burks自复制自动机/Poundstone囚徒困境/Oppenheimer听证）。因sub-agent前期撞1M-ctx信用点门槛，Stage1-4全程编排者内联（抽样7分片→56摘录）。中文7原则/英文8原则独立框架（中文将'造工具+先原理后实现'合并为一条工程方法论）。4个已知盲区含缓解。决策框架=5道过滤链（第4关含minimax四子闸）。质量评分4.75/5（隔离general-purpose子代理冷审，零幻觉，引用全程交叉核对）。关键设计：①身后时间边界（1957卒，现代AI/Axelrod迭代合作/计算规模均身后事，仅方法论推演+时间标记，禁第一人称伪造）；②盲区承重墙=minimax四闸内嵌预防性核打击批判性引用（cite-to-expose）；③Rule6二手全medium。⭐Stage5子代理审查门槛此次已解除（与苏轼时不同），后续可恢复并行子代理架构。首个 inquiry+strategy+creation 组合蒸馏。"
+    },
+    {
+      "slug": "otto-von-bismarck",
+      "name_zh": "奥托·冯·俾斯麦",
+      "name_en": "Otto von Bismarck",
+      "name_original": "Otto Eduard Leopold, Fürst von Bismarck (1815-1898)",
+      "primary_category": "strategy",
+      "secondary_categories": [
+        "governance",
+        "conduct"
+      ],
+      "era": "1815-1898",
+      "distilled_on": "2026-06-02",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/otto-von-bismarck/",
+      "install_path": "otto-von-bismarck-wisdom",
+      "notes": "用户提供15份素材（~2.95M tokens/62分片：一手 思考与回忆德文原著+三联中译/铁血演说1862/帝国国会1888/基辛根口授备忘录1877/埃姆斯电文自述/社会保险演说1881-84；二手 Steinberg/Pflanze/Taylor 三传记；中介转写 Moritz Busch餐桌谈话/Table Talk）。⚠️ 索引前剔除一份误下载（Pedro Calderón剧作全集，与俾斯麦《全集》同名搜错→隔离至 _excluded_non_bismarck/）。编排者内联定向采样（~9分片→user_sources 26全high + secondary 10medium + expression_dna 11）。英文7原则/中文6原则独立框架（中文将生存优先+渐进+福利合并、工具论+尽责合并，成语命名）。决策框架=5道过滤链（格局/生存优先/被迫还是主动/釜底抽薪/节制与传承）。4个已知盲区含缓解（操纵暗面+工具性反犹/文化斗争overreach/体系依赖操盘手不可传承/回忆录自辩+威权底色+时间边界1898卒）。质量评分4.75/5（隔离general-purpose子代理冷审，15条引文全部回源、零杜撰）。关键设计：①双语均译介中介（德语原声，zh/en皆重建声口非翻译腔）；②操纵类原则始终内联盲区暗面（防腹黑权术化）；③胡萝卜原则并陈反社会党人法大棒；④moderation-in-victory诚实标Taylor二手。首个 strategy+governance+conduct 组合蒸馏。"
+    },
+    {
+      "slug": "leonardo-da-vinci",
+      "name_zh": "达·芬奇",
+      "name_en": "Leonardo da Vinci",
+      "name_original": "Leonardo da Vinci (1452–1519)",
+      "primary_category": "creation",
+      "secondary_categories": [
+        "inquiry"
+      ],
+      "era": "文艺复兴 / 1452–1519",
+      "distilled_on": "2026-06-03",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/leonardo-da-vinci/",
+      "install_path": "leonardo-da-vinci-wisdom",
+      "notes": "creation+inquiry; local-first (Richter Notebooks + Isaacson); EN 8 / ZH 8; review PASS 4/5; restored vivid zh 禁忌 example"
+    },
+    {
+      "slug": "alexander-hamilton",
+      "name_zh": "亚历山大·汉密尔顿",
+      "name_en": "Alexander Hamilton",
+      "name_original": "Alexander Hamilton (1755/57–1804)",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "enterprise",
+        "strategy"
+      ],
+      "era": "美国建国时代。出身西印度群岛、孤苦白手起家，凭才智与勤勉跻身建国核心：华盛顿的战时副官、《联邦党人文集》主笔、首任财政部长（1789–1795）——美国公共信用、国家银行与制造业体系的总设计师。联邦党创始人；1804 年于与伯尔的决斗中身亡。",
+      "distilled_on": "2026-06-04",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/alexander-hamilton/",
+      "install_path": "alexander-hamilton-wisdom",
+      "notes": "用户提供17份一手素材（~4.4M tokens/24分片：《联邦党人文集》英文+权威中文译本/四大财政报告/Pacificus/雷诺兹小册子/制宪会议发言/致Morris·Carrington书信 + P3批判包Chernow·McDonald·Serfilippi奴隶制之争）。用户授权并行子代理，haiku采样10分片→user_sources 60全high(47en/13zh)。英文7原则/中文6原则独立框架（中文将发展型国家并入'以信立国'）。决策框架=7道过滤链(英)/6道(中)全yes/no门，末关'集中度自检'为活力vs自由的兜底护栏。5个已知盲区含缓解（戒惧群情→不信任民主／荣誉至上→党争与决斗／奴隶制存争议presented-as-dispute／集权→过度集中／音乐剧台词≠原话）。质量评分4/5（隔离general-purpose+haiku子代理冷审，8引文回源EXACT、零杜撰、未误报）。关键设计：①EN强ZH弱双语镜像（英语原声；中文据《联邦党人文集》权威译本重建，报告类引文保留英文原文标注）；②音乐剧台词5处设防；③制宪发言他人转录按medium置信度。⚠️教训：Windows控制台显示UTF-8中文乱码（python -c print）即便磁盘干净→须写文件+Read核验，勿信stdout与haiku自述。首个 governance+enterprise+strategy 组合蒸馏。"
+    },
+    {
+      "slug": "augustus",
+      "name_zh": "奥古斯都",
+      "name_en": "Augustus",
+      "name_original": "Gaius Octavius / Imperator Caesar Augustus",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "strategy",
+        "conduct"
+      ],
+      "era": "公元前63年-公元14年；罗马第一位皇帝，元首制奠基者",
+      "distilled_on": "2026-06-04",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/augustus/",
+      "install_path": "augustus-wisdom",
+      "notes": "Augustus wisdom skill: legitimacy-through-form, institutional order, restraint, and shadow-cost audit; validated Stage 1-5 on 2026-06-04."
+    },
+    {
+      "slug": "georgy-zhukov",
+      "name_zh": "????????",
+      "name_en": "Georgy Zhukov",
+      "name_original": "??????? ?????????????? ????? (1896-1974)",
+      "primary_category": "strategy",
+      "secondary_categories": [
+        "governance",
+        "resilience"
+      ],
+      "era": "1896-1974; Soviet Marshal, Red Army high command, Eastern Front, postwar occupation and civil-military politics",
+      "distilled_on": "2026-06-04",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/georgy-zhukov/",
+      "install_path": "georgy-zhukov-wisdom",
+      "notes": "Zhukov wisdom skill: user-provided Reminiscences and Reflections English/Russian texts plus archive, FRUS, Pamyat Naroda, CIA/FBIS, peer memoir, Roberts, and Glantz source packs. Stage 1 local corpus indexed into 18 shards/180 extracts -> user_sources 60. Stage 2 produced 23 candidate principles. Stage 3 selected 7 shared clusters: command vantage, named assignments, main danger, system learning, pressure boundary, multi-author attribution, and post-victory center recalculation. Bilingual SKILL.md passed sources/principles/frameworks/skill/gallery validation; review PASS 4.05/5. Remaining nonblocking risks: exact Russian conversational markers and some peer memoirs need deeper phrase-level extraction."
+    },
+    {
+      "slug": "kazuo-inamori",
+      "name_zh": "稻盛和夫",
+      "name_en": "Kazuo Inamori",
+      "name_original": "稻盛和夫（Kazuo Inamori, いなもり かずお）",
+      "primary_category": "enterprise",
+      "secondary_categories": [
+        "philosophy",
+        "conduct"
+      ],
+      "era": "1932—2022；京瓷与第二电电（KDDI）创始人，77岁临危重建日本航空，世称\"经营之圣\"",
+      "distilled_on": "2026-06-05",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/kazuo-inamori/",
+      "install_path": "kazuo-inamori-wisdom",
+      "notes": "经营+哲理+行事 三类组合；世称经营之圣。用户提供12份一手素材（3.92MB→23分片/977k tokens，采样9/23，含《活法》英译 A Compass to Fulfillment×2 补英文侧 + 日文PDF）。general-purpose+haiku 子代理并行采集/提取/合成。英文8原则/中文8原则独立框架（Rule4 非互译）；6道过滤链（作为人何谓正确→动机至善无私→付出不亚于任何人[自燃非压榨]→回到现场倾听产品与数字→核算透明→每日反省感谢）。5个已知盲区含缓解（付出努力↔过劳/karoshi张力、阿米巴可移植性、敬天爱人/哲学共有的教派化与个人崇拜、能力vs心性悖论、日航归因与框架普适性）。质量4.6/5（隔离子代理冷审：8条引文6 EXACT/1释义/1二手、零杜撰）。关键设计：①双语镜像李光耀——母语日语，中文译介生态强、英文为弱侧（采样双英文shard补足）；②过劳张力诚实呈现带mitigation、不美化hustle；③逝者时间锚2022-08-24；④英文草稿首版61K字符膨胀→tightening压到31K使中英平衡（1.7×）。"
+    },
+    {
+      "slug": "marcus-aurelius",
+      "name_zh": "马可·奥勒留",
+      "name_en": "Marcus Aurelius",
+      "name_original": "Marcus Aurelius Antoninus Augustus (121–180)",
+      "primary_category": "conduct",
+      "secondary_categories": [
+        "resilience",
+        "governance"
+      ],
+      "era": "121-180 CE",
+      "distilled_on": "2026-06-05",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/marcus-aurelius/",
+      "install_path": "marcus-aurelius-wisdom",
+      "notes": "用户提供《沉思录》(卡苏邦译本，完整文本，按卷.节溯源) + 哈多特《内在堡垒》(三项修炼/盲区视角)。隔离审查 4.6/5：8/9引文EXACT、零虚构，4句病毒式假引(含《角斗士》台词)均挡下。英文7原则/中文6原则独立框架；5个盲区含缓解；内置译文漂移与伪引护栏。以斯多葛'王座上的修炼'区别于塞涅卡。"
+    },
+    {
+      "slug": "zhang-juzheng",
+      "name_zh": "张居正",
+      "name_en": "Zhang Juzheng",
+      "name_original": "张居正（字叔大，号太岳，1525–1582）",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "enterprise",
+        "strategy"
+      ],
+      "era": "明 1525–1582；神宗（万历）朝内阁首辅(1572–1582)，万历新政总设计师",
+      "distilled_on": "2026-06-05",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/zhang-juzheng/",
+      "install_path": "zhang-juzheng-wisdom",
+      "notes": "治理+经营+谋略 三类组合（明代改革家首例）。用户提供13份素材（~24MB→86分片/3.32M tokens，index-and-sample-first 采样10分片）：一手 张居正奏疏集(潘林编,含考成法奠基疏《请稽查章奏随事考成以修实政疏》+陈六事疏)/《张太岳集》书牍(pdfjs干净抽取)/帝鉴图说直解；二手 明史本传+朱东润《张居正大传》+黄仁宇《万历十五年》(供盲区)。general-purpose+haiku 子代理分批采集，Stage2-4 编排者内联合成。英文6原则/中文7原则独立框架(Rule4)；中文7道过滤闸(实效→立限→用人→平准→财用→御争→担当+刹车)，英文6道。6个已知盲区含缓解(专权集权/夺情越礼/考成苛酷屈打成招/口言一概之平而容亲信压言官/人亡政息抄家/一条鞭技术改革天花板)，每条影射其所腐蚀的正面原则；原则7『任天下之重』内置刹车。质量4.9/5(隔离haiku冷审,7/7抽样引文EXACT、零杜撰、熊召政小说红线确认)。关键设计：①儒表法里——话语儒家、手段法家，作内在张力诚实呈现；②考成法=绩效问责/执行闭环(经营副类核心)；③ZH命脉/EN镜像(母语文言)；④逝者时间锚1582身后抄家以『人亡政息』鉴戒陈述、非第一人称；⑤已设防熊召政小说/电视剧对白误植 + Stage1 剔除帝鉴图说唐暨礼现代注评8条时代错置(选举权/纳税人/Acton)；⑥奏疏繁体OCR字形校读(放→于·宸里→宸衷)注于source_detail；⑦一条鞭法缺一手专疏、据黄仁宇二手降medium。"
+    }
+  ]
+}

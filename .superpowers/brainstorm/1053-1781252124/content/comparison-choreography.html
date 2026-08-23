@@ -1,0 +1,73 @@
+<h2>同一道题，前后版本怎么证明差异？</h2>
+<p class="subtitle">不是比较“哪段文案更好听”，而是让观众看见判断机制如何改变。点击选择一种主结构。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a-split-screen" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px;background:#ebe7df;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
+        <div style="background:#fff;padding:12px;border:1px solid #aaa;min-height:150px;">
+          <div class="label">V2 / 同时出现</div>
+          <strong>定框 → 诊断 → 开方 → 警示</strong>
+          <p>“你应当先识别主要矛盾……”</p>
+          <div style="margin-top:18px;color:#9a3d32;">固定流程被标红</div>
+        </div>
+        <div style="background:#fff;padding:12px;border:1px solid #666;min-height:150px;">
+          <div class="label">V5 / 同时出现</div>
+          <strong>先接住情境，再追问事实</strong>
+          <p>“你现在还不能判方向错了……”</p>
+          <div style="margin-top:18px;color:#346a4a;">判断动作被标绿</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 同时分屏</h3>
+      <p>比较最直接，但手机端文字密集，观众容易只扫措辞，不理解因果。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b-sequential-reveal" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px;background:#ebe7df;">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+        <div style="flex:1;background:#fff;padding:12px;border:1px solid #999;min-height:150px;">
+          <div class="label">先看 V2</div>
+          <strong>答案完整，但像一张使用说明</strong>
+          <p>画面逐步圈出：第二人称、四步框架、通用建议。</p>
+        </div>
+        <div style="font-size:26px;">→</div>
+        <div style="flex:1;background:#fff;padding:12px;border:2px solid #b95f3d;min-height:150px;">
+          <div class="label">再揭示 V5</div>
+          <strong>同一问题，先改变判断起点</strong>
+          <p>画面逐步圈出：承认情绪、调查分类、最小行动、反馈修正。</p>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 顺序揭示（建议）</h3>
+      <p>先让观众亲自感到 v2 的机械，再展示 v5 如何解决；横竖版都容易读。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c-forensic-verdict" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px;background:#e4e2dc;">
+      <div style="background:#fff;padding:12px;border:1px solid #777;min-height:150px;font-size:12px;">
+        <div class="label">取证桌 / 裁判尺</div>
+        <div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:6px;margin-top:8px;">
+          <strong>验收项</strong><strong>V2</strong><strong>V5</strong>
+          <span>找到主要矛盾</span><span style="color:#9a3d32;">部分</span><span style="color:#346a4a;">明确</span>
+          <span>先调查再判断</span><span style="color:#9a3d32;">弱</span><span style="color:#346a4a;">强</span>
+          <span>保留思想弹性</span><span style="color:#9a3d32;">低</span><span style="color:#346a4a;">待验证</span>
+        </div>
+        <p style="margin-top:14px;border-top:1px solid #bbb;padding-top:8px;">最后才展示原回答全文与文件哈希。</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 取证审判</h3>
+      <p>论证最严谨，但容易像评测报告，需要更强的情绪钩子才能避免课堂感。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">共同实验约束</div>
+  <p>同一问题 · 同一 DeepSeek 模型 · 同一 reasoning effort · 独立会话 · 仅替换 Skill 文件 · 原始输出不改写</p>
+</div>

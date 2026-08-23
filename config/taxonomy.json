@@ -1,0 +1,97 @@
+{
+  "version": "1.0",
+  "description": "Mind Distill Factory — 10 wisdom categories for classifying thinkers",
+  "classification_rule": "Each person: 1 primary + up to 2 secondary categories",
+  "categories": [
+    {
+      "id": "strategy",
+      "name_zh": "谋略",
+      "name_en": "Strategy & Decision",
+      "description_zh": "军事战略、博弈论、竞争思维、风险评估、时机把握",
+      "description_en": "Frameworks for competitive thinking, risk assessment, and decisive action under uncertainty",
+      "sub_themes": ["military-strategy", "game-theory", "risk-assessment", "competitive-positioning", "timing"],
+      "example_thinkers": ["sun-tzu", "clausewitz", "john-boyd", "bismarck", "zhuge-liang"]
+    },
+    {
+      "id": "philosophy",
+      "name_zh": "哲理",
+      "name_en": "Philosophy & Worldview",
+      "description_zh": "认识论、形而上学、伦理框架、意义建构、世界观",
+      "description_en": "Epistemology, metaphysics, ethics as framework, and meaning-making",
+      "sub_themes": ["epistemology", "ethics-framework", "metaphysics", "meaning-making", "logic"],
+      "example_thinkers": ["seneca", "zhuangzi", "nietzsche", "wittgenstein", "wang-yangming"]
+    },
+    {
+      "id": "governance",
+      "name_zh": "治理",
+      "name_en": "Governance & Power",
+      "description_zh": "政治哲学、制度设计、权力运用、领导群体、合法性构建",
+      "description_en": "Political philosophy, institutional design, leadership of groups, and legitimacy",
+      "sub_themes": ["political-philosophy", "institutional-design", "power-dynamics", "legitimacy", "statecraft"],
+      "example_thinkers": ["machiavelli", "han-feizi", "lincoln", "lee-kuan-yew", "deng-xiaoping"]
+    },
+    {
+      "id": "enterprise",
+      "name_zh": "经营",
+      "name_en": "Enterprise & Wealth",
+      "description_zh": "商业战略、投资思维、组织设计、价值创造、资源配置",
+      "description_en": "Business strategy, investment thinking, organizational design, and value creation",
+      "sub_themes": ["investment", "business-strategy", "organizational-design", "value-creation", "capital-allocation"],
+      "example_thinkers": ["charlie-munger", "rockefeller", "matsushita-konosuke", "andrew-grove", "buffett"]
+    },
+    {
+      "id": "inquiry",
+      "name_zh": "求知",
+      "name_en": "Inquiry & Discovery",
+      "description_zh": "科学方法、知识范式、范式转换、好奇心驱动、严谨求证",
+      "description_en": "Scientific method, intellectual rigor, paradigm shifts, and curiosity as method",
+      "sub_themes": ["scientific-method", "paradigm-shifts", "intellectual-rigor", "curiosity", "first-principles"],
+      "example_thinkers": ["feynman", "darwin", "marie-curie", "ibn-al-haytham", "tesla"]
+    },
+    {
+      "id": "creation",
+      "name_zh": "创造",
+      "name_en": "Creation & Craft",
+      "description_zh": "艺术过程、审美判断、创新方法、工匠精神、跨界融合",
+      "description_en": "Artistic process, aesthetic judgment, creative discipline, and innovation",
+      "sub_themes": ["artistic-process", "aesthetic-judgment", "innovation", "craftsmanship", "cross-discipline"],
+      "example_thinkers": ["leonardo-da-vinci", "miyamoto-musashi", "steve-jobs", "coco-chanel", "hokusai"]
+    },
+    {
+      "id": "conduct",
+      "name_zh": "行事",
+      "name_en": "Conduct & Character",
+      "description_zh": "个人伦理、习惯养成、人际关系、品格修炼、自律体系",
+      "description_en": "Personal ethics, habit formation, interpersonal relations, and integrity",
+      "sub_themes": ["personal-ethics", "habit-formation", "relationships", "self-discipline", "integrity"],
+      "example_thinkers": ["benjamin-franklin", "marcus-aurelius", "confucius", "gandhi", "zeng-guofan"]
+    },
+    {
+      "id": "resilience",
+      "name_zh": "磨砺",
+      "name_en": "Adversity & Resilience",
+      "description_zh": "逆境智慧、危机应对、坚韧不拔、情绪掌控、苦难转化",
+      "description_en": "Suffering as teacher, crisis response, perseverance, and emotional mastery",
+      "sub_themes": ["adversity-wisdom", "crisis-response", "perseverance", "emotional-mastery", "transformation"],
+      "example_thinkers": ["viktor-frankl", "mandela", "epictetus", "dostoevsky", "wen-tianxiang"]
+    },
+    {
+      "id": "pedagogy",
+      "name_zh": "教化",
+      "name_en": "Teaching & Influence",
+      "description_zh": "修辞说服、导师制、知识传递、文化塑造、启发式教育",
+      "description_en": "Rhetoric, persuasion, mentorship, knowledge transmission, and cultural change",
+      "sub_themes": ["rhetoric", "persuasion", "mentorship", "knowledge-transmission", "cultural-change"],
+      "example_thinkers": ["socrates", "maria-montessori", "dale-carnegie", "confucius", "dewey"]
+    },
+    {
+      "id": "lifedesign",
+      "name_zh": "生活",
+      "name_en": "Life Design & Balance",
+      "description_zh": "健康养生、人际关系、日常节律、老龄智慧、闲暇艺术、实用智慧",
+      "description_en": "Health, relationships, daily routines, aging, leisure, and practical wisdom",
+      "sub_themes": ["health", "daily-routines", "relationships", "leisure", "practical-wisdom"],
+      "example_thinkers": ["montaigne", "thoreau", "epicurus", "benjamin-franklin", "lin-yutang"]
+    }
+  ]
+}
