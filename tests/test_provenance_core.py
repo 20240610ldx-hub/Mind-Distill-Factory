@@ -147,6 +147,14 @@ class SkillQuoteExtractionTests(unittest.TestCase):
         quotes = prov.extract_skill_quotes(self.SKILL)
         self.assertNotIn("空文", [q for _, q in quotes])
 
+    def test_extract_skill_quotes_tolerates_heading_drift(self) -> None:
+        text = (
+            "## 标志性名言与佳句\n\n"
+            "- 「毋得彼此推诿，徒托空言」——《陈六事疏》\n"
+        )
+        quotes = prov.extract_skill_quotes(text)
+        self.assertIn("毋得彼此推诿，徒托空言", [q for _, q in quotes])
+
 
 class GateTests(unittest.TestCase):
     def _write(self, root: Path, skill: str, evidence: str, corpus: str) -> None:
@@ -236,6 +244,40 @@ class GateTests(unittest.TestCase):
                 root / "output" / "demo" / "references" / "evidence.md", "demo", root
             )
             self.assertEqual(errors, [])
+
+    def test_p1_fails_on_citation_quote_that_wraps_to_next_line(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._write(
+                root,
+                "**原文出处：**「如此，月有考，\n岁有稽」——《疏》\n",
+                "### 原则 1：甲\n\n> 如此，月有考，岁有稽\n\n- confidence：high\n",
+                "如此，月有考，岁有稽，不惟使声必中实。",
+            )
+            errors = prov.check_p1_quote_closure(
+                root / "output" / "demo" / "SKILL.md",
+                root / "output" / "demo" / "references" / "evidence.md",
+            )
+            self.assertTrue(
+                any(e.startswith("P1_UNPARSEABLE_CITATION") for e in errors)
+            )
+
+    def test_p2_reports_empty_corpus_distinctly(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "output" / "demo"
+            out.mkdir(parents=True)
+            refs = out / "references"
+            refs.mkdir()
+            (refs / "evidence.md").write_text(
+                "### 原则 1：甲\n\n> 月有考\n\n- confidence：high\n", encoding="utf-8"
+            )
+            # 故意不创建 sources/demo/raw —— load_corpus 返回空列表
+            errors = prov.check_p2_corpus_closure(
+                refs / "evidence.md", "demo", root
+            )
+            self.assertEqual(len(errors), 1)
+            self.assertTrue(errors[0].startswith("EMPTY_CORPUS"))
 
 
 if __name__ == "__main__":

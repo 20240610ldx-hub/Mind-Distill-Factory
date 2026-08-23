@@ -125,7 +125,9 @@ def parse_evidence_cards(text: str) -> list[dict]:
 
 BRACKET_QUOTE_RE = re.compile(r"「([^」]+)」")
 SOURCE_LINE_RE = re.compile(r"^\*\*原文出处：\*\*(.*)$", re.MULTILINE)
-QUOTES_SECTION_RE = re.compile(r"^##\s*标志性名言\s*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL)
+QUOTES_SECTION_RE = re.compile(
+    r"^##(?!#)[^\n]*标志性名言[^\n]*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL
+)
 
 
 def extract_skill_quotes(text: str) -> list[tuple[str, str]]:
@@ -155,10 +157,29 @@ def check_p1_quote_closure(skill_md: Path, evidence_md: Path) -> list[str]:
         return [f"MISSING: {skill_md}"]
     if not evidence_md.exists():
         return [f"MISSING: {evidence_md}"]
+    skill_text = skill_md.read_text(encoding="utf-8")
     cards = parse_evidence_cards(evidence_md.read_text(encoding="utf-8"))
     haystack = [normalize(card["verbatim"]) for card in cards]
     errors: list[str] = []
-    for label, quote in extract_skill_quotes(skill_md.read_text(encoding="utf-8")):
+
+    quotes = extract_skill_quotes(skill_text)
+    source_markers = list(SOURCE_LINE_RE.finditer(skill_text))
+    harvested_source_quotes = sum(1 for label, _ in quotes if label == "原文出处")
+    if len(source_markers) > harvested_source_quotes:
+        # 失败关闭：某条「原文出处：」行未能解析出可闭合的「」引文（例如引文跨行
+        # 断裂），不能被静默跳过——看不见不等于合规，必须报错而非放行。
+        for match in source_markers:
+            if BRACKET_QUOTE_RE.search(match.group(1)) is not None:
+                continue
+            snippet = match.group(0).strip()
+            if len(snippet) > 80:
+                snippet = snippet[:80] + "…"
+            errors.append(
+                f"P1_UNPARSEABLE_CITATION: {skill_md} 原文出处行未能解析出可闭合的"
+                f"「」引文: {snippet}"
+            )
+
+    for label, quote in quotes:
         probe = normalize(quote)
         if not probe:
             continue
