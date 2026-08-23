@@ -277,5 +277,90 @@ class PackageStageTests(unittest.TestCase):
             self.assertTrue(any("voice.md" in e for e in errors))
 
 
+class FormatDetectionTests(unittest.TestCase):
+    LEGACY = (
+        "---\nname: demo-wisdom\n"
+        "description: Apply demo frameworks. 运用示例框架。\n---\n\n"
+        "# Language Detection · 语言检测\n\n"
+        "## English\n\n### Identity Card\n略\n\n"
+        "## 中文版\n\n### 身份卡\n略\n"
+    )
+
+    def test_detects_v6_by_format_version(self) -> None:
+        self.assertTrue(validator.is_v6_skill(build_skill_md()))
+
+    def test_detects_legacy_when_format_version_absent(self) -> None:
+        self.assertFalse(validator.is_v6_skill(self.LEGACY))
+
+    def test_v6_skill_stage_does_not_demand_english_block(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                fx = PackageFixture(td)
+                os.chdir(fx.root)
+                errors = validator.validate_skill("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertFalse(any("## English" in e for e in errors))
+            self.assertFalse(any("MISSING_LANG_DETECTION" in e for e in errors))
+
+    def test_legacy_skill_stage_still_demands_english_block(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                (out / "SKILL.md").write_text(
+                    self.LEGACY.replace("## English\n\n### Identity Card\n略\n\n", ""),
+                    encoding="utf-8",
+                )
+                os.chdir(td)
+                errors = validator.validate_skill("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(any("'## English'" in e for e in errors))
+
+
+class FrameworksLanguageTests(unittest.TestCase):
+    def _write_core(self, out: Path) -> None:
+        (out / "framework_core.json").write_text(
+            json.dumps({"person_slug": "demo", "principle_clusters": [{"cluster_id": "cluster_001"}]}),
+            encoding="utf-8",
+        )
+
+    def test_missing_en_framework_is_not_an_error_when_zh_only(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                self._write_core(out)
+                (out / "frameworks.zh.json").write_text("{}", encoding="utf-8")
+                os.chdir(td)
+                errors = validator.validate_frameworks("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertFalse(
+                any(e.startswith("MISSING:") and "frameworks.en.json" in e for e in errors)
+            )
+
+    def test_missing_en_framework_is_an_error_when_en_requested(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                self._write_core(out)
+                (out / "frameworks.zh.json").write_text("{}", encoding="utf-8")
+                (out / "en_requested.flag").write_text("yes", encoding="utf-8")
+                os.chdir(td)
+                errors = validator.validate_frameworks("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(
+                any(e.startswith("MISSING:") and "frameworks.en.json" in e for e in errors)
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

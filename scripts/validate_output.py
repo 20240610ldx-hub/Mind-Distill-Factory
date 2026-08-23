@@ -329,9 +329,10 @@ def validate_frameworks(slug: str) -> list[str]:
             expected_outputs = {
                 "framework_core": output_dir / "framework_core.json",
                 "framework_zh": output_dir / "frameworks.zh.json",
-                "framework_en": output_dir / "frameworks.en.json",
                 "alignment_review": output_dir / "framework_alignment_review.md",
             }
+            if en_branch_requested(slug):
+                expected_outputs["framework_en"] = output_dir / "frameworks.en.json"
             for unit_id in status.get("completed_units", []):
                 expected = expected_outputs.get(unit_id)
                 if expected and not expected.exists():
@@ -339,7 +340,8 @@ def validate_frameworks(slug: str) -> list[str]:
         except Exception as e:
             errors.append(f"STAGE3_STATUS_PARSE_ERROR: {stage3_status_path}: {e}")
 
-    for lang in ["zh", "en"]:
+    langs = ["zh", "en"] if en_branch_requested(slug) else ["zh"]
+    for lang in langs:
         fw_file = output_dir / f"frameworks.{lang}.json"
         errors.extend(validate_json_file(fw_file, FRAMEWORK_SCHEMA["required_fields"]))
         if fw_file.exists():
@@ -400,8 +402,10 @@ def validate_frameworks(slug: str) -> list[str]:
             except Exception as e:
                 errors.append(f"PARSE_ERROR: {fw_file}: {e}")
 
-    # Cross-check: blind spots must cover same themes
+    # Cross-check: blind spots must cover same themes（仅在英文分支启用时）
     try:
+        if not en_branch_requested(slug):
+            return errors
         zh_data = read_json_file(output_dir / "frameworks.zh.json")
         en_data = read_json_file(output_dir / "frameworks.en.json")
         zh_bs = len(zh_data.get("blind_spots", []))
@@ -426,6 +430,19 @@ def validate_frameworks(slug: str) -> list[str]:
     return errors
 
 
+def is_v6_skill(content: str) -> bool:
+    """v6 包由 frontmatter 的 format_version 判定；无此字段一律按 legacy 处理。"""
+    return bool(re.search(
+        rf"^format_version:\s*{PACKAGE_SCHEMA['format_version']}\s*$",
+        content, re.MULTILINE,
+    ))
+
+
+def en_branch_requested(slug: str) -> bool:
+    """英文分支是否已被用户选用（Stage 6.5 落 en_requested.flag）。"""
+    return Path(f"output/{slug}/en_requested.flag").exists()
+
+
 def validate_skill(slug: str) -> list[str]:
     """Validate the merged SKILL.md file (bilingual single-file format).
 
@@ -438,6 +455,8 @@ def validate_skill(slug: str) -> list[str]:
     # ── Try merged SKILL.md first (preferred format) ──
     merged_file = output_dir / "SKILL.md"
     if merged_file.exists():
+        if is_v6_skill(merged_file.read_text(encoding="utf-8")):
+            return validate_package(slug)
         return _validate_merged_skill(merged_file, slug)
 
     # ── Fallback: separate SKILL.{lang}.md files ──
