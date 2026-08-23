@@ -95,6 +95,13 @@ class P3PathResolutionTests(unittest.TestCase):
             self.assertEqual(len(errors), 1)
             self.assertTrue(errors[0].startswith("P3_DANGLING_PATH"))
 
+    def test_p3_fails_on_path_that_only_resolves_from_repo_root(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_skill(build_skill_md(extra="详见 `config/defaults.json`。"))
+            errors = validator.check_p3_paths(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P3_DANGLING_PATH") for e in errors))
+
 
 class P4CaseCoverageTests(unittest.TestCase):
     def test_passes_with_two_cases_per_cluster_and_a_counter_case(self) -> None:
@@ -127,6 +134,20 @@ class P4CaseCoverageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             fx = PackageFixture(td)
             fx.write_cases(clusters=1, counter=False)
+            errors = validator.check_p4_cases(fx.refs / "cases.md", ["cluster_001"])
+            self.assertTrue(any(e.startswith("P4_NO_COUNTER_CASE") for e in errors))
+
+    def test_p4_ignores_prose_mention_of_counter_example(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_ref(
+                "cases.md",
+                "### 案例 1：甲（case_id: demo-a-1，high）\n\n"
+                "**对应原则簇：** cluster_001\n\n"
+                "**情境：** 对方提出了一个反例，但我坚持原判。\n\n"
+                "### 案例 2：乙（case_id: demo-b-1，high）\n\n"
+                "**对应原则簇：** cluster_001\n\n**情境：** 略。\n",
+            )
             errors = validator.check_p4_cases(fx.refs / "cases.md", ["cluster_001"])
             self.assertTrue(any(e.startswith("P4_NO_COUNTER_CASE") for e in errors))
 
@@ -170,6 +191,23 @@ class P5IndexConsistencyTests(unittest.TestCase):
             errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
             self.assertTrue(any(e.startswith("P5_CASE_NOT_INDEXED") for e in errors))
 
+    def test_p5_ignores_case_id_mentioned_outside_index_section(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_cases(clusters=1, counter=False)
+            extra = (
+                "## 案例索引\n\n"
+                "| 案例 | 触发情境 | case_id |\n|---|---|---|\n"
+                "| 示例 | 情境甲 | demo-c1-1 |\n\n"
+                "## 附录\n\n"
+                "另可参见 case_id: demo-c1-2 的教训。\n"
+            )
+            fx.write_skill(build_skill_md(extra=extra))
+            errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
+            self.assertTrue(
+                any(e.startswith("P5_CASE_NOT_INDEXED") and "demo-c1-2" in e for e in errors)
+            )
+
 
 class P6CoreSelfSufficiencyTests(unittest.TestCase):
     def test_passes_with_all_eight_sections_under_line_cap(self) -> None:
@@ -205,6 +243,21 @@ class P6CoreSelfSufficiencyTests(unittest.TestCase):
             fx.write_skill(build_skill_md(extra="填充行\n" * 600))
             errors = validator.check_p6_core(fx.out / "SKILL.md")
             self.assertTrue(any(e.startswith("P6_TOO_LONG") for e in errors))
+
+    def test_p6_fails_when_section_exists_only_as_nested_subheading(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            sections = [s for s in CORE_SECTIONS if s != "决策框架"]
+            extra = (
+                "## 案例索引\n\n"
+                "#### 决策框架应用示例\n\n"
+                "此处内容非空，用于验证嵌套子标题不应被误判为核心章节。\n"
+            )
+            fx.write_skill(build_skill_md(sections=sections, extra=extra))
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(
+                any(e.startswith("P6_MISSING_SECTION") and "决策框架" in e for e in errors)
+            )
 
 
 class PackageStageTests(unittest.TestCase):

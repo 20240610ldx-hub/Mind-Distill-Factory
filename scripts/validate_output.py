@@ -509,6 +509,7 @@ BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:md|json|py|txt))`")
 CASE_ID_RE = re.compile(r"case_id:\s*([A-Za-z0-9_-]+)")
 CASE_CLUSTER_RE = re.compile(r"^\*\*对应原则簇：\*\*\s*(\S+)\s*$", re.MULTILINE)
 CASE_HEADING_RE = re.compile(r"^###\s+.*$", re.MULTILINE)
+CASE_COUNTER_FIELD_RE = re.compile(r"^\*\*反例[:：]\*\*", re.MULTILINE)
 
 
 def check_p3_paths(skill_md: Path) -> list[str]:
@@ -519,7 +520,7 @@ def check_p3_paths(skill_md: Path) -> list[str]:
     errors = []
     for match in BACKTICK_PATH_RE.finditer(skill_md.read_text(encoding="utf-8")):
         rel = match.group(1)
-        if (base / rel).exists() or Path(rel).exists():
+        if (base / rel).exists():
             continue
         errors.append(f"P3_DANGLING_PATH: {skill_md}: `{rel}` 无法解析到实际文件")
     return errors
@@ -537,7 +538,7 @@ def _parse_cases(cases_md: Path) -> list[dict]:
         cases.append({
             "case_id": case_id.group(1) if case_id else None,
             "cluster": cluster.group(1) if cluster else None,
-            "is_counter": "反例" in block,
+            "is_counter": bool(CASE_COUNTER_FIELD_RE.search(block)),
         })
     return cases
 
@@ -570,14 +571,17 @@ def check_p5_index(skill_md: Path, cases_md: Path) -> list[str]:
         return [f"MISSING: {skill_md}"]
     if not cases_md.exists():
         return [f"MISSING: {cases_md}"]
-    indexed = set(CASE_ID_RE.findall(skill_md.read_text(encoding="utf-8")))
+    content = skill_md.read_text(encoding="utf-8")
     section = re.search(
         r"^##\s*案例索引\s*$(.*?)(?=^##\s|\Z)",
-        skill_md.read_text(encoding="utf-8"),
+        content,
         re.MULTILINE | re.DOTALL,
     )
+    indexed = set()
     if section:
-        for line in section.group(1).splitlines():
+        index_text = section.group(1)
+        indexed.update(CASE_ID_RE.findall(index_text))
+        for line in index_text.splitlines():
             if line.strip().startswith("|"):
                 for cell in line.split("|"):
                     token = cell.strip()
@@ -604,11 +608,11 @@ def check_p6_core(skill_md: Path) -> list[str]:
             f"P6_TOO_LONG: {skill_md}: {line_count} 行 > "
             f"{PACKAGE_SCHEMA['skill_max_lines']} 行上限"
         )
-    headings = list(re.finditer(r"^#{2,4}\s*(.+?)\s*$", content, re.MULTILINE))
+    headings = list(re.finditer(r"^(#{2,4})\s*(.+?)\s*$", content, re.MULTILINE))
     for name in PACKAGE_SCHEMA["core_sections"]:
         hit = None
         for i, match in enumerate(headings):
-            if name in match.group(1):
+            if match.group(1) == "##" and match.group(2).startswith(name):
                 end = headings[i + 1].start() if i + 1 < len(headings) else len(content)
                 hit = content[match.end():end].strip()
                 break
