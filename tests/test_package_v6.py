@@ -388,6 +388,38 @@ class FormatDetectionTests(unittest.TestCase):
             # '## English' block as a v6 violation.
             self.assertFalse(any("V6_HAS_ENGLISH_BLOCK" in e for e in errors))
 
+    def test_validate_package_rejects_legacy_doc_mentioning_v6_in_body(self) -> None:
+        legacy_with_v6_example = (
+            "---\nname: demo-wisdom\n"
+            "description: Apply demo frameworks. 运用示例框架。\n---\n\n"
+            "# Language Detection · 语言检测\n\n"
+            "## English\n\n### Identity Card\n略\n\n"
+            "Example v6 frontmatter:\n\n```yaml\nformat_version: 6\n```\n\n"
+            "## 中文版\n\n### 身份卡\n略\n"
+        )
+        self.assertFalse(validator.is_v6_skill(legacy_with_v6_example))
+
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                (out / "SKILL.md").write_text(legacy_with_v6_example, encoding="utf-8")
+                os.chdir(td)
+                errors = validator.validate_package("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(any(e.startswith("NOT_V6:") for e in errors))
+            # Drift-catching assertion (same pattern as the Task 6
+            # is_v6_package/is_v6_skill pinning test): validate_package's v6
+            # classification must agree with is_v6_skill on identical content, so
+            # future drift between the anchored discriminator and any
+            # substring/regex shortcut fails the suite immediately.
+            self.assertEqual(
+                any(e.startswith("NOT_V6:") for e in errors),
+                not validator.is_v6_skill(legacy_with_v6_example),
+            )
+
     def test_v6_detected_despite_incidental_whitespace(self) -> None:
         space_before_colon = (
             "---\nname: demo-wisdom\nformat_version : 6\n"

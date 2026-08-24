@@ -696,7 +696,7 @@ def validate_package(slug: str) -> list[str]:
         return [f"MISSING: {skill_md}"]
 
     content = skill_md.read_text(encoding="utf-8")
-    if f"format_version: {PACKAGE_SCHEMA['format_version']}" not in content:
+    if not is_v6_skill(content):
         errors.append(
             f"NOT_V6: {skill_md}: frontmatter 缺少 "
             f"'format_version: {PACKAGE_SCHEMA['format_version']}'"
