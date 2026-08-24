@@ -1,6 +1,5 @@
 ---
 name: {person-slug}-wisdom
-format_version: 6
 description: >-
   Apply {person_name_en}'s {primary_domain_en} frameworks for {category_description_en}.
   Triggers: {person_name_en}, {keyword_list_en}
@@ -8,11 +7,19 @@ argument-hint: <describe your situation or decision / 描述你面临的决策�
 ---
 
 <!--
-  v6 EN package. Produced ONLY by the on-demand English branch (Stage 6.5),
-  never on the default path. Installs to {person-slug}-wisdom-en/ as a SEPARATE skill.
-  Same hard constraints as the zh core: format_version: 6, <=500 lines,
-  no language-detection header, no ## 中文版 block.
-  Attachments live in references/{cases,evidence,voice}.md, same contracts as zh.
+  EN branch, produced ONLY by the on-demand English path (Stage 6.5), never on the
+  default path. Installs to {person-slug}-wisdom-en/ as a SEPARATE skill.
+
+  NOT a v6 package. This template deliberately omits `format_version: 6` so
+  scripts/validate_output.py routes it through the legacy single-file skill
+  validator (_validate_merged_skill) instead of the v6 package gates (P1-P6) —
+  because it would fail every one of them: the required section names P6 checks
+  are Chinese literals, P1's quote markers are Chinese literals (harvesting zero
+  quotes here), and this template has no references/{cases,evidence,voice}.md,
+  no 附件调用 table, and no 案例索引. v6 support for English is not implemented;
+  this is a conscious scope decision, not an oversight — see CRITICAL/IMPORTANT
+  findings in the 2026-08-23 skill-package-v6 final review for the reasoning.
+
   Rule 4 still applies WITHIN this branch: this is an independent cognitive
   reconstruction from framework_core.json, NOT a translation of the Chinese version.
 -->

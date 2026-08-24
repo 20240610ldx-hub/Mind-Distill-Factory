@@ -51,7 +51,7 @@ A distilled Skill ships as a **package**, not a single file:
 
 `人物档案.md` is a human-readable dossier. It goes to `output/` and `gallery/` but **never** into the install directory.
 
-Gates P1–P6 (`python scripts/validate_output.py package {slug}`) are all rule-based — no LLM scoring — because an LLM reviewer graded 7/7 quotes "EXACT" on a set where 4 of 14 were not verbatim.
+Gates P1–P6 (`python scripts/validate_output.py package {slug}`) are all rule-based — no LLM scoring — because an LLM reviewer graded 7/7 quotes "EXACT" on a set where 4 of 15 were not verbatim.
 
 ## Anti-Formula Design (v5) — Immersive Perspective + Structural Naturalness + Boundary Awareness
 

@@ -45,7 +45,6 @@ def run_command(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout, proc.stderr
 
 
-INSTALL_WHITELIST = ("SKILL.md", "references")
 DOSSIER_NAME = "人物档案.md"
 REFERENCE_DIR = "references"
 
@@ -107,25 +106,20 @@ def file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def write_manifest(gallery_dir: Path, copied: list[str]) -> Path:
-    """写 gallery/{slug}/manifest.json，含每个文件的 sha256。"""
+def write_manifest(gallery_dir: Path, copied: list[str], is_v6: bool) -> Path:
+    """写 gallery/{slug}/manifest.json，含每个文件的 sha256。
+
+    format_version 必须反映实际检测到的包格式——legacy 发布（is_v6=False）不能被
+    打上 6 的戳，否则会跟同一次运行打印的 format_version=legacy 与
+    index.json 里记的 format_version: 1 互相矛盾。
+    """
     manifest = {
-        "format_version": 6,
+        "format_version": 6 if is_v6 else 1,
         "files": {rel: file_sha256(gallery_dir / rel) for rel in sorted(copied)},
     }
     path = gallery_dir / "manifest.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
-
-
-def install_paths(gallery_dir: Path) -> list[Path]:
-    """只有白名单内的路径进 ~/.claude/skills/——档案留在 gallery。"""
-    result = []
-    for name in INSTALL_WHITELIST:
-        candidate = gallery_dir / name
-        if candidate.exists():
-            result.append(candidate)
-    return result
 
 
 def main() -> int:
@@ -208,7 +202,7 @@ def main() -> int:
     try:
         v6 = is_v6_package(output_skill)
         copied = copy_package(output_dir, gallery_dir, is_v6=v6)
-        manifest_path = write_manifest(gallery_dir, copied)
+        manifest_path = write_manifest(gallery_dir, copied, is_v6=v6)
         print(f"  Copied {len(copied)} file(s) to {gallery_dir}: {', '.join(copied)}")
         print(f"  Wrote {manifest_path.name} (format_version={'6' if v6 else 'legacy'})")
     except Exception as e:
@@ -231,6 +225,12 @@ def main() -> int:
 
     current_date = dt.date.today().isoformat()
 
+    # "lang": "zh" only means something for a v6 package (zh-only core; English is a
+    # separate {slug}-en skill). A legacy skill is a single bilingual file — stamping
+    # "zh" on it would misrepresent it as zh-only on every republish, so the field is
+    # only set for v6 publishes and left untouched/absent otherwise (matching the
+    # pre-v6 status quo: none of the existing legacy gallery/index.json entries carry
+    # a "lang" key today).
     if entry:
         print(f"Updating existing index entry for '{slug}'...")
         entry["name_zh"] = name_zh
@@ -241,7 +241,8 @@ def main() -> int:
         entry["era"] = era
         entry["distilled_on"] = current_date
         entry["review_status"] = "PASS"
-        entry["lang"] = "zh"
+        if v6:
+            entry["lang"] = "zh"
         entry["format_version"] = 6 if v6 else 1
         entry["has_attachments"] = v6
         if args.notes:
@@ -262,10 +263,11 @@ def main() -> int:
             "skill_dir": f"gallery/{slug}/",
             "install_path": f"{slug}-wisdom",
             "notes": args.notes or f"Distilled skill for {name_en}.",
-            "lang": "zh",
             "format_version": 6 if v6 else 1,
             "has_attachments": v6,
         }
+        if v6:
+            new_entry["lang"] = "zh"
         skills_list.append(new_entry)
 
     save_json(index_file, index_data)

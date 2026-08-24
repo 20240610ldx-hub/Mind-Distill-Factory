@@ -136,11 +136,16 @@ def _find_divergences(json_view: dict, skill_md_view: dict) -> dict:
 
     只有 core_principles[].original_quote ↔ SKILL.md 中文版「**原文出处：**」行
     是同一条引文在两个产物里的对应渲染，且两边都按原则编号的文档顺序出现，因此
-    按位对齐（第 N 个 principle ↔ 第 N 条「原文出处」）。signature_quotes /
-    signature_quote_header 在 SKILL.md 里没有可解析的对应位置——「标志性名言」
-    表格用的是三级标题，而 extract_skill_quotes 的 QUOTES_SECTION_RE 只认二级
-    标题，因此匹配不到任何「标志性名言」行（这是 verify_provenance.py 的既有
-    行为，本工具按约束不改动它）——故不参与本比对。
+    按位对齐（第 N 个 principle ↔ 第 N 条「原文出处」）。signature_quotes 在
+    SKILL.md 里没有可解析的对应位置——「标志性名言」表格用的是三级标题，而
+    extract_skill_quotes 的 QUOTES_SECTION_RE 只认二级标题，因此匹配不到任何
+    「标志性名言」行。signature_quote_header（顶层签名引言）如今不再是无解析
+    位置——extract_skill_quotes 已扩展为同时扫描首个 `##` 标题之前的顶部题记
+    blockquote（打标签 "epigraph"），v6 包与 v6 模板都恰好把签名引言渲染在这个
+    位置。但本仓库现有的合并双语 legacy 版式里，第一个 `##` 标题就是
+    「## English」，题记（无论中英文版）都渲染在它之后，所以这条新路径对
+    legacy 文件仍不命中——故 signature_quote_header 依旧不参与本比对，只是原因
+    变了：不是「无法解析」，而是「legacy 版式里题记位置晚于首个 `##`」。
 
     按位对齐这个假设本身可能不成立：如果某个 Skill 的 SKILL.md 渲染出的
     「原文出处」行数与 JSON 的 principle 数不一致（缺章节、标题变体、装配器

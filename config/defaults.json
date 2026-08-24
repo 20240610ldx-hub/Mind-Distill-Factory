@@ -19,6 +19,7 @@
     "dossier_in_install_dir": false
   },
   "distillation": {
+    "_comment": "min/max_principles here are v6 targets consumed by agent prompts (framework-synthesizer-zh/en, skill-assembler) — not read by scripts/validate_output.py, which enforces its own module-level constants instead (FRAMEWORK_SCHEMA_V6_PRINCIPLES 8-11 for v6, FRAMEWORK_SCHEMA 5-8 for legacy). The two happen to agree for v6; this field does not drive that agreement.",
     "min_principles": 8,
     "max_principles": 11,
     "principle_target_chars": 900,

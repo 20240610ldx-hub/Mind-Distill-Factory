@@ -128,11 +128,28 @@ SOURCE_LINE_RE = re.compile(r"^\*\*原文出处：\*\*(.*)$", re.MULTILINE)
 QUOTES_SECTION_RE = re.compile(
     r"^##(?!#)[^\n]*标志性名言[^\n]*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL
 )
+FIRST_H2_RE = re.compile(r"^##(?!#)", re.MULTILINE)
+BLOCKQUOTE_LINE_RE = re.compile(r"^>\s?(.*)$")
 
 
 def extract_skill_quotes(text: str) -> list[tuple[str, str]]:
-    """只从两处结构化位置提取引文：原文出处行、标志性名言章节。"""
+    """从三处结构化位置提取引文：顶部题记、原文出处行、标志性名言章节。
+
+    顶部题记（epigraph）指首个 `##` 标题之前出现的 `> ` 引用行——v6 核心模板与
+    样板包都只在这一位置放一句题记式签名引言，此前完全不在扫描范围内，是
+    SKILL.md 里最显眼的一句引文却零覆盖。只扫描首个 `##` 之前的区域，不影响
+    正文中出现在其他章节里的普通 blockquote。
+    """
     found: list[tuple[str, str]] = []
+    first_heading = FIRST_H2_RE.search(text)
+    header_region = text[:first_heading.start()] if first_heading else text
+    for line in header_region.splitlines():
+        match = BLOCKQUOTE_LINE_RE.match(line.strip())
+        if not match:
+            continue
+        inner = BRACKET_QUOTE_RE.search(match.group(1))
+        if inner:
+            found.append(("epigraph", inner.group(1)))
     for match in SOURCE_LINE_RE.finditer(text):
         inner = BRACKET_QUOTE_RE.search(match.group(1))
         if inner:

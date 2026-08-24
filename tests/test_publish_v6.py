@@ -100,13 +100,19 @@ class IsV6PackageTests(unittest.TestCase):
             self.assertTrue(publisher.is_v6_package(path_b))
 
 
-class InstallWhitelistTests(unittest.TestCase):
-    def test_dossier_is_not_in_install_whitelist(self) -> None:
-        self.assertNotIn("人物档案.md", publisher.INSTALL_WHITELIST)
+class InstallIsManualNotScriptedTests(unittest.TestCase):
+    """install_paths()/INSTALL_WHITELIST used to sit in publish_skill.py entirely
+    unwired — main() never called install_paths(), so the whitelist it encoded was
+    dead code exercised only by tests. The real ~/.claude/skills/ install is done by
+    hand in commands/distill.md Sec 6.3 (same SKILL.md + references/ whitelist,
+    stated in prose there). Chosen over wiring install_paths() in: doing so would make
+    this script write outside the repo into the user's real ~/.claude/skills/
+    directory — a materially larger behavior change than a review fix-wave should
+    introduce, and untested here."""
 
-    def test_whitelist_contains_skill_and_references(self) -> None:
-        self.assertIn("SKILL.md", publisher.INSTALL_WHITELIST)
-        self.assertIn("references", publisher.INSTALL_WHITELIST)
+    def test_install_paths_helper_removed(self) -> None:
+        self.assertFalse(hasattr(publisher, "install_paths"))
+        self.assertFalse(hasattr(publisher, "INSTALL_WHITELIST"))
 
 
 class ManifestTests(unittest.TestCase):
@@ -116,7 +122,7 @@ class ManifestTests(unittest.TestCase):
             out = build_v6_output(root)
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=True)
-            manifest_path = publisher.write_manifest(gallery, copied)
+            manifest_path = publisher.write_manifest(gallery, copied, is_v6=True)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(sorted(manifest["files"].keys()), sorted(copied))
             for digest in manifest["files"].values():
@@ -128,12 +134,32 @@ class ManifestTests(unittest.TestCase):
             out = build_v6_output(root)
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=True)
-            first = json.loads(publisher.write_manifest(gallery, copied).read_text(encoding="utf-8"))
+            first = json.loads(
+                publisher.write_manifest(gallery, copied, is_v6=True).read_text(encoding="utf-8")
+            )
             (gallery / "references" / "cases.md").write_text("# changed\n", encoding="utf-8")
-            second = json.loads(publisher.write_manifest(gallery, copied).read_text(encoding="utf-8"))
+            second = json.loads(
+                publisher.write_manifest(gallery, copied, is_v6=True).read_text(encoding="utf-8")
+            )
             self.assertNotEqual(
                 first["files"]["references/cases.md"], second["files"]["references/cases.md"]
             )
+
+    def test_manifest_records_format_version_1_for_legacy_publish(self) -> None:
+        # Regression: write_manifest used to hardcode "format_version": 6
+        # unconditionally, even for a legacy (non-v6) publish — contradicting the
+        # same run's own stdout ("format_version=legacy") and gallery/index.json's
+        # "format_version": 1 for the identical publish.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "output" / "demo"
+            out.mkdir(parents=True)
+            (out / "SKILL.md").write_text("---\nname: demo-wisdom\n---\n", encoding="utf-8")
+            gallery = root / "gallery" / "demo"
+            copied = publisher.copy_package(out, gallery, is_v6=False)
+            manifest_path = publisher.write_manifest(gallery, copied, is_v6=False)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["format_version"], 1)
 
 
 if __name__ == "__main__":

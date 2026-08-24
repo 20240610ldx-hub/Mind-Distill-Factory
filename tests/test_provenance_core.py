@@ -155,6 +155,31 @@ class SkillQuoteExtractionTests(unittest.TestCase):
         quotes = prov.extract_skill_quotes(text)
         self.assertIn("毋得彼此推诿，徒托空言", [q for _, q in quotes])
 
+    def test_extract_skill_quotes_harvests_epigraph(self) -> None:
+        # The v6 template and the pilot both place exactly one blockquote near the top
+        # of the file — a signature-quote epigraph before the first H2 heading — and it
+        # used to be entirely outside extract_skill_quotes' scan, so the most prominent
+        # quotation in the file had zero P1 coverage.
+        text = (
+            "---\nname: demo-wisdom\nformat_version: 6\n---\n\n"
+            "# 示例人物的思维框架\n"
+            "**示例人物** · 1525–1582\n\n"
+            "> 「天下之事，不难于立法，而难于法之必行。」——示例人物\n\n"
+            "---\n\n"
+            "## 身份卡\n\n略\n"
+        )
+        quotes = prov.extract_skill_quotes(text)
+        self.assertIn(("epigraph", "天下之事，不难于立法，而难于法之必行。"), quotes)
+
+    def test_extract_skill_quotes_does_not_tag_blockquote_after_first_heading_as_epigraph(
+        self,
+    ) -> None:
+        # Scope check: only a blockquote before the first H2 counts as the epigraph —
+        # an ordinary blockquote inside a later section must not be swept in too.
+        text = "## 身份卡\n\n> 「这不是题记，是正文里的引用。」——某人\n"
+        quotes = prov.extract_skill_quotes(text)
+        self.assertNotIn(("epigraph", "这不是题记，是正文里的引用。"), quotes)
+
 
 class GateTests(unittest.TestCase):
     def _write(self, root: Path, skill: str, evidence: str, corpus: str) -> None:

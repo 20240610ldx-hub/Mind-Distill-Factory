@@ -23,13 +23,13 @@ if sys.platform == "win32":
         pass
 
 
-def _load_provenance(root: Path):
+def _load_module(name: str):
     # 注意：不用传入的 root 拼路径——measure() 的 root 参数在测试中指向一个
-    # 临时目录（不含 scripts/），若照抄 root/scripts/verify_provenance.py 会
-    # FileNotFoundError。verify_provenance.py 永远和本文件在同一目录下，改用
+    # 临时目录（不含 scripts/），若照抄 root/scripts/{name}.py 会
+    # FileNotFoundError。同目录模块永远和本文件在同一目录下，改用
     # __file__ 定位，与 validate_output.py:_load_provenance() 的做法一致。
-    path = Path(__file__).resolve().parent / "verify_provenance.py"
-    spec = importlib.util.spec_from_file_location("verify_provenance", path)
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {path}")
     module = importlib.util.module_from_spec(spec)
@@ -37,8 +37,17 @@ def _load_provenance(root: Path):
     return module
 
 
+def _load_provenance(root: Path):
+    return _load_module("verify_provenance")
+
+
+def _load_validator(root: Path):
+    return _load_module("validate_output")
+
+
 def measure(slug: str, root: Path) -> dict:
     prov = _load_provenance(root)
+    validator = _load_validator(root)
     out = root / "output" / slug
     refs = out / "references"
 
@@ -86,7 +95,12 @@ def measure(slug: str, root: Path) -> dict:
         text = cases_path.read_text(encoding="utf-8")
         blocks = re.split(r"^###\s+", text, flags=re.MULTILINE)[1:]
         cases = len(blocks)
-        counter = sum(1 for b in blocks if "反例" in b)
+        # 与 P4（validate_output.check_p4_cases）用同一条锚定规则：只认行首
+        # 的「**反例：**」字段，不认正文里提到"反例"二字的散句——否则本脚本
+        # 报出的数字会比闸门实际认定的更宽松，出现"指标 1、闸门 0"的分歧。
+        counter = sum(
+            1 for b in blocks if validator.CASE_COUNTER_FIELD_RE.search(b)
+        )
         clusters = set(re.findall(r"^\*\*对应原则簇：\*\*\s*(\S+)\s*$", text, re.MULTILINE))
 
     return {

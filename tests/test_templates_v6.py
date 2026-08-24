@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 import unittest
 from pathlib import Path
@@ -9,6 +10,15 @@ CORE_SECTIONS = [
     "身份卡", "响应策略", "核心原则", "决策框架",
     "已知盲区", "表达风格 DNA", "价值取向与反模式", "溯源",
 ]
+
+
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load module from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class V6CoreTemplateTests(unittest.TestCase):
@@ -49,6 +59,31 @@ class V6CoreTemplateTests(unittest.TestCase):
 
     def test_is_under_line_cap(self) -> None:
         self.assertLessEqual(len(self.text.splitlines()), 500)
+
+
+class EnglishTemplateIsLegacyTests(unittest.TestCase):
+    """The EN branch has no v6 package support (no references/{cases,evidence,voice}.md,
+    no 附件调用 table, no 案例索引, and its section names are English literals the
+    Chinese-literal v6 gates can't check) — so the template must NOT declare
+    format_version: 6, or validate_output.is_v6_skill would route a filled-in EN skill
+    into the P1-P6 v6 gates, where it fails all of them (8x P6_MISSING_SECTION,
+    P3_DANGLING_PATH, EMPTY_CORPUS, zero P1 quotes) for reasons that have nothing to do
+    with genuine EN content quality."""
+
+    def setUp(self) -> None:
+        self.path = ROOT / "templates" / "skill-template.en.md"
+        self.text = self.path.read_text(encoding="utf-8")
+        self.validator = load_module("validate_output", ROOT / "scripts" / "validate_output.py")
+
+    def test_does_not_declare_format_version_6(self) -> None:
+        self.assertNotRegex(self.text, r"(?m)^format_version:\s*6\s*$")
+
+    def test_frontmatter_is_classified_as_legacy_by_the_validator(self) -> None:
+        self.assertFalse(self.validator.is_v6_skill(self.text))
+
+    def test_header_comment_states_v6_is_not_implemented_for_english(self) -> None:
+        self.assertIn("NOT a v6 package", self.text)
+        self.assertIn("v6 support for English is not implemented", self.text)
 
 
 class AttachmentTemplateTests(unittest.TestCase):

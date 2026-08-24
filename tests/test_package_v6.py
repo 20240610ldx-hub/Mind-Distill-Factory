@@ -27,9 +27,34 @@ CORE_SECTIONS = [
 ]
 
 
+# 章节正文占位——必须撑过 P6 的深度下限（150 字符），否则连测试夹具自己的
+# "全部达标"用例都会被新加的 P6_SECTION_TOO_THIN 拦下。内容本身没有意义，
+# 只是保证夹具足够真实、不会被误判成"指针替身"。
+SECTION_FILLER = (
+    "占位正文，用于满足章节深度下限检查——这不是真实的人物洞见内容，"
+    "只是保证测试夹具本身足够长，不会被 P6 误判成指向 references/ 的一行指针替身。"
+    "为了确保稳稳超过下限，这里再补一句同样无意义但足够长的占位文字，凑够字数，"
+    "反复强调这段文字不承载任何真实洞见，纯粹是为了让长度超过 150 字符的下限。"
+)
+assert len(SECTION_FILLER) >= validator.PACKAGE_SCHEMA["min_section_chars"], (
+    "SECTION_FILLER must clear PACKAGE_SCHEMA['min_section_chars']"
+)
+
+
 def build_skill_md(sections=None, extra="") -> str:
     sections = CORE_SECTIONS if sections is None else sections
-    body = "\n\n".join(f"## {name}\n\n内容占位，非空。" for name in sections)
+    parts = []
+    for name in sections:
+        if name == "核心原则":
+            # 核心原则章节还要撑过 P6_TOO_FEW_PRINCIPLES 的下限。
+            n = validator.PACKAGE_SCHEMA["min_principles"]
+            principles = "\n\n".join(
+                f"### 原则 {i}：占位标题 {i}\n\n{SECTION_FILLER}" for i in range(1, n + 1)
+            )
+            parts.append(f"## {name}\n\n{principles}")
+        else:
+            parts.append(f"## {name}\n\n{SECTION_FILLER}")
+    body = "\n\n".join(parts)
     return (
         "---\n"
         "name: demo-wisdom\n"
@@ -56,12 +81,22 @@ class PackageFixture:
         self.write_ref("evidence.md", "### 原则 1：甲\n\n> 月有考，岁有稽\n\n- confidence：high\n")
         self.write_ref("voice.md", "### 样本 1（维度：句式）\n\n> 示例\n")
         self.write_cases(clusters=1, counter=True)
+        self.write_framework_core(["cluster_001"])
 
     def write_skill(self, text: str) -> None:
         (self.out / "SKILL.md").write_text(text, encoding="utf-8")
 
     def write_ref(self, name: str, text: str) -> None:
         (self.refs / name).write_text(text, encoding="utf-8")
+
+    def write_framework_core(self, cluster_ids: list[str]) -> None:
+        data = {
+            "person_slug": "demo",
+            "principle_clusters": [{"cluster_id": cid} for cid in cluster_ids],
+        }
+        (self.out / "framework_core.json").write_text(
+            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        )
 
     def write_cases(self, clusters: int, counter: bool) -> None:
         blocks = []
@@ -299,6 +334,55 @@ class P6CoreSelfSufficiencyTests(unittest.TestCase):
                 any(e.startswith("P6_MISSING_SECTION") and "决策框架" in e for e in errors)
             )
 
+    def test_p6_rejects_pointer_only_sections(self) -> None:
+        # Regression: P6 previously only checked presence/emptiness, so replacing every
+        # required section's body with a one-line pointer to references/ (exactly the
+        # "routing table" degradation CLAUDE.md claims P6 makes structurally impossible)
+        # exited 0. A depth floor must catch it.
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            body = "\n\n".join(
+                f"## {name}\n\n详见 `references/cases.md`。" for name in CORE_SECTIONS
+            )
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P6_SECTION_TOO_THIN") for e in errors))
+            # Every section is a one-line pointer, so all 8 should be flagged.
+            self.assertEqual(
+                sum(1 for e in errors if e.startswith("P6_SECTION_TOO_THIN")),
+                len(CORE_SECTIONS),
+            )
+
+    def test_p6_rejects_too_few_principles(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            principles = "\n\n".join(
+                f"### 原则 {i}：甲{i}\n\n{SECTION_FILLER}" for i in range(1, 4)
+            )
+            parts = []
+            for name in CORE_SECTIONS:
+                if name == "核心原则":
+                    parts.append(f"## {name}\n\n{principles}")
+                else:
+                    parts.append(f"## {name}\n\n{SECTION_FILLER}")
+            body = "\n\n".join(parts)
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P6_TOO_FEW_PRINCIPLES") for e in errors))
+
+    def test_p6_accepts_the_real_pilot_package(self) -> None:
+        # The thresholds must not exceed genuine content — the real zhang-juzheng-v6
+        # pilot (9 principles, smallest section well over 150 chars) must keep passing.
+        pilot = ROOT / "output" / "zhang-juzheng-v6" / "SKILL.md"
+        errors = validator.check_p6_core(pilot)
+        self.assertEqual(errors, [])
+
 
 class PackageStageTests(unittest.TestCase):
     def test_package_stage_is_registered(self) -> None:
@@ -315,6 +399,41 @@ class PackageStageTests(unittest.TestCase):
             finally:
                 os.chdir(cwd)
             self.assertTrue(any("voice.md" in e for e in errors))
+
+    def test_package_fails_when_framework_core_missing(self) -> None:
+        # Regression: validate_package used to derive cluster_ids from
+        # framework_core.json but never required the file — missing, unparseable, or
+        # clusterless all silently degraded to an empty list, so the per-cluster P4
+        # loop ran zero times and validate_package exited 0. This is reachable in
+        # practice: publish_skill.py never copies framework_core.json into gallery/,
+        # so gallery-time revalidation hits exactly this path.
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                fx = PackageFixture(td)
+                (fx.out / "framework_core.json").unlink()
+                os.chdir(fx.root)
+                errors = validator.validate_package("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(
+                any(
+                    e.startswith("MISSING:") and "framework_core.json" in e
+                    for e in errors
+                )
+            )
+
+    def test_package_fails_when_framework_core_has_no_clusters(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                fx = PackageFixture(td)
+                fx.write_framework_core([])
+                os.chdir(fx.root)
+                errors = validator.validate_package("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(any(e.startswith("P4_EMPTY_CLUSTERS") for e in errors))
 
 
 class FormatDetectionTests(unittest.TestCase):

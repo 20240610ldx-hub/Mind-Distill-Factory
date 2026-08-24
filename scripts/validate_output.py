@@ -102,6 +102,14 @@ PACKAGE_SCHEMA = {
     "core_sections": ["身份卡", "响应策略", "核心原则", "决策框架",
                       "已知盲区", "表达风格 DNA", "价值取向与反模式", "溯源"],
     "format_version": 6,
+    # P6 深度下限：真实样板包（zhang-juzheng-v6）最薄的必需章节（身份卡）有
+    # 322 字符；用一行指针把整章替换成「详见 references/xxx.md」只有约 15-25
+    # 字符。150 介于二者之间、离真实内容有约 2 倍余量，足以拦住「指针替身」而
+    # 不会误伤真实的薄章节。
+    "min_section_chars": 150,
+    # 核心原则数下限，与 FRAMEWORK_SCHEMA_V6_PRINCIPLES["min_principles"] 保持
+    # 同一个 v6 底线（8）；样板包实际有 9 条。
+    "min_principles": 8,
 }
 
 SKILL_FRONTMATTER_PATTERN = re.compile(
@@ -650,8 +658,12 @@ def check_p5_index(skill_md: Path, cases_md: Path) -> list[str]:
     return errors
 
 
+PRINCIPLE_SUBHEADING_RE = re.compile(r"^###\s*原则", re.MULTILINE)
+
+
 def check_p6_core(skill_md: Path) -> list[str]:
-    """P6：核心自足——≤500 行，8 个必需章节齐备且非空（不检查指针，那是 P3 的事）。"""
+    """P6：核心自足——≤500 行，8 个必需章节齐备、非空、有实质深度，核心原则数
+    达标（不检查指针，那是 P3 的事）。"""
     if not skill_md.exists():
         return [f"MISSING: {skill_md}"]
     content = skill_md.read_text(encoding="utf-8")
@@ -681,6 +693,21 @@ def check_p6_core(skill_md: Path) -> list[str]:
             errors.append(f"P6_MISSING_SECTION: {skill_md}: 缺少必需章节 '{name}'")
         elif not hit:
             errors.append(f"P6_EMPTY_SECTION: {skill_md}: 章节 '{name}' 为空")
+        else:
+            if len(hit) < PACKAGE_SCHEMA["min_section_chars"]:
+                errors.append(
+                    f"P6_SECTION_TOO_THIN: {skill_md}: 章节 '{name}' 正文（去空白）仅 "
+                    f"{len(hit)} 字符 < {PACKAGE_SCHEMA['min_section_chars']} 字符下限"
+                    f"——疑似被替换成指向 references/ 的一行指针，核心层未能自足"
+                )
+            if name == "核心原则":
+                n_principles = len(PRINCIPLE_SUBHEADING_RE.findall(hit))
+                if n_principles < PACKAGE_SCHEMA["min_principles"]:
+                    errors.append(
+                        f"P6_TOO_FEW_PRINCIPLES: {skill_md}: 核心原则章节仅含 "
+                        f"{n_principles} 条「### 原则」子标题 < "
+                        f"{PACKAGE_SCHEMA['min_principles']} 条下限"
+                    )
     return errors
 
 
@@ -716,15 +743,26 @@ def validate_package(slug: str) -> list[str]:
 
     cluster_ids: list[str] = []
     core_file = output_dir / "framework_core.json"
-    if core_file.exists():
+    if not core_file.exists():
+        # 硬性失败：cluster_ids 缺失会让下面的按簇覆盖检查静默退化成空循环、
+        # 不报任何错——framework_core.json 不进 gallery/（publish_skill.py 不
+        # 复制它），所以 gallery-time 重新校验正是会踩中这个洞的真实路径。
+        errors.append(f"MISSING: {core_file}")
+    else:
         try:
             core = read_json_file(core_file)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            errors.append(f"PARSE_ERROR: {core_file}: {e}")
+        else:
             cluster_ids = [
                 c.get("cluster_id") for c in core.get("principle_clusters", [])
                 if c.get("cluster_id")
             ]
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            errors.append(f"PARSE_ERROR: {core_file}: {e}")
+            if not cluster_ids:
+                errors.append(
+                    f"P4_EMPTY_CLUSTERS: {core_file}: principle_clusters 为空或均无 "
+                    f"cluster_id，P4 的按簇覆盖检查无法执行"
+                )
 
     if cases_md.exists():
         errors.extend(check_p4_cases(cases_md, cluster_ids))

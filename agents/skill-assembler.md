@@ -19,21 +19,38 @@ user-invocable: false
 
 ## 输入
 
+本代理在管线里被调用**两次**：Stage 4 首次组装核心层时，`output/{slug}/references/cases.md`
+与 `output/{slug}/references/evidence.md` 还不存在（它们是 Stage 4.5 由 case-builder /
+evidence-carder 产出的）；附件齐备后本代理被**重新调用**一次，续写
+`output/{slug}/references/voice.md` 并把核心层「案例索引」章的占位行回写成真实 case_id。
+两次调用的输入不同，不要混为一谈。
+
+**Stage 4（首次组装，此时 cases.md / evidence.md 均不存在）：**
+
 - `output/{slug}/framework_core.json` — 共同证据底座（principle_clusters、盲区主题、来源账本）
 - `output/{slug}/frameworks.zh.json` — 中文核心数据（唯一语言版本）；顶层须带
   `format_version: 6`——这是 `scripts/validate_output.py` 的 frameworks 阶段把原则数
   区间从 legacy 的 5-8 放宽到 v6 的 8-11 的唯一依据，缺了这个字段会被当 legacy 框架
   硬顶在 8 条
 - `templates/skill-template.v6.zh.md` — v6 核心模板，本代理唯一的 SKILL.md 模板
-- `output/{slug}/references/cases.md` — case-builder 已产出，本代理只做收口校验
-- `output/{slug}/references/evidence.md` — evidence-carder 已产出，本代理只做收口校验
-- `templates/refs/voice.zh.md` — 语感样本库模板（本代理据此自行填充 `output/{slug}/references/voice.md`）
 - `templates/refs/dossier.zh.md` — 人物档案模板（本代理据此自行填充 `output/{slug}/人物档案.md`）
 - `gallery/wang-yangming/SKILL.md` / `gallery/sun-tzu/SKILL.md` — 第一人称沉浸、表达 DNA、
   边界规则的深度基准（旧格式文件，只参考语感与深度，不参考其包结构）
 - `templates/examples/charlie-munger.zh.md` — legacy reference only（旧手工示例，不再作为质量基准）
 - （可选）`output/{slug}/review.md` — quality-reviewer 的修订反馈（如为二次组装）
 - （修补时必读）`config/post-review-tuning-guide.md` — 实战测试调优指南，包含高频缺陷的标准修补方案
+
+此时「案例索引」章只能按 `output/{slug}/framework_core.json` 的 `principle_clusters` 写占位
+行——**不得虚构 case_id**，占位行只标 cluster 归属，留空或标记待回填。
+
+**Stage 4.5（附件齐备后重新调用，续写与回写）：**
+
+- `output/{slug}/references/cases.md` — case-builder 已产出，本代理只做收口校验
+- `output/{slug}/references/evidence.md` — evidence-carder 已产出，本代理只做收口校验
+- `templates/refs/voice.zh.md` — 语感样本库模板（本代理据此自行填充 `output/{slug}/references/voice.md`）
+
+用 `output/{slug}/references/cases.md` 的真实 case_id 替换 Stage 4 写下的占位行，使核心层
+「案例索引」表与该文件双向一一对应（P5 闸门）。
 
 ## 产出物
 
@@ -161,7 +178,14 @@ SKILL.md 必须依次包含以下 H2/H3 标题，**精确匹配**下列文字（
 
 ## 自检
 
-组装完成后必须自行运行并通过：
+`python scripts/validate_output.py package {slug}` 是**完整包**的闸门（P1-P6），依赖
+`output/{slug}/references/cases.md` 与 `output/{slug}/references/evidence.md`——这两个文件在 Stage 4 首次组装时
+还不存在，此时跑这条命令必然因缺附件而失败，不代表核心层写错了。Stage 4 首次组装完毕
+后，只能自检不依赖附件的部分：8 个必需章节标题精确匹配、非空、≤500 行、frontmatter 含
+`format_version: 6`、不含英文区块或语言检测头。
+
+真正的包级自检发生在 **Stage 4.5 附件齐备、本代理被重新调用完成 voice.md 与索引回写
+之后**，此时才具备运行完整包校验的条件：
 
 ```bash
 python scripts/validate_output.py package {slug}
@@ -178,6 +202,9 @@ python scripts/validate_output.py package {slug}
 - `output/{slug}/references/voice.md` — 本代理构建
 - `output/{slug}/人物档案.md` — 本代理构建
 
-**安装白名单：** 只有 SKILL.md 与 `references/**` 会被 `scripts/publish_skill.py` 复制进
-`~/.claude/skills/{slug}-wisdom/`；`output/{slug}/人物档案.md` 只进 `gallery/{slug}/`，不进安装目录
-（防止模型扫描 skill 目录时读到一份第三人称文档，造成人称漂移）。
+**安装白名单：** `scripts/publish_skill.py` 只把包同步进 `gallery/{slug}/`（SKILL.md 与
+`references/**`；`output/{slug}/人物档案.md` 只进 gallery，不进 `references/`），它**不会**
+把文件写进 `~/.claude/skills/`——那一步由 `commands/distill.md` §6.3 手动执行
+（`cp gallery/{slug}/SKILL.md` 与 `cp gallery/{slug}/references/*.md`），遵循同一条白名单：
+只有 SKILL.md 与 references/ 进安装目录，人物档案.md 不进（防止模型扫描 skill 目录时
+读到一份第三人称文档，造成人称漂移）。

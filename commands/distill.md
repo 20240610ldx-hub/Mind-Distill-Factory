@@ -508,6 +508,14 @@ cp gallery/{slug}/references/*.md ~/.claude/skills/{person-slug}-wisdom/referenc
 
 **用户选择「是」→ 执行英文分支：**
 
+> ⚠️ **v6 包格式目前只做中文。** 英文分支产出的是**旧格式（legacy）单文件 Skill**，
+> 不经过 P1–P6 六道闸门，也没有 `references/{cases,evidence,voice}.md` 三件附件、
+> 没有「附件调用」表、没有「案例索引」。`templates/skill-template.en.md` 的 frontmatter
+> 因此不带 `format_version: 6`，让 `scripts/validate_output.py` 把它当 legacy 单文件
+> 校验，而不是错误地套用只认中文字面量（如「身份卡」「原文出处」）的 v6 闸门。这是
+> 有意的范围收窄，不是遗漏——半吊子地给闸门加英文参数化会引入一片没有回归测试覆盖
+> 的新代码面。
+
 ```bash
 # 标记英文分支已启用，校验器据此要求 frameworks.en.json
 echo "requested" > output/{slug}/en_requested.flag
@@ -518,8 +526,8 @@ echo "requested" > output/{slug}/en_requested.flag
 1. Stage 3B-en：framework-synthesizer-en → `output/{slug}/frameworks.en.json`
    （**独立重构，不看中文产物**——Rule 4 的独立成篇原则在分支内完整保留）
 2. Stage 3C-en：framework-alignment-reviewer → 中英覆盖等价性审查
-3. Stage 4-en：skill-assembler → `output/{slug}-en/SKILL.md` + `references/`
-   （模板 `templates/skill-template.en.md`）
+3. Stage 4-en：skill-assembler → `output/{slug}-en/SKILL.md`（单文件，legacy 格式，
+   模板 `templates/skill-template.en.md`；不产出 `references/`）
 4. Stage 5-en：quality-reviewer（此时启用「双语一致性」维度）
 5. 安装到 `~/.claude/skills/{person-slug}-wisdom-en/`，
    gallery 条目 `lang: "en"`、slug 为 `{slug}-en`

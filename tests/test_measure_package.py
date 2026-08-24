@@ -35,7 +35,7 @@ class MeasureTests(unittest.TestCase):
         )
         (refs / "cases.md").write_text(
             "### 案例 1：甲（case_id: demo-a-1，high）\n\n**对应原则簇：** cluster_001\n\n略\n\n"
-            "### 案例 2：乙（case_id: demo-b-1，high）\n\n**对应原则簇：** cluster_001\n\n反例：略\n",
+            "### 案例 2：乙（case_id: demo-b-1，high）\n\n**对应原则簇：** cluster_001\n\n**反例：** 略\n",
             encoding="utf-8",
         )
         (refs / "voice.md").write_text("### 样本 1\n\n> 略\n", encoding="utf-8")
@@ -63,6 +63,27 @@ class MeasureTests(unittest.TestCase):
             result = measure_mod.measure("demo", root)
             self.assertEqual(result["cases"], 2)
             self.assertEqual(result["counter_cases"], 1)
+
+    def test_counter_cases_ignores_prose_mention(self) -> None:
+        # Regression for the metric/gate disagreement: measure_package.py used to count
+        # any block containing the substring "反例" anywhere in its prose, while P4
+        # (validate_output.check_p4_cases) only recognizes a line-anchored "**反例：**"
+        # field. A case whose narrative merely *mentions* a counter-example in passing
+        # must not be counted here either — the metric must not report success (1) on a
+        # case set the real gate would reject (0, P4_NO_COUNTER_CASE).
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self._build(root)
+            refs = root / "output" / "demo" / "references"
+            (refs / "cases.md").write_text(
+                "### 案例 1：甲（case_id: demo-a-1，high）\n\n**对应原则簇：** cluster_001\n\n"
+                "**情境：** 对方提出了一个反例，但我坚持原判。\n\n"
+                "### 案例 2：乙（case_id: demo-b-1，high）\n\n**对应原则簇：** cluster_001\n\n略\n",
+                encoding="utf-8",
+            )
+            result = measure_mod.measure("demo", root)
+            self.assertEqual(result["cases"], 2)
+            self.assertEqual(result["counter_cases"], 0)
 
     def test_computes_evidence_survival_percentage(self) -> None:
         with tempfile.TemporaryDirectory() as td:
