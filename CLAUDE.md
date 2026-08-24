@@ -22,17 +22,36 @@ This project systematically extracts decision-making frameworks, reasoning patte
 
 ## Critical Platform Constraint
 
-**Claude Code skill discovery requires exactly `SKILL.md`** (case-sensitive) in each skill directory. Files like `SKILL.zh.md`, `SKILL.en.md`, `SKILLzh.md`, or `README.md` are invisible to the skill loader. This means: even though we generate independent bilingual frameworks, the final deliverable MUST be a single `SKILL.md` with both languages inline. See Rule 4 for implementation details.
+**Claude Code skill discovery requires exactly `SKILL.md`** (case-sensitive) in each skill directory. Files like `SKILL.zh.md`, `SKILL.en.md`, or `README.md` are invisible to the skill loader. A skill directory MAY also contain sub-files (e.g. `references/*.md`); the model reads those on demand via relative paths written into `SKILL.md`. See Rule 4 and the v6 package format below.
 
 ## Distillation Rules
 
 1. Every principle MUST trace back to a specific source (book, speech, letter, documented statement)
 2. Every Skill MUST include a "Known Blind Spots" section with **mitigation advice** — no thinker is infallible
 3. Decision frameworks MUST be step-by-step **filter chains** (each step is a yes/no gate), not open-ended questions
-4. Bilingual output: each Skill produces separate `frameworks.{zh,en}.json` files with **independent cognitive framings** (NOT translations — they may have different numbers of principles and different framework step orders). However, Claude Code's skill system only recognizes a single `SKILL.md` per directory — so the final deliverable MUST be one `SKILL.md` containing both languages, structured with a language-detection header (`## English` + `## 中文版`) so the model auto-selects the matching section based on user language. The intermediate `.zh.md` / `.en.md` drafts live in `output/{slug}/` as development artifacts, but the installed file is always `SKILL.md`
+4. **Language: Chinese-only by default.** Each Skill produces `frameworks.zh.json` and a Chinese-only `SKILL.md` carrying `format_version: 6`. No `## English` block, no language-detection header. After the Chinese package is installed, the orchestrator asks whether to also generate an English version; only on a yes does it run the EN branch (reusing the language-neutral `framework_core.json`) and publish it as a **separate skill directory** `{person-slug}-wisdom-en`. Rule 4's original principle — the English version is an independent cognitive reconstruction, NOT a translation — still holds *within* the EN branch. It is now paid on demand instead of every run.
 5. Each person maps to 1 primary + up to 2 secondary categories from `config/taxonomy.json`
 6. Source truthfulness: quotes from web search only are capped at `confidence: medium`. Only user-provided first-hand sources or verified publications can be `confidence: high`
 7. Pipeline checkpoints: `python scripts/validate_output.py <stage> <slug>` MUST pass between each Stage
+
+## Skill Package Format (v6)
+
+A distilled Skill ships as a **package**, not a single file:
+
+```
+{slug}-wisdom/
+├── SKILL.md              # always-loaded, Chinese, self-sufficient, ≤500 lines
+└── references/
+    ├── cases.md          # on demand — worked cases, ≥2 per cluster, ≥1 counter-case
+    ├── evidence.md       # on demand — verbatim source excerpts, machine-checked
+    └── voice.md          # on demand — ≥20 annotated voice samples
+```
+
+`SKILL.md` is **never a dispatcher**. Deleting `references/` must leave a complete, working framework — gate P6 enforces this. The case *index* lives in the core so the model always knows what exists; only case *bodies* live in the attachment.
+
+`人物档案.md` is a human-readable dossier. It goes to `output/` and `gallery/` but **never** into the install directory.
+
+Gates P1–P6 (`python scripts/validate_output.py package {slug}`) are all rule-based — no LLM scoring — because an LLM reviewer graded 7/7 quotes "EXACT" on a set where 4 of 14 were not verbatim.
 
 ## Anti-Formula Design (v5) — Immersive Perspective + Structural Naturalness + Boundary Awareness
 
