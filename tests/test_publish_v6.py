@@ -162,5 +162,115 @@ class ManifestTests(unittest.TestCase):
             self.assertEqual(manifest["format_version"], 1)
 
 
+V6_SKILL = """---
+name: demo-wisdom
+format_version: 6
+description: >-
+  运用示例人物的框架处理决策问题。触发：示例。
+---
+
+# 张居正的思维框架
+
+## 身份卡
+
+| 字段 | 值 |
+|------|------|
+| 时代 | 明代中后期；万历朝内阁首辅。 |
+| 主类 | 治理 (governance) |
+| 副类 | 经营 (enterprise)、谋略 (strategy) |
+| 核心张力 | 实效与人伦。 |
+| 一句话哲学 | 把命令钉死在实效上。 |
+
+## 核心原则
+
+正文。
+"""
+
+BARE_V6_SKILL = """---
+name: demo-wisdom
+format_version: 6
+---
+
+# 某人的思维框架
+"""
+
+
+class ExtractV6MetadataTests(unittest.TestCase):
+    """v6 包没有 frameworks.zh.json——元数据源于 frontmatter / H1 / 身份卡。"""
+
+    def _write(self, td: str, text: str = V6_SKILL) -> Path:
+        path = Path(td) / "SKILL.md"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_reads_person_name_from_h1_title(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            meta = publisher.extract_v6_metadata(self._write(td))
+            self.assertEqual(meta["person_name"], "张居正")
+
+    def test_reads_era_from_identity_card(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            meta = publisher.extract_v6_metadata(self._write(td))
+            self.assertEqual(meta["era"], "明代中后期；万历朝内阁首辅。")
+
+    def test_reads_primary_category_id_from_parenthetical(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            meta = publisher.extract_v6_metadata(self._write(td))
+            self.assertEqual(meta["primary_category"], "governance")
+
+    def test_reads_all_secondary_category_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            meta = publisher.extract_v6_metadata(self._write(td))
+            self.assertEqual(meta["secondary_categories"], ["enterprise", "strategy"])
+
+    def test_missing_identity_card_yields_safe_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            meta = publisher.extract_v6_metadata(self._write(td, BARE_V6_SKILL))
+            self.assertEqual(meta["era"], "Unknown")
+            self.assertEqual(meta["primary_category"], "philosophy")
+            self.assertEqual(meta["secondary_categories"], [])
+
+
+class ResolveMetadataTests(unittest.TestCase):
+    """发布入口按格式取元数据：v6 走 SKILL.md，legacy 仍走 frameworks.zh.json。"""
+
+    def test_v6_package_resolves_without_frameworks_json(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output" / "demo"
+            out.mkdir(parents=True)
+            (out / "SKILL.md").write_text(V6_SKILL, encoding="utf-8")
+            meta = publisher.resolve_metadata(out, "zhang-juzheng-v6")
+            self.assertEqual(meta["name_zh"], "张居正")
+            self.assertEqual(meta["primary_cat"], "governance")
+            self.assertEqual(meta["secondary_cats"], ["enterprise", "strategy"])
+
+    def test_legacy_package_still_reads_frameworks_json(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output" / "demo"
+            out.mkdir(parents=True)
+            (out / "SKILL.md").write_text("---\nname: demo-wisdom\n---\n\n# 忽略\n", encoding="utf-8")
+            (out / "frameworks.zh.json").write_text(
+                json.dumps({
+                    "person_name": "李四",
+                    "person_name_original": "李四",
+                    "era": "唐代",
+                    "primary_category": "conduct",
+                    "secondary_categories": ["philosophy"],
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            meta = publisher.resolve_metadata(out, "demo")
+            self.assertEqual(meta["name_zh"], "李四")
+            self.assertEqual(meta["era"], "唐代")
+            self.assertEqual(meta["primary_cat"], "conduct")
+
+    def test_legacy_package_without_frameworks_json_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output" / "demo"
+            out.mkdir(parents=True)
+            (out / "SKILL.md").write_text("---\nname: demo-wisdom\n---\n", encoding="utf-8")
+            self.assertIsNone(publisher.resolve_metadata(out, "demo"))
+
+
 if __name__ == "__main__":
     unittest.main()

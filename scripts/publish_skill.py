@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -69,6 +70,77 @@ def is_v6_package(skill_md: Path) -> bool:
     """
     content = skill_md.read_text(encoding="utf-8")
     return _load_validator().is_v6_skill(content)
+
+
+_H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+_CARD_ROW_RE = re.compile(r"^\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$", re.MULTILINE)
+_CATEGORY_ID_RE = re.compile(r"[（(]\s*([a-z_]+)\s*[)）]")
+_TITLE_SUFFIX = "的思维框架"
+
+
+def extract_v6_metadata(skill_md: Path) -> dict:
+    """从 v6 包的 SKILL.md 提取 index 元数据。
+
+    v6 包没有 frameworks.zh.json——元数据分布在 H1 标题与「身份卡」表里。
+    缺字段时回落到与 legacy 路径同样的安全默认值，不抛异常：发布不该因为
+    一张表少一行而中断，索引条目事后可补。
+    """
+    content = skill_md.read_text(encoding="utf-8")
+
+    person_name = ""
+    title = _H1_RE.search(content)
+    if title:
+        person_name = title.group(1).strip()
+        if person_name.endswith(_TITLE_SUFFIX):
+            person_name = person_name[: -len(_TITLE_SUFFIX)].strip()
+
+    rows = {k: v for k, v in _CARD_ROW_RE.findall(content)}
+
+    primary = _CATEGORY_ID_RE.search(rows.get("主类", ""))
+    secondary = _CATEGORY_ID_RE.findall(rows.get("副类", ""))
+
+    return {
+        "person_name": person_name,
+        "era": rows.get("时代") or "Unknown",
+        "primary_category": primary.group(1) if primary else "philosophy",
+        "secondary_categories": secondary,
+    }
+
+
+def resolve_metadata(output_dir: Path, slug: str) -> dict | None:
+    """按包格式取 index 元数据；legacy 缺 frameworks.zh.json 时返回 None（调用方报错退出）。"""
+    skill_md = output_dir / "SKILL.md"
+
+    if skill_md.exists() and is_v6_package(skill_md):
+        meta = extract_v6_metadata(skill_md)
+        name_zh = meta["person_name"]
+        return {
+            "name_zh": name_zh,
+            "name_en": slug.replace("-", " ").title(),
+            "name_original": name_zh,
+            "era": meta["era"],
+            "primary_cat": meta["primary_category"],
+            "secondary_cats": meta["secondary_categories"],
+        }
+
+    zh_framework_path = output_dir / "frameworks.zh.json"
+    if not zh_framework_path.exists():
+        return None
+
+    en_framework_path = output_dir / "frameworks.en.json"
+    zh_fw = load_json(zh_framework_path)
+    en_fw = load_json(en_framework_path) if en_framework_path.exists() else {}
+    name_zh = zh_fw.get("person_name")
+    return {
+        "name_zh": name_zh,
+        "name_en": en_fw.get("person_name") or slug.replace("-", " ").title(),
+        "name_original": (
+            zh_fw.get("person_name_original") or en_fw.get("person_name_original") or name_zh
+        ),
+        "era": zh_fw.get("era") or en_fw.get("era") or "Unknown",
+        "primary_cat": zh_fw.get("primary_category") or "philosophy",
+        "secondary_cats": zh_fw.get("secondary_categories") or [],
+    }
 
 
 def copy_package(output_dir: Path, gallery_dir: Path, is_v6: bool) -> list[str]:
@@ -168,22 +240,21 @@ def main() -> int:
         print("[OK] Skill stage validation passed.")
 
     # 2. Extract Metadata
-    zh_framework_path = output_dir / "frameworks.zh.json"
-    en_framework_path = output_dir / "frameworks.en.json"
-
-    if not zh_framework_path.exists():
-        print(f"ERROR: Chinese framework JSON not found at {zh_framework_path}", file=sys.stderr)
+    meta = resolve_metadata(output_dir, slug)
+    if meta is None:
+        print(
+            f"ERROR: Chinese framework JSON not found at {output_dir / 'frameworks.zh.json'} "
+            f"(legacy packages require it; v6 packages read metadata from SKILL.md)",
+            file=sys.stderr,
+        )
         return 1
 
-    zh_fw = load_json(zh_framework_path)
-    en_fw = load_json(en_framework_path) if en_framework_path.exists() else {}
-
-    name_zh = zh_fw.get("person_name")
-    name_en = en_fw.get("person_name") or slug.replace("-", " ").title()
-    name_original = zh_fw.get("person_name_original") or en_fw.get("person_name_original") or name_zh
-    era = zh_fw.get("era") or en_fw.get("era") or "Unknown"
-    primary_cat = zh_fw.get("primary_category") or "philosophy"
-    secondary_cats = zh_fw.get("secondary_categories") or []
+    name_zh = meta["name_zh"]
+    name_en = meta["name_en"]
+    name_original = meta["name_original"]
+    era = meta["era"]
+    primary_cat = meta["primary_cat"]
+    secondary_cats = meta["secondary_cats"]
 
     print(f"Extracted Metadata:")
     print(f"  Name (ZH): {name_zh}")
