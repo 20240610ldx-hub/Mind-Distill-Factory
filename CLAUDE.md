@@ -81,7 +81,7 @@ Before a Skill enters `gallery/`:
 - Quotes must be verified against known sources — web-only quotes marked as `confidence: low/medium`
 - Principles must pass the three-tier uniqueness test (de-name test + input-evidence anchor + methodology-level check)
 - The decision framework must consist entirely of filter-type steps (no open-ended final steps)
-- Both language versions must be reviewed for cultural-cognitive accuracy
+- If an English branch was requested (`{person-slug}-wisdom-en`), both language versions must be reviewed for cultural-cognitive accuracy
 - Each blind spot must include a mitigation recommendation
 - `distill_confidence.score` must be ≥ 3 (on a 1-5 scale)
 - **Expression DNA must be specific enough to differentiate from generic analytical tone** (quality-reviewer score ≥ 3) — must include all 8 dimensions including paragraph rhythm and conversational markers

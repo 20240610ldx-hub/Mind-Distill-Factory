@@ -244,6 +244,46 @@ class P6CoreSelfSufficiencyTests(unittest.TestCase):
             errors = validator.check_p6_core(fx.out / "SKILL.md")
             self.assertTrue(any(e.startswith("P6_TOO_LONG") for e in errors))
 
+    def test_p6_accepts_section_whose_content_is_entirely_subsections(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            parts = []
+            for name in CORE_SECTIONS:
+                if name == "核心原则":
+                    parts.append(
+                        "## 核心原则\n\n"
+                        "### 原则 1：甲\n\n"
+                        "**理念：** 月有考，岁有稽，事可责成。\n"
+                    )
+                else:
+                    parts.append(f"## {name}\n\n内容占位，非空。")
+            body = "\n\n".join(parts)
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertFalse(any(e.startswith("P6_EMPTY_SECTION") for e in errors))
+
+    def test_p6_still_fails_on_a_genuinely_empty_section(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            parts = []
+            for name in CORE_SECTIONS:
+                if name == "已知盲区":
+                    parts.append(f"## {name}\n")
+                else:
+                    parts.append(f"## {name}\n\n内容占位，非空。")
+            body = "\n\n".join(parts)
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(
+                any(e.startswith("P6_EMPTY_SECTION") and "已知盲区" in e for e in errors)
+            )
+
     def test_p6_fails_when_section_exists_only_as_nested_subheading(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             fx = PackageFixture(td)

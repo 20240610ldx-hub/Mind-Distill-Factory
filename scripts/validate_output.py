@@ -640,7 +640,14 @@ def check_p6_core(skill_md: Path) -> list[str]:
         hit = None
         for i, match in enumerate(headings):
             if match.group(1) == "##" and match.group(2).startswith(name):
-                end = headings[i + 1].start() if i + 1 < len(headings) else len(content)
+                # 章节体一直延伸到下一个 H2（不是任意级别的下一个标题）——
+                # 这样内容全部挂在 ### 子标题下的章节不会被误判为空。
+                # 标题匹配规则本身不变：仍只认 H2、仍要求 startswith(name)。
+                end = len(content)
+                for later in headings[i + 1:]:
+                    if later.group(1) == "##":
+                        end = later.start()
+                        break
                 hit = content[match.end():end].strip()
                 break
         if hit is None:
