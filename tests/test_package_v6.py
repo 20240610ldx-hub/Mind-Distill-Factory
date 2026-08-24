@@ -442,5 +442,49 @@ class FrameworksLanguageTests(unittest.TestCase):
             )
 
 
+class FrameworksV6PrincipleBoundsTests(unittest.TestCase):
+    """原则数区间随 format_version 而变：v6（顶层 format_version: 6）用 8-11，
+    legacy（无该字段）保持既有的 5-8 不变。"""
+
+    def _write_core(self, out: Path) -> None:
+        (out / "framework_core.json").write_text(
+            json.dumps({"person_slug": "demo", "principle_clusters": [{"cluster_id": "cluster_001"}]}),
+            encoding="utf-8",
+        )
+
+    def _write_frameworks(self, out: Path, n_principles: int, format_version) -> None:
+        data = {"lang": "zh", "core_principles": [{"id": f"p{i}"} for i in range(n_principles)]}
+        if format_version is not None:
+            data["format_version"] = format_version
+        (out / "frameworks.zh.json").write_text(json.dumps(data), encoding="utf-8")
+
+    def _run(self, n_principles: int, format_version) -> list[str]:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                self._write_core(out)
+                self._write_frameworks(out, n_principles, format_version)
+                os.chdir(td)
+                errors = validator.validate_frameworks("demo")
+            finally:
+                os.chdir(cwd)
+        return errors
+
+    def test_frameworks_stage_accepts_ten_principles_for_v6(self) -> None:
+        errors = self._run(n_principles=10, format_version=6)
+        self.assertFalse(any("TOO_MANY_PRINCIPLES" in e for e in errors))
+        self.assertFalse(any("TOO_FEW_PRINCIPLES" in e for e in errors))
+
+    def test_frameworks_stage_still_caps_legacy_at_eight(self) -> None:
+        errors = self._run(n_principles=10, format_version=None)
+        self.assertTrue(any("TOO_MANY_PRINCIPLES" in e for e in errors))
+
+    def test_frameworks_stage_rejects_twelve_principles_for_v6(self) -> None:
+        errors = self._run(n_principles=12, format_version=6)
+        self.assertTrue(any("TOO_MANY_PRINCIPLES" in e for e in errors))
+
+
 if __name__ == "__main__":
     unittest.main()

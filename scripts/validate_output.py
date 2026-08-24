@@ -75,6 +75,15 @@ FRAMEWORK_SCHEMA = {
     "min_tensions": 1,
 }
 
+# v6 frameworks（frameworks.{lang}.json 顶层带 "format_version": 6）用加厚后的原则数区间
+# 替换上面 FRAMEWORK_SCHEMA 的 5-8——不读 config/defaults.json，仍是模块级常量，
+# 与本文件其余 schema 的风格一致。没有 format_version 字段的 legacy 框架不受影响，
+# 继续用 FRAMEWORK_SCHEMA 的 min_principles/max_principles。
+FRAMEWORK_SCHEMA_V6_PRINCIPLES = {
+    "min_principles": 8,
+    "max_principles": 11,
+}
+
 FRAMEWORK_CORE_SCHEMA = {
     "required_fields": ["person_slug", "core_version", "synthesized_at",
                         "principle_clusters", "shared_blind_spot_themes",
@@ -350,12 +359,16 @@ def validate_frameworks(slug: str) -> list[str]:
                 # Check lang field
                 if data.get("lang") != lang:
                     errors.append(f"LANG_MISMATCH: {fw_file}: lang='{data.get('lang')}' expected '{lang}'")
-                # Check principle count
+                # Check principle count — bounds depend on format_version (v6 widens 5-8 to 8-11)
+                is_v6_framework = data.get("format_version") == PACKAGE_SCHEMA["format_version"]
+                principle_bounds = FRAMEWORK_SCHEMA_V6_PRINCIPLES if is_v6_framework else FRAMEWORK_SCHEMA
+                min_principles = principle_bounds["min_principles"]
+                max_principles = principle_bounds["max_principles"]
                 n_principles = len(data.get("core_principles", []))
-                if n_principles < FRAMEWORK_SCHEMA["min_principles"]:
-                    errors.append(f"TOO_FEW_PRINCIPLES: {fw_file}: {n_principles} < {FRAMEWORK_SCHEMA['min_principles']}")
-                if n_principles > FRAMEWORK_SCHEMA["max_principles"]:
-                    errors.append(f"TOO_MANY_PRINCIPLES: {fw_file}: {n_principles} > {FRAMEWORK_SCHEMA['max_principles']}")
+                if n_principles < min_principles:
+                    errors.append(f"TOO_FEW_PRINCIPLES: {fw_file}: {n_principles} < {min_principles}")
+                if n_principles > max_principles:
+                    errors.append(f"TOO_MANY_PRINCIPLES: {fw_file}: {n_principles} > {max_principles}")
                 # Check blind spots
                 n_blindspots = len(data.get("blind_spots", []))
                 if n_blindspots < FRAMEWORK_SCHEMA["min_blind_spots"]:

@@ -34,17 +34,29 @@ user-invocable: false
 - 引用的名言能在 `output/{person_slug}/framework_core.json` / `output/{person_slug}/frameworks.zh.json` 的来源中找到对应证据
 - 归因不存在明显错误（如把巴菲特的话归给芒格）
 - 出处细节合理（书名、年份、场合不存在明显矛盾）
+- `output/{person_slug}/references/evidence.md` 中出现的每一条 `textual_note`，分歧理由都站得住脚（见下）
 
 **常见问题：**
 - ❌ 使用了网络广泛流传但来源存疑的名言
 - ❌ 引用了该人物从未说过的话（幻觉）
 - ❌ 出处信息模糊（"在某次演讲中"而无具体场合）
+- ❌ `textual_note` 只写"语料有误"却不说具体是哪个字、哪处分歧，无法判断是否可信
+- ❌ 审查报告完全没提 `textual_note` 审计，尽管 `output/{person_slug}/references/evidence.md` 里明明有
 
 **发现 accuracy 问题时：** 标注具体原则名称和存疑内容
 
 > **引文逐字性不由本代理判定。** 它由 `scripts/verify_provenance.py` 的 P1/P2 闸门确定性校验。
 > 已确证：本代理的前身曾对一组 14 条引文报告「7/7 EXACT」，而其中 4 条实际不是逐字引用。
 > 本代理只评**引文选得好不好**（是否切题、是否有代表性），不评**引文对不对**。
+
+> **`textual_note` 审计是例外——这一项由本代理管，不由 P1/P2 管。** `textual_note` 会把
+> P2 闸门的一次逐字比对失败降级为 WARNING（详见 `agents/evidence-carder.md`），但没有任何
+> 确定性脚本能判断这条降级本身是不是合理——那需要理解"这处分歧像不像一个真实的文本异文"，
+> 是主观判断，只能靠本代理。若 `output/{person_slug}/references/evidence.md` 存在任意 `textual_note`，必须逐条
+> 打开对应证据卡，判断分歧是站得住脚的文本异文（OCR 讹字、底本/异本差异等），还是一次改写
+> 被包装成了"文本分歧"，并在审查报告里列出**每一条**遇到的 `textual_note` 及其裁决
+> （可信 / 存疑）。不审计地放行是这个逃生舱唯一的风险点——本项目已经出现过真实的语料
+> 编造事故，逃生舱不能是免检的。
 
 ---
 

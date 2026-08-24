@@ -20,7 +20,10 @@ user-invocable: false
 ## 输入
 
 - `output/{slug}/framework_core.json` — 共同证据底座（principle_clusters、盲区主题、来源账本）
-- `output/{slug}/frameworks.zh.json` — 中文核心数据（唯一语言版本）
+- `output/{slug}/frameworks.zh.json` — 中文核心数据（唯一语言版本）；顶层须带
+  `format_version: 6`——这是 `scripts/validate_output.py` 的 frameworks 阶段把原则数
+  区间从 legacy 的 5-8 放宽到 v6 的 8-11 的唯一依据，缺了这个字段会被当 legacy 框架
+  硬顶在 8 条
 - `templates/skill-template.v6.zh.md` — v6 核心模板，本代理唯一的 SKILL.md 模板
 - `output/{slug}/references/cases.md` — case-builder 已产出，本代理只做收口校验
 - `output/{slug}/references/evidence.md` — evidence-carder 已产出，本代理只做收口校验
@@ -53,8 +56,11 @@ user-invocable: false
 ## 核心层加厚要求
 
 - 原则 **9-11 条**，每条约 900 字，必须含 `失效边界` 与 `情报前提` 两个新字段。
-  （`config/defaults.json` 的硬性下限是 8 条——如语料确实撑不起 9 条，可低至 8 条，
-  但须在人物档案.md 的「原则推导链」一节说明为何没能到 9 条；这不是常态，是兜底。）
+  （`scripts/validate_output.py` 的硬性下限是 8 条——如语料确实撑不起 9 条，可低至 8 条，
+  但这项裁决发生在 Stage 3、不在这里：framework-alignment-reviewer 的中文自检若放行
+  8 条，必须已经把「为何撑不到 9 条」的理由写进 `output/{slug}/framework_alignment_review.md`——
+  人物档案.md 在 Stage 4 才存在，此时早该有结论了。本代理组装人物档案.md 时把这条理由
+  抄进「原则推导链」一节，不是在这里重新裁决；这不是常态，是兜底。）
 - 必须写「案例索引」章：每个原则簇至少 2 行，全表至少 1 个反例行，每行带 `case_id`。
 - 「响应策略」下必须含「附件调用」表，三条触发条件逐字照抄模板——**不得改写为「可酌情参考」之类的软表述**，触发条件是确定性的。
 

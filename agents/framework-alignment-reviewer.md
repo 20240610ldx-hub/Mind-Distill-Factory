@@ -25,7 +25,13 @@ user-invocable: false
 3. **新增字段齐备**：每条原则是否都有 `失效边界` 与 `情报前提`？
    缺任一字段即退回——这两项是 v6 加厚的核心，不是可选装饰。
 4. **失效边界非空泛**：`失效边界` 是否给出了**具体条件**而非「凡事都有例外」式的套话？
-5. **原则数在 9-11 之间**。
+5. **原则数在 9-11 之间。** `frameworks.zh.json` 须带顶层 `format_version: 6`，
+   否则 `scripts/validate_output.py` 会把它当 legacy 框架，用 5-8 的旧区间硬顶死。
+   若语料确实撑不起 9 条，可低至 8 条（`scripts/validate_output.py` 的硬性下限），
+   但必须在**本报告**里写明「为何撑不到 9 条」的具体理由（语料证据不足、cluster
+   强度不够等）才能维持 `[PASS]`——本报告是这项裁决唯一能落地的地方，Stage 4 的
+   人物档案.md 到时候只是抄录这条理由，不重新裁决。理由缺失，或数量 <8、>11，
+   结论至少为 `[REVISE]`。
 
 输出：`output/{slug}/framework_alignment_review.md`，判定 `[PASS]` / `[REVISE]`。
 
@@ -125,7 +131,8 @@ python scripts/task_status.py mark-completed output/{slug}/stage3_status.json al
 
 模式 A 专属：
 - 若「失效边界」或「情报前提」缺失，结论必须是 `[REVISE]`。
-- 若原则数不在 9-11 之间，结论至少为 `[REVISE]`，并说明为何撑不到 9 条或超过 11 条。
+- 若原则数为 8，本报告必须写明「为何撑不到 9 条」的具体理由才能维持 `[PASS]`；
+  理由缺失，或原则数 <8 或 >11，结论必须至少为 `[REVISE]`（见「两种模式」模式 A 第 5 条）。
 
 模式 B 专属：
 - 如果盲区主题一方缺失，结论必须是 `[REVISE]`。
