@@ -2827,8 +2827,10 @@ git add commands/distill.md templates/skill-template.en.md evaluation/regression
 
 **Files:**
 - Create: `scripts/audit_legacy_quotes.py`
-- Create: `output/zhang-juzheng/references/evidence.md`
 - Create: `tests/test_zhang_provenance_audit.py`
+
+> 注：本任务**不**产出 `output/zhang-juzheng/references/evidence.md`——证据卡属 Task 10 的样板包。
+> Task 9 只做只读审计，不写任何 `output/` 产物。
 
 **Interfaces:**
 - Consumes: Task 1/2 的 `verify_provenance` 全部函数
