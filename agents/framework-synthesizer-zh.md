@@ -22,6 +22,10 @@ user-invocable: false
 
 - `output/{person_slug}/frameworks.zh.json`
 
+**顶层必须带 `"format_version": 6`。** 这是 `scripts/validate_output.py` 把原则数区间从
+legacy 的 5-8 放宽到 v6 的 8-11（目标 9-11）的唯一依据——缺了这个字段，9 条以上的原则会被
+当作 legacy 框架，触发 `TOO_MANY_PRINCIPLES`。
+
 输出 schema 与原 `framework-synthesizer` 中文部分完全一致，必须通过：
 
 ```bash
@@ -41,7 +45,7 @@ python scripts/task_status.py mark-completed output/{person_slug}/stage3_status.
 ## 语言职责
 
 - 用中文文化和概念系统重构此人的认知框架，不做英文框架的翻译。
-- 可以选择 5-8 条最适合中文读者理解的核心原则。
+- 目标 **9-11 条**最适合中文读者理解的核心原则（`config/defaults.json` 硬下限 8 条，语料确实撑不起 9 条时可低至 8）。
 - 可以调整决策框架步骤顺序，但不得偏离 `framework_core.json` 的证据底座。
 - 中文盲区必须覆盖 `shared_blind_spot_themes` 中的所有核心风险。
 - `sources_list`、分类、置信度逻辑必须与英文版共享同一来源范围。

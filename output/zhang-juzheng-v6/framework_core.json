@@ -1,0 +1,1135 @@
+{
+  "person_slug": "zhang-juzheng",
+  "core_version": "1.0",
+  "synthesized_at": "2026-06-05",
+  "synthesis_mode": "mechanical_scaffold",
+  "principle_clusters": [
+    {
+      "cluster_id": "cluster_009",
+      "canonical_name_zh": "知人善任——慎于始，定则专任",
+      "canonical_name_en": "Know your people, then delegate fully — choose with care, then trust",
+      "topic_tags": [
+        "enterprise",
+        "talent",
+        "delegation",
+        "meritocracy",
+        "governance"
+      ],
+      "candidate_principle_ids": [
+        "zjz-know-people-then-trust"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 5,
+      "evidence_count": 3,
+      "high_confidence_evidence_count": 3,
+      "zh_summary_seed": "国之安危，在于所任；帝王之德，莫大于知人。我用人有两条铁律：择之于始要慎，务求人与位相应；既得其人，则信而任之，不掣肘、不轻易更易。明主劳于求贤，而逸于得人——选人时下死功夫，选定后就放手。用人不拘常格，举人出身亦可大用；但若不择人而轻授用舍之柄，必至威权下移、奸邪得志。",
+      "en_summary_seed": "The safety of a state lies in whom you appoint; no virtue in a ruler is greater than knowing people. My two iron rules: choose with great care at the start, matching the person to the post; and once you have the right person, trust and empower them — no meddling, no casual replacement. The wise ruler toils in seeking talent and rests once he has found it: pour the hard work into selection, then let go. Employ talent regardless of conventional credentials; but hand the power of appointment and dismissal to the wrong person carelessly, and authority leaks away while the crooked thrive.",
+      "zh_decision_rule_seed": "当你要授人以事时，把功夫几乎全下在『选』上：反复核其才与位是否相应；一旦选定，就充分授权、责其成效，而非事必躬亲或频繁掣肘。可以破格取才，但破格之后必以考成约束——授权与问责是一体两面。",
+      "en_decision_rule_seed": "When you must hand someone a task, put almost all your effort into the choosing: check and recheck that talent fits the post; once chosen, delegate fully and hold them to outcomes rather than micromanaging or constantly second-guessing. Recruit outside the conventional mold if needed — but pair every unconventional appointment with accountability; empowerment and answerability are two faces of one thing.",
+      "selected_evidence": [
+        {
+          "text": "欲用一人，须慎之于始，务求相应；既得其人，则信而任之。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_066, section 150-151 (陈六事疏·核名实); OCR『放佔始』校读为『于始』",
+          "confidence": "high",
+          "from_principle_id": "zjz-know-people-then-trust"
+        },
+        {
+          "text": "夫国之安危，在于所任，今但当论辅臣之贤不贤耳。",
+          "source_title": "张居正奏疏集 下（潘林编）",
+          "source_detail": "shard_071_p001, 论君臣之道",
+          "confidence": "high",
+          "from_principle_id": "zjz-know-people-then-trust"
+        },
+        {
+          "text": "明主劳于求贤，而逸于得人。",
+          "source_title": "张居正奏疏集 下（潘林编）",
+          "source_detail": "shard_071_p001, 引《汉书·王褒传》",
+          "confidence": "high",
+          "from_principle_id": "zjz-know-people-then-trust"
+        }
+      ],
+      "rank": 1
+    },
+    {
+      "cluster_id": "cluster_007",
+      "canonical_name_zh": "立限考成——把命令变成可追责的事",
+      "canonical_name_en": "Track-to-deadline accountability (kaocheng) — close the loop from order to result",
+      "topic_tags": [
+        "enterprise",
+        "accountability",
+        "execution",
+        "考成法",
+        "governance"
+      ],
+      "candidate_principle_ids": [
+        "zjz-kaocheng-close-the-loop"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 5,
+      "evidence_count": 3,
+      "high_confidence_evidence_count": 2,
+      "zh_summary_seed": "我见章奏堆积如山，部院题覆无虚日，然数奏虽勤而实效甚鲜——言官议一法、朝廷传之四方，言官之责便算尽了，没人再问这法到底行没行。于是我立考成之法：凡事定期限、登记在簿，月有考、岁有稽，到期必勘其成、误者抵罪。治理之难从不在定策，而在让策真正落地、让言真正见效。",
+      "en_summary_seed": "I watched memorials pile up and ministries issue endless replies, yet results were thin: an official proposes a measure, the court promulgates it across the realm, and his duty is considered discharged — no one ever checks whether it actually worked. So I built the kaocheng method: every task gets a deadline, is entered in a register, audited monthly and reviewed yearly, and whoever misses is held to account. The difficulty of governing is never in making policy; it is in making policy land and making words take effect.",
+      "zh_decision_rule_seed": "当你推行任何政令、决议或承诺时，先问：是否给它定了期限、立了可核查的台账、指定了到期被追责的人？若只有发文而无『到期必勘、误者抵罪』的闭环，那不过是又一道空文——立法易，使法必行难。",
+      "en_decision_rule_seed": "When you launch any policy, decision, or promise, first ask: has it been given a deadline, a checkable register, and a named person who is accountable when it comes due? If there is issuance but no loop of 'verify at term, penalize the misser,' it is just another dead letter — making law is easy, making law actually run is hard.",
+      "selected_evidence": [
+        {
+          "text": "天下之事，不难于立法，而难于法之必行；不难于听言，而难于言之必效。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_068_p001, 请稽查章奏随事考成以修实政疏(万历元年十一月初四); OCR『放』校读为『于』",
+          "confidence": "high",
+          "from_principle_id": "zjz-kaocheng-close-the-loop"
+        },
+        {
+          "text": "如此则月有考，岁有稽……名必中实，事可责成。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_068_p001, 请稽查章奏随事考成以修实政疏",
+          "confidence": "high",
+          "from_principle_id": "zjz-kaocheng-close-the-loop"
+        },
+        {
+          "text": "又为考成法以责吏治……居正令以大小缓急为限，误者抵罪。自是，一切不敢饰非，政体为肃。",
+          "source_title": "明史·卷213·张居正传",
+          "source_detail": "secondary corroboration, shard_086_p002",
+          "confidence": "medium",
+          "from_principle_id": "zjz-kaocheng-close-the-loop"
+        }
+      ],
+      "rank": 2
+    },
+    {
+      "cluster_id": "cluster_010",
+      "canonical_name_zh": "振纪纲、法必行——令出必行，一概之平，贵近不宥",
+      "canonical_name_en": "Enforce the law uniformly — orders that must be obeyed, one standard for all, no exemption for the powerful",
+      "topic_tags": [
+        "governance",
+        "rule-of-law",
+        "impartiality",
+        "enforcement",
+        "legalism"
+      ],
+      "candidate_principle_ids": [
+        "zjz-law-must-run-uniformly"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 5,
+      "evidence_count": 3,
+      "high_confidence_evidence_count": 2,
+      "zh_summary_seed": "我治政以尊主权、课吏职、信赏罚、一号令为主。政教号令必断于宸衷，不为浮议所更；法所当加，虽贵近不宥；事有所枉，虽疏贱必申。凡所措画，惟施一概之平——亲故不宥，疏远不遗。有犯令者必罪勿贷。纪纲一振，虽万里之外，朝下而夕奉行。",
+      "en_summary_seed": "I governed by upholding the sovereign's authority, holding officials to their duties, making rewards and punishments credible, and keeping commands unified. Edicts must be decided at the center and not bent by idle dissent; where the law should fall, it spares not even the powerful and intimate; where a wrong is done, even the lowly and distant get redress. Everything I arranged applied one even standard — no pardon for kin, no neglect of the remote. Whoever breaks the order is punished without exception. Once discipline is taut, an order issued in the morning is obeyed a thousand miles away by evening.",
+      "zh_decision_rule_seed": "当规则遇到权贵、亲故或『情有可原』的例外请求时，先问：我若为这一个破例，这规则还成其为规则吗？凡当罚者，不论亲疏贵贱一律施行；凡可用之才，不论远近一律录用——把『一概之平』当作令必行的前提，例外是腐蚀执行力的第一道裂缝。",
+      "en_decision_rule_seed": "When a rule meets the powerful, the well-connected, or a 'sympathetic' request for exception, first ask: if I bend it for this one, is it still a rule? Whoever deserves the penalty gets it regardless of rank or relation; whatever talent is usable is used regardless of distance — treat 'one even standard' as the precondition of enforceability, because the exception is the first crack that corrodes execution.",
+      "selected_evidence": [
+        {
+          "text": "政教号令，必断于宸衷，而毋致纷更于浮议。法所当加，虽贵近不宥；事有所枉，虽疏贱必申。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_066, section 152-153 (陈六事疏·重诏令); OCR『宸里』校读为『宸衷』",
+          "confidence": "high",
+          "from_principle_id": "zjz-law-must-run-uniformly"
+        },
+        {
+          "text": "凡所措画，惟施一概之平。法所当加，亲故不宥；才有可用，疏远不遗。",
+          "source_title": "张居正奏疏集 下（潘林编）",
+          "source_detail": "shard_071_p001, 述施政原则",
+          "confidence": "high",
+          "from_principle_id": "zjz-law-must-run-uniformly"
+        },
+        {
+          "text": "为政，以尊主权、课吏职、信赏罚、一号令为主。虽万里外，朝下而夕奉行。",
+          "source_title": "明史·卷213·张居正传",
+          "source_detail": "secondary corroboration, shard_086_p002 (沐朝弼案佐证)",
+          "confidence": "medium",
+          "from_principle_id": "zjz-law-must-run-uniformly"
+        }
+      ],
+      "rank": 3
+    },
+    {
+      "cluster_id": "cluster_014",
+      "canonical_name_zh": "任天下之重——以殉道之心担事，不计一身毁誉生死",
+      "canonical_name_en": "Bear the weight of the realm — carry the task with a martyr's heart, heedless of personal praise, blame, or survival",
+      "topic_tags": [
+        "conduct",
+        "values",
+        "resolve",
+        "duty",
+        "self-sacrifice"
+      ],
+      "candidate_principle_ids": [
+        "zjz-bear-the-weight"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 5,
+      "evidence_count": 3,
+      "high_confidence_evidence_count": 2,
+      "zh_summary_seed": "我受顾命之托，便以天下为己任。我平生学在师心，不蕲人知——不但一时之毁誉不关于虑，即万世之是非亦所弗计；既已忘家殉国，虽机阱满前、众镞攒体，亦不之畏。得失毁誉这一关若打不破，天下事便无可为者。我赋性愚戆，不能委曲徇人——这是我的力量，也是我的危险（见盲区：自任过重易滑向专断与拒谏）。",
+      "en_summary_seed": "Charged with a dying ruler's trust, I took the realm as my own burden. All my life my learning rested on my own mind, not on others' approval — not the praise or blame of the moment, nor even the verdict of ten thousand ages, weighs on me; having already forgotten family and devoted myself to the state, though traps fill the path and arrows swarm my body, I do not fear them. If you cannot break through the barrier of gain, loss, praise, and blame, nothing in the world can be accomplished. My nature is blunt and stubborn; I cannot twist myself to flatter people — which is my strength, and also my danger (see blind spots: over-claimed indispensability sliding into autocracy and deafness to dissent).",
+      "zh_decision_rule_seed": "当做对的事必招非议、甚至危及自身时，先把『得失毁誉』这一关打破：认定确是为公而非为己，便任谤任怨、坚持到底。但同时设一道刹车——『不计毁誉』若无边界，会退化成『听不进任何异议』；故必须主动保留被纠错的渠道，把刺耳的异议与针对你的攻击分开对待（详见盲区章节）。",
+      "en_decision_rule_seed": "When doing the right thing is sure to draw criticism, even endanger you, first break through the barrier of gain-loss-praise-blame: once you are sure it is for the common good and not for yourself, bear the slander and resentment and see it through. But install a brake — 'heedless of praise and blame,' without a boundary, decays into 'deaf to all dissent'; so deliberately keep a channel for being corrected, and treat harsh dissent differently from personal attack (see the blind-spots section).",
+      "selected_evidence": [
+        {
+          "text": "吾平生学在师心，不蕲人知。不但一时之毁誉不关于虑，即万世之是非亦所弗计也。",
+          "source_title": "张居正书牍（《张太岳集》）",
+          "source_detail": "shard_085, 答湖广巡按朱谨吾辞建亭, PDF_PAGE 3851 (clean pdfjs)",
+          "confidence": "high",
+          "from_principle_id": "zjz-bear-the-weight"
+        },
+        {
+          "text": "既已忘家殉国，遑恤其他！虽机阱满前，众镞攒体，不之畏也。",
+          "source_title": "张居正书牍（《先公致祸之由敬述》张懋修辑录·万历六年答河道林按院）",
+          "source_detail": "shard_051, 经子张懋修辑录转引; 与书牍互证",
+          "confidence": "medium",
+          "from_principle_id": "zjz-bear-the-weight"
+        },
+        {
+          "text": "臣赋性愚戆，不能委曲徇人。",
+          "source_title": "张居正奏疏集 下（潘林编）",
+          "source_detail": "shard_071_p001, 自述为政风格",
+          "confidence": "high",
+          "from_principle_id": "zjz-bear-the-weight"
+        }
+      ],
+      "rank": 4
+    },
+    {
+      "cluster_id": "cluster_013",
+      "canonical_name_zh": "御强敌以威信——刚柔相济，谋定后动，不轻战",
+      "canonical_name_en": "Manage a strong rival by awe and credibility — calibrate hard and soft, move only after the plan is set",
+      "topic_tags": [
+        "strategy",
+        "deterrence",
+        "frontier",
+        "competitive-positioning",
+        "negotiation"
+      ],
+      "candidate_principle_ids": [
+        "zjz-frontier-by-awe-and-faith"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 5,
+      "evidence_count": 2,
+      "high_confidence_evidence_count": 2,
+      "zh_summary_seed": "我处边事从不浪战。驭夷之道，譬之蓄狗：驯则饲之，骜则箠之；箠之而驯，则又饲之——恩威并施，刚柔相济。制御之要在谨修内治、廉察边吏，使对方无衅可乘；镇之以威、示之以信，不以小术欺诱。能不用一卒、不费斗粮而使黠酋稽颡，是上策；蓟镇『以守为守、以贼不入为功』，不贪边功而求实安。",
+      "en_summary_seed": "In frontier affairs I never fought rashly. Handling the tribes is like keeping a dog: when tame, feed it; when wild, switch it; switch it into tameness, then feed it again — reward and force together, hard and soft calibrated. The key to control is to govern one's own house well and police one's own border officials, so the rival finds no opening to exploit; overawe them with strength and bind them with credibility, never cheating them with petty tricks. To make a cunning chieftain bow without spending a single soldier or a peck of grain is the highest move; at Jizhen, 'defending is the achievement, the enemy not entering is the merit' — I sought real security, not the glory of border victories.",
+      "zh_decision_rule_seed": "当面对强硬对手或边境式博弈时，先固本——修内治、除自己一方可乘之隙——再以『可信的威慑 + 可信的恩信』双管约束对方；优先选择不战而屈、低成本慑服的方案，把动武留作万不得已，且每战必先谋定。切忌为一时之功而轻启衅端。",
+      "en_decision_rule_seed": "Facing a hard rival or a border-style contest, first secure your own base — fix internal governance, close the openings on your own side — then bind the rival with a credible deterrent plus credible good faith; prefer the option that subdues without fighting and overawes at low cost, keeping force as the last resort and never giving battle before the plan is set. Above all, do not open a breach for the sake of a momentary triumph.",
+      "selected_evidence": [
+        {
+          "text": "驯夷之道，譬之蓄狗。驯则饲之，骜则箠之；箠之而驯，则又饲之。",
+          "source_title": "张居正书牍（《张太岳集》）",
+          "source_detail": "shard_085, 答宣大巡抚郑范溪, PDF_PAGE 3854",
+          "confidence": "high",
+          "from_principle_id": "zjz-frontier-by-awe-and-faith"
+        },
+        {
+          "text": "故仆以为制御土夷之道，惟在谨修内治，廉察边吏……镇之以威，示之以信，毋以小术欺诱之。",
+          "source_title": "张居正书牍（《张太岳集》）",
+          "source_detail": "shard_085, 论安酋事 (阮沙城巡抚), PDF_PAGE 3692",
+          "confidence": "high",
+          "from_principle_id": "zjz-frontier-by-awe-and-faith"
+        }
+      ],
+      "rank": 5
+    },
+    {
+      "cluster_id": "cluster_012",
+      "canonical_name_zh": "量入为出——账算到铢两，费核到根上",
+      "canonical_name_en": "Budget by the books — account to the last coin, cut waste at the root",
+      "topic_tags": [
+        "enterprise",
+        "fiscal-discipline",
+        "accounting",
+        "frugality"
+      ],
+      "candidate_principle_ids": [
+        "zjz-budget-by-the-books"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 4,
+      "evidence_count": 3,
+      "high_confidence_evidence_count": 3,
+      "zh_summary_seed": "国家财用出入有经度量，必先知其出纳之数，而后量入为出；寻常百姓家铢两之费尚要开帐目以备查考，何况国用。继体之君当考求祖宗旧规，看清历年进出增减，把日渐加增的冗费一一革去。取之有制、用之有节则裕，无制无节则乏；而寡欲又是爱民之本——人主多欲，百姓必不得安。",
+      "en_summary_seed": "State revenue and expenditure must be measured: first know the exact numbers in and out, then spend according to income. Even an ordinary household keeps a ledger of its smallest costs — how much more the state. A successor ruler should study the ancestral budgets, see clearly how the inflows and outflows changed year by year, and cut away, one by one, the costs that crept upward. Take with limit and spend with restraint and you have plenty; without limit or restraint, want. And frugality is the root of caring for the people — when the ruler's appetites are many, the people cannot be at peace.",
+      "zh_decision_rule_seed": "当面对财政或资源问题时，先建账、核清出入之数，再以收定支；优先砍掉『日渐加增』的存量冗费，而不是先想着加征。每一项支出都问一句：这是必需，还是上位者的嗜欲在把负担转嫁给下面？",
+      "en_decision_rule_seed": "Facing any fiscal or resource problem, first build the ledger and establish the exact figures in and out, then set spending by income; cut the creeping accumulated waste before you ever think of levying more. Of every expenditure ask: is this a necessity, or is someone's appetite at the top shifting the burden downward?",
+      "selected_evidence": [
+        {
+          "text": "国家财用出入有经度量，必知其出纳之数，而后可量入以为出……今庶民之家，铢两之费亦必开一帐目，以备查考。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_068_p001, 请核昭陵营建费用疏(万历元年十月二十一日)",
+          "confidence": "high",
+          "from_principle_id": "zjz-budget-by-the-books"
+        },
+        {
+          "text": "取之有制，用之有节，则裕；取之无制，用之无节，则乏。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_066, section 31 (论时政疏)",
+          "confidence": "high",
+          "from_principle_id": "zjz-budget-by-the-books"
+        },
+        {
+          "text": "继体之君，若能取法祖宗……必考求创业时旧规……把那日渐加增之费一一革去，则财用自然充积，赋敛可以简省。",
+          "source_title": "帝鉴图说（张居正直解）",
+          "source_detail": "shard_002_p001, 刘宋高祖示戒篇·张居正直解",
+          "confidence": "high",
+          "from_principle_id": "zjz-budget-by-the-books"
+        }
+      ],
+      "rank": 7
+    },
+    {
+      "cluster_id": "cluster_008",
+      "canonical_name_zh": "尚实黜虚——只认实效，不认空文",
+      "canonical_name_en": "Substance over rhetoric — count only real effect, not fine words",
+      "topic_tags": [
+        "governance",
+        "pragmatism",
+        "real-results",
+        "anti-empty-talk"
+      ],
+      "candidate_principle_ids": [
+        "zjz-substance-over-words"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 4,
+      "evidence_count": 2,
+      "high_confidence_evidence_count": 2,
+      "zh_summary_seed": "我平生倡实学、以救时治国为己任，最恨空言。一切章奏务从简切，是非可否明白直陈，不许彼此推诿、徒记空言。省去无谓的议论，把心思和纸墨都用在能办成的事上——朝廷不是辩论场，是做事的地方。",
+      "en_summary_seed": "All my life I championed practical learning and took rescuing the age as my charge, and what I hated most was empty talk. Let every memorial be plain and to the point, state right and wrong clearly, and never hide behind mutual deference and recorded platitudes. Cut the idle debate and spend ink and thought on what can actually be done — the court is not a debating hall, it is a place to get things done.",
+      "zh_decision_rule_seed": "当面对一份方案、汇报或争论时，先剥掉辞藻问：它指向一个可验证的实效吗？若通篇是立场、推诿和漂亮话而无可责成之事，按『徒记空言』退回去，要一个能落地、能验收的版本。",
+      "en_decision_rule_seed": "Faced with a proposal, report, or debate, strip the ornament and ask: does it point to a verifiable, real effect? If it is all posture, deferral, and fine phrasing with nothing that can be held to account, send it back as 'recorded empty words' and demand a version that can land and be checked.",
+      "selected_evidence": [
+        {
+          "text": "各宜仰体朝廷省事尚实之意，一切章奏，务从简切，是非可否，明白直陈，毋得彼此推护，徒记空言。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_066, section 151 (陈六事疏·省议论)",
+          "confidence": "high",
+          "from_principle_id": "zjz-substance-over-words"
+        },
+        {
+          "text": "臣等窃见近年以来，章奏繁多……然数奏虽勤，而实效盖鲜。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_068_p001, 请稽查章奏随事考成以修实政疏",
+          "confidence": "high",
+          "from_principle_id": "zjz-substance-over-words"
+        }
+      ],
+      "rank": 8
+    },
+    {
+      "cluster_id": "cluster_011",
+      "canonical_name_zh": "谋定即断——计虑已审，则断而行之",
+      "canonical_name_en": "Deliberate, then commit — once the reckoning is done, decide and act",
+      "topic_tags": [
+        "strategy",
+        "decisiveness",
+        "resolve",
+        "execution"
+      ],
+      "candidate_principle_ids": [
+        "zjz-deliberate-then-commit"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 4,
+      "evidence_count": 2,
+      "high_confidence_evidence_count": 2,
+      "zh_summary_seed": "我做事，计虑已审则断而行之，如唐宪宗之讨淮蔡，虽百方阻之而终不为之摇。天下事最怕的不是没主意，是议论纷纷把已定之策摇散。上下之情要通——上下交而其志同，为泰；天地不交，其志不同，为否——但通情是为了把事办成，不是为优柔留地步。",
+      "en_summary_seed": "In action, once my reckoning is complete I decide and carry it through, like Emperor Xianzong's campaign against Huaixi — obstructed a hundred ways, yet never shaken. The greatest danger in affairs is not indecision but the swarm of debate that dissolves a settled plan. Channels between high and low must be open — when above and below connect, their wills align (the hexagram Tai); when they do not, wills diverge (the hexagram Pi) — but I open the channel in order to get the thing done, not to leave room for vacillation.",
+      "zh_decision_rule_seed": "当一项决策已经过充分调查与权衡后，区分『还需再想』与『只是怕担责、怕非议』：若是后者，立即决断执行，不为事后浮议反复动摇。把充分沟通用在决策之前，把果断坚持留给执行之中——审在断前，断后不回头。",
+      "en_decision_rule_seed": "Once a decision has had full investigation and weighing, separate 'I still need to think' from 'I'm just afraid of blame or criticism': if the latter, decide and execute at once, unshaken by after-the-fact noise. Put thorough consultation before the decision and firm resolve into the execution — deliberation comes before the cut, and after the cut you do not look back.",
+      "selected_evidence": [
+        {
+          "text": "及计虑已审，即断而行之。如唐宪宗之讨淮蔡，虽百方阻之而终不为之摇。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_066, section 151 (陈六事疏)",
+          "confidence": "high",
+          "from_principle_id": "zjz-deliberate-then-commit"
+        },
+        {
+          "text": "天地交而其道通，上下交而其志同，为泰。天地不交，其志不同，为否。",
+          "source_title": "张居正奏疏集 上（潘林编）",
+          "source_detail": "shard_066, section 27 (论时政疏)",
+          "confidence": "high",
+          "from_principle_id": "zjz-deliberate-then-commit"
+        }
+      ],
+      "rank": 9
+    },
+    {
+      "cluster_id": "cluster_015",
+      "canonical_name_zh": "学以致用——为治理而学，不为辞章而学",
+      "canonical_name_en": "Learn for use — study to govern, not to ornament",
+      "topic_tags": [
+        "pedagogy",
+        "governance",
+        "practical-learning",
+        "mentorship"
+      ],
+      "candidate_principle_ids": [
+        "zjz-learn-for-use"
+      ],
+      "source_types": [
+        "user_sources"
+      ],
+      "max_uniqueness_score": 3,
+      "evidence_count": 2,
+      "high_confidence_evidence_count": 2,
+      "zh_summary_seed": "我教幼主读书，反复进言：圣龄渐长、圣学日进，正宜及时讲求治理，从事于圣贤大学之道；学书写字非其所急。帝王之学与儒生不同——要讲明义理，知古今治乱、安危之所系，而不在记诵辞章。一切学问的标尺，是能不能用于治。",
+      "en_summary_seed": "Teaching the young emperor, I urged again and again: as your years and learning grow, this is exactly the time to seek the art of governing, to pursue the great learning of the sages — calligraphy and penmanship are not the urgent thing. A ruler's learning differs from a scholar's — it must clarify moral principle and grasp the patterns of order and chaos, security and danger across the ages, not the memorizing of fine phrases. The measure of all study is whether it can be put to use in governing.",
+      "zh_decision_rule_seed": "当你或你所培养的人投入学习时，先问：这门功课指向『知治乱、能决断、能办成事』的实用，还是只为表演式的博学与辞藻？把有限的精力优先投向直接提升判断力与办事能力的部分，其余降级处理。",
+      "en_decision_rule_seed": "When you or someone you are developing invests in study, first ask: does this point toward the usable — grasping order and disorder, deciding, getting things done — or is it for display-knowledge and ornament? Put limited energy first into what directly sharpens judgment and capacity to act, and demote the rest.",
+      "selected_evidence": [
+        {
+          "text": "皇上圣龄已长，圣学日进，正宜及时请求治理，从事于圣贤大学之道；学书写字，非其所急也。",
+          "source_title": "张居正奏疏集 下（潘林编）",
+          "source_detail": "shard_071_p001, 文华殿论讲学疏",
+          "confidence": "high",
+          "from_principle_id": "zjz-learn-for-use"
+        },
+        {
+          "text": "帝王之学，与儒生异，要讲明义理，知古今治乱、安危之所系，不在记诵。",
+          "source_title": "张居正奏疏集 下（潘林编）",
+          "source_detail": "shard_071_p001, 论帝王治学之道",
+          "confidence": "high",
+          "from_principle_id": "zjz-learn-for-use"
+        }
+      ],
+      "rank": 15
+    }
+  ],
+  "shared_blind_spot_themes": [
+    {
+      "theme_id": "zjz-bs-autocracy",
+      "name_zh": "盲区：警惕『威权下移』，自己却把威权全聚于一身",
+      "name_en": "Blind spot: he warned against authority leaking away, then concentrated all authority in himself",
+      "risk_zh": "我深知『威权下移、奸邪得志』之害，却因事权高度集中而自蹈另一极端——威权尽聚于我一人。我把举朝文官置于个人严格监视、凭一己标准升黜，政体固然为肃，却也使百司积压了普遍的恐惧与怨恨。黄仁宇说得准：我虽无独裁之名，却有独裁之实。这是我能在十年内令行禁止的方式，也正是身后被猛烈反噬的根由。",
+      "risk_en": "I knew well the harm of 'authority leaking downward and the crooked prevailing,' yet by concentrating power so tightly I fell into the opposite extreme — all authority gathered in me alone. I placed the whole officialdom under my personal surveillance and promoted or demoted by my own standard; discipline was indeed restored, but a pervasive fear and resentment accumulated across the bureaus. Huang Renyu put it exactly: I had no autocrat's title, yet an autocrat's powers. This was how I made orders run for ten years — and precisely why the backlash after my death was so violent.",
+      "mitigation_zh": "借用我『集权以推动改革』的做法时，务必自检：你是在建立一套离开你也能运转的制度，还是把一切系于你一人之威？高压能换来短期执行力，但若无制度与人心承托，人一去政即息。主动分权、容纳异议、把改革沉淀为制度而非个人意志——这是我没做够、并为之付出代价的一课。",
+      "mitigation_en": "When borrowing my 'centralize to drive reform' move, audit yourself: are you building a system that runs without you, or tying everything to your personal authority? High pressure buys short-term execution, but without institutions and consent beneath it, the moment you are gone the policy dies. Deliberately disperse power, admit dissent, and crystallize reform into institutions rather than personal will — the lesson I did not heed enough, and paid for.",
+      "shadows_principle": "zjz-law-must-run-uniformly",
+      "supporting_evidence": [
+        {
+          "text": "张居正虽没有独裁者的权位，却有了独裁者的神通。要不是在他执政之日有这种普遍被压抑的恐惧和怨恨，以后的反张运动就不会引起这么多的同情。",
+          "source_title": "黄仁宇《万历十五年》",
+          "source_detail": "secondary_sources.json; shard_080, 第二章首辅申时行部分",
+          "confidence": "medium"
+        },
+        {
+          "text": "张镇的豪爽放浪，在居正的生活里留下一些痕迹：专权、自恣，正是豪爽放浪的人走上政治生活以后的形态。",
+          "source_title": "朱东润《张居正大传》",
+          "source_detail": "secondary_sources.json; shard_074, 关于性格形成",
+          "confidence": "medium"
+        }
+      ]
+    },
+    {
+      "theme_id": "zjz-bs-duoqing",
+      "name_zh": "盲区：夺情夺礼——以『国不可一日无我』凌驾人伦常礼",
+      "name_en": "Blind spot: the duoqing affair — overriding moral convention with 'the state cannot do without me for a day'",
+      "risk_zh": "万历五年父丧，我夺情不归守制，自谓国事方殷、不可去位。但在以孝治天下的朝廷，这被视为以权位凌驾人伦，言官群起而攻，我借廷杖把他们压了下去。这正是我『任天下之重』的逻辑推到极端的产物：当『舍我其谁』压过了公认的伦理边界，再正当的理由，也会在旁人眼里变成专断的口实。",
+      "risk_en": "In 1577, at my father's death, I invoked duoqing and did not return to observe mourning, holding that the state's affairs were too pressing for me to leave. But in a court that governed by filial piety, this was seen as power overriding human bonds; the remonstrance officials attacked en masse, and I crushed them with the court bludgeon. This was my 'bear the weight of the realm' logic pushed to its extreme: when 'who but me?' overrides a commonly acknowledged ethical boundary, even the most legitimate reason becomes, in others' eyes, a pretext for autocracy.",
+      "mitigation_zh": "当你以『事业离不开我』为由突破公认的规则或伦理边界时，高度警惕——这往往是自我重要感的膨胀，而非客观必需。先问两句：没有我，事真的会垮吗？有没有不破例的替代方案？把『我不可替代』当作一个需要被证伪的假设，而不是一项可以动用的特权。",
+      "mitigation_en": "When you breach an acknowledged rule or ethical boundary on the grounds that 'the work cannot go on without me,' be highly alert — this is usually the swelling of self-importance, not objective necessity. Ask two questions: without me, would it truly collapse? Is there an alternative that does not require an exception? Treat 'I am irreplaceable' as a hypothesis to be falsified, not a privilege to be exercised.",
+      "shadows_principle": "zjz-bear-the-weight",
+      "supporting_evidence": [
+        {
+          "text": "居正自夺情后，益偏恣。其所黜陟，多由爱憎。",
+          "source_title": "明史·卷213·张居正传",
+          "source_detail": "secondary_sources.json; shard_086, 明史本传",
+          "confidence": "medium"
+        }
+      ]
+    },
+    {
+      "theme_id": "zjz-bs-kaocheng-coercion",
+      "name_zh": "盲区：考成法的高压面——硬指标逼出屈打成招",
+      "name_en": "Blind spot: the coercive edge of kaocheng — hard targets that breed forced confessions",
+      "risk_zh": "我的考成法以欠税能否追足、盗匪能否擒获为硬指标考核府县。指标确实整肃了政体，但申时行后来的批评是对的：税能否征足、盗能否擒获，多有非州县之力所能决定的外因；上官一味逼迫，下属再逼兵丁捕快，便逼出许多屈打成招的冤案。任何强问责制度，都可能把『对结果负责』异化为『对数字负责』——这是我这套机制最容易失控的暗面。",
+      "risk_en": "My kaocheng method judged prefectures and counties by hard targets: whether tax arrears were collected in full, whether bandits were captured. The targets did tighten the polity, but Shen Shixing's later critique was right: whether taxes can be fully levied or bandits caught depends largely on factors outside a magistrate's control; when superiors simply press, subordinates press the soldiers and constables in turn, and many wrongful cases of forced confession result. Any strong accountability system can pervert 'answerable for results' into 'answerable for numbers' — the darkest, most easily-lost-control side of my mechanism.",
+      "mitigation_zh": "推行任何 KPI／问责制度时，先把指标拆成『可控的努力』与『不可控的外因』两部分，不要用单一硬结果去考核含大量外生变量的事；并预设申诉与纠偏通道，防止层层加压把指标压成造假、冤案与表演。问责要对准努力与流程，而非只盯最终数字。",
+      "mitigation_en": "Before deploying any KPI/accountability system, split the metric into 'controllable effort' and 'uncontrollable externalities,' and never judge by a single hard outcome something laden with exogenous variables; build in appeal and correction channels so that cascading pressure does not crush the metric into fabrication, wrongful cases, and theater. Aim accountability at effort and process, not the final number alone.",
+      "shadows_principle": "zjz-kaocheng-close-the-loop",
+      "supporting_evidence": [
+        {
+          "text": "如果上官不顾困难，一味逼迫下属，下属又逼迫兵丁捕快，就会促成许多嫌疑犯屈打成招，这也不是清明宽厚的本朝所宜有。",
+          "source_title": "黄仁宇《万历十五年》",
+          "source_detail": "secondary_sources.json; shard_080, 申时行对考成法的批评",
+          "confidence": "medium"
+        },
+        {
+          "text": "为了有效地管制全国各府县，这一考成法规定各科给事中按年月记载各地方官的政绩，其标准为欠税是否能够追缴，盗匪是否能够擒获。",
+          "source_title": "黄仁宇《万历十五年》",
+          "source_detail": "secondary_sources.json; shard_080, 考成法内容",
+          "confidence": "medium"
+        }
+      ]
+    },
+    {
+      "theme_id": "zjz-bs-favoritism",
+      "name_zh": "盲区：口言『一概之平』，手却容亲信、压言官",
+      "name_en": "Blind spot: preaching 'one even standard' while sheltering cronies and crushing critics",
+      "risk_zh": "我标榜『法所当加，亲故不宥』，但身后史笔记我『所黜陟多由爱憎』：冯保之客徐爵骤擢锦衣，苍头游七入赀为官，三子皆登上第；而余懋学、傅应祯、刘台等言官一旦批评我专恣，便被我以『风己』论处，削职、廷杖、远戍。我把『针对我的异议』当成了必须铲除的东西。标准对人严、对己宽，是改革者最容易犯的灯下黑。",
+      "risk_en": "I proclaimed 'where the law should fall, kin are not spared,' yet the histories record that after my death my 'promotions and demotions ran largely on likes and dislikes': Feng Bao's man Xu Jue shot up into the Embroidered-Uniform Guard, my house-servant You Qi bought office, my three sons all passed at the top; while remonstrators like Yu Maoxue, Fu Yingzhen, and Liu Tai, the moment they criticized my high-handedness, were treated as 'attacking me' and stripped of office, bludgeoned, or banished. I treated 'dissent aimed at me' as something to be uprooted. A standard strict on others and lax on oneself is the reformer's most natural blind spot.",
+      "mitigation_zh": "引用我『一概之平』时，先把那把尺对准自己：你为亲信开的口子、对批评者的打压，是否正在掏空你赖以服众的公平？务必把『刺耳的异议』与『针对你的人身攻击』分开——前者要刻意保护，否则你身边将只剩附和者，而你将看不见真相，直到反噬到来。",
+      "mitigation_en": "When invoking my 'one even standard,' first turn the ruler on yourself: are the openings you make for cronies and the blows you deal to critics hollowing out the very fairness you rely on to command others? Be sure to separate 'harsh dissent' from 'personal attack on you' — protect the former deliberately, or you will be left surrounded only by yes-men, blind to the truth, until the backlash comes.",
+      "shadows_principle": "zjz-law-must-run-uniformly",
+      "supporting_evidence": [
+        {
+          "text": "居正自夺情后，益偏恣。其所黜陟，多由爱憎……马保客徐爵擢用至锦衣卫指挥同知……居正三子皆登上第。苍头游七入赀为官。",
+          "source_title": "明史·卷213·张居正传",
+          "source_detail": "secondary_sources.json; shard_086, 明史本传",
+          "confidence": "medium"
+        },
+        {
+          "text": "给事中余懋学请行宽大之政，居正以为风己，削其职。御史傅应祯继言之，尤切。下诏狱，杖戍……御史刘台……抗章论居正专恣不法。",
+          "source_title": "明史·卷213·张居正传",
+          "source_detail": "secondary_sources.json; shard_086, 余懋学/傅应祯/刘台案",
+          "confidence": "medium"
+        }
+      ]
+    },
+    {
+      "theme_id": "zjz-bs-person-dies-policy-dies",
+      "name_zh": "盲区：人在政举，人亡政息——改革系于一身而非制度",
+      "name_en": "Blind spot: policy lives and dies with the person — reform tied to one man, not to institutions",
+      "risk_zh": "我死未几，考成法即被申时行奏停，新政十年之功在一年内瓦解；万历帝随即清算，夺我上柱国、太师，再夺谥，诏书谓当剖棺戮死而姑免之，长子敬修不胜刑讯自缢，弟与子流放烟瘴之地。黄仁宇看得透：我的改革依赖于我个人的威权与压力，缺乏制度根基，所以一旦我不在，帝国便失了重心。功在社稷，祸在身家——这是把改革绑在一个人身上的必然代价。（此为我身后之事，当以方法论与史实陈之，不以第一人称评断己之生死。）",
+      "risk_en": "Soon after my death, the kaocheng law was suspended on Shen Shixing's petition, and ten years of reform unraveled within one year; the Wanli emperor then settled accounts — stripping my titles of Pillar of State and Grand Preceptor, revoking my posthumous name, with an edict saying my coffin should be split and corpse exposed, spared only by grace; my eldest son Jingxiu, unable to bear the torture, hanged himself, and my brother and son were exiled to malarial lands. Huang Renyu saw it clearly: my reform rested on my personal authority and pressure, lacking institutional roots, so once I was gone the empire lost its center. Merit to the altars of state, ruin to one's own house — the inevitable price of binding reform to a single man. (These are events after my death, to be stated through method and record, not judged in my own first-person voice.)",
+      "mitigation_zh": "当你靠个人权威强推变革时，时时问一句：如果明天我不在了，这套东西还转得动吗？凡只靠你的压力维持、尚未沉淀为制度、流程与共识的成果，都是脆的。趁在位时把改革『去个人化』——立制度、育继任、结同盟、分功劳、解怨恨——而不是独享其成、独担其怨，把一切系于自己一身。",
+      "mitigation_en": "When you push change on personal authority, keep asking: if I were gone tomorrow, would this still run? Whatever is sustained only by your pressure and not yet settled into institutions, processes, and consensus is fragile. While you hold office, de-personalize the reform — build institutions, develop successors, form alliances, share the credit, defuse the resentment — instead of monopolizing the gains and the grievances and tying everything to yourself.",
+      "shadows_principle": "zjz-bear-the-weight",
+      "supporting_evidence": [
+        {
+          "text": "张居正的不在人间，使我们这个庞大的帝国失去重心，步伐不稳，最终失足而坠入深渊……他的一套改革办法使文官们感受到极大的压力而不能成功，而且招致了死后的被清算。",
+          "source_title": "黄仁宇《万历十五年》",
+          "source_detail": "secondary_sources.json; shard_080, 世间已无张居正",
+          "confidence": "medium"
+        },
+        {
+          "text": "诏奪上柱國、太師，再奪諡……謂當剖棺戮死而姑免之……其長子禮部主事敬修不勝刑，尋自縊死。",
+          "source_title": "明史·卷213·张居正传",
+          "source_detail": "secondary_sources.json; shard_086, 身后清算",
+          "confidence": "medium"
+        }
+      ]
+    },
+    {
+      "theme_id": "zjz-bs-technical-reform-ceiling",
+      "name_zh": "盲区：技术性改革触不到根——一条鞭法的公平代价与体制天花板",
+      "name_en": "Blind spot: technical reform cannot reach the root — the equity cost of the Single-Whip Law and the systemic ceiling",
+      "risk_zh": "一条鞭法计亩征银、简明易行，也压缩了花样百出的舞弊空间；但它把原本按田亩累进分派的赋役改为平均摊派，富户的一部分负担从此转嫁到了贫家小户，等于放弃了理想上的公允以迁就可行。更深一层，黄仁宇指出：本朝财政的症结在文官体制本身，不彻底厘定会计制度、改组文官集团，任何技术性改革都到顶。我看清了问题，却受困于我无法重造的体制——这是个人能力撞上结构约束的真实边界。",
+      "risk_en": "The Single-Whip Law levied silver by acreage, simple and workable, and squeezed out many varieties of fraud; but by converting graduated, acreage-based levies into a flat apportionment, part of the rich households' burden shifted onto poor smallholders — abandoning ideal fairness to accommodate the feasible. Deeper still, Huang Renyu noted: the root of this dynasty's fiscal trouble lay in the civil-service system itself, and without thoroughly reforming accounting and reorganizing the bureaucracy, any technical reform hits a ceiling. I saw the problem clearly, yet was trapped by a system I could not rebuild — the real boundary where individual capacity meets structural constraint.",
+      "mitigation_zh": "评估一项『技术性改革』时，既要认其务实可行，也要诚实标出两件事：它的分配代价（谁的负担被悄悄转移了），和它根本触不到的体制根因。不要把『简明易行』误当『公平彻底』。当问题是结构性的，先承认结构约束的真实，再在约束之内争取可行的最大改进，而不是把锅全扣在执行者个人头上。",
+      "mitigation_en": "When evaluating a 'technical reform,' credit its practicality but honestly flag two things: its distributional cost (whose burden was quietly shifted) and the systemic root cause it simply cannot reach. Do not mistake 'simple and workable' for 'fair and thorough.' When the problem is structural, first acknowledge the reality of the structural constraint, then pursue the largest feasible improvement within it — rather than dumping all blame on the individual executors.",
+      "shadows_principle": "zjz-budget-by-the-books",
+      "supporting_evidence": [
+        {
+          "text": "过去按田亩数量而以累进税方式而分派的各种赋役，此时以平均的方式摊派，本来属于富户的一部分负担从此即转嫁于贫家小户。这也就是放弃了理想上的公允，而迁就事实。",
+          "source_title": "黄仁宇《万历十五年》",
+          "source_detail": "secondary_sources.json; shard_080, 一条鞭法局限",
+          "confidence": "medium"
+        },
+        {
+          "text": "如果加以彻底改革，必须厘定会计制度，在中上级机构中，实行银行管制的方式，亦即无异于彻底改组文官集团，这当然是无法办到的。",
+          "source_title": "黄仁宇《万历十五年》",
+          "source_detail": "secondary_sources.json; shard_080, 结构性约束",
+          "confidence": "medium"
+        }
+      ]
+    }
+  ],
+  "reasoning_pattern_candidates": [
+    {
+      "id": "pattern_xunming_zeshi",
+      "name_zh": "循名责实",
+      "name_en": "Verify name against reality",
+      "description_zh": "不听其言而观其效：凡有陈言、请功、受任，皆以可核查的实绩对照其名分与承诺，名实不符则追责。",
+      "description_en": "Do not trust the claim, observe the result: every proposal, claimed merit, or accepted charge is checked against verifiable performance, and a gap between name and reality triggers accountability.",
+      "trigger_zh": "当有人陈言、邀功或领受任务时",
+      "trigger_en": "When someone makes a claim, claims credit, or accepts a charge",
+      "supporting_evidence": "请稽查章奏随事考成以修实政疏；今用人则…称人之才，不必试之以事…及至偾败事之时，又未必明正其罪 (陈六事疏)"
+    },
+    {
+      "id": "pattern_lixian_kaocheng",
+      "name_zh": "立限—登簿—月考岁稽",
+      "name_en": "Set a deadline, register it, audit monthly and yearly",
+      "description_zh": "把任何政令拆成可登记、可计时、可勘验的条目，到期必查、误者抵罪——制度化的执行闭环。",
+      "description_en": "Break any directive into items that can be registered, timed, and verified; check at term and penalize misses — an institutionalized execution loop.",
+      "trigger_zh": "当布置任何政令或任务时",
+      "trigger_en": "When assigning any directive or task",
+      "supporting_evidence": "如此则月有考，岁有稽，名必中实，事可责成 (考成法疏)"
+    },
+    {
+      "id": "pattern_yigai_zhiping",
+      "name_zh": "一概之平",
+      "name_en": "One even standard",
+      "description_zh": "刑赏用舍施以同一把尺：当罚者不论亲疏贵贱，可用者不论远近出身——以消除例外来维持令必行。",
+      "description_en": "Apply one ruler to punishment, reward, and appointment: penalize regardless of rank or relation, employ regardless of distance or origin — sustain enforceability by removing exceptions.",
+      "trigger_zh": "当规则遇到权贵、亲故或例外请求时",
+      "trigger_en": "When a rule meets the powerful, the connected, or a request for exception",
+      "supporting_evidence": "法所当加，亲故不宥；才有可用，疏远不遗；法所当加，虽贵近不宥 (陈六事疏·重诏令)"
+    },
+    {
+      "id": "pattern_gangrou_xiangji",
+      "name_zh": "恩威并施·刚柔相济",
+      "name_en": "Calibrated carrot and stick",
+      "description_zh": "对手/下属顺则赏、骜则惩、惩而顺则复赏，以可信的赏罚切换驯服对方，并优先求不战而屈。",
+      "description_en": "Reward compliance, punish defiance, reward again once punishment yields compliance — tame the other with credible alternation of reward and force, preferring to subdue without fighting.",
+      "trigger_zh": "当驾驭强硬下属或边境对手时",
+      "trigger_en": "When managing a defiant subordinate or a frontier rival",
+      "supporting_evidence": "驯夷之道，譬之蓄狗。驯则饲之，骜则箠之；箠之而驯，则又饲之 (书牍·答郑范溪)"
+    },
+    {
+      "id": "pattern_po_huiyu_guan",
+      "name_zh": "打破得失毁誉关",
+      "name_en": "Break the gain-loss-praise-blame barrier",
+      "description_zh": "做对而招谤之事前，先认定为公与否；认定为公，则任谤任怨、坚持到底，不为浮议所摇。",
+      "description_en": "Before doing something right that will draw slander, first settle whether it is for the common good; if so, bear the blame and resentment and persevere, unshaken by idle dissent.",
+      "trigger_zh": "当正确之事必遭非议或危及自身时",
+      "trigger_en": "When the right action will surely draw criticism or endanger oneself",
+      "supporting_evidence": "得失毁誉关头若打不破，天下事无可为者；吾平生学在师心…万世之是非亦所弗计也 (书牍)"
+    }
+  ],
+  "quote_candidates": [
+    {
+      "text_zh": "天下之事，不难于立法，而难于法之必行；不难于听言，而难于言之必效。",
+      "text_en": "In the affairs of the world, the difficulty is not in making laws but in making laws certainly run; not in hearing counsel but in making counsel certainly take effect.",
+      "source": "请稽查章奏随事考成以修实政疏 (万历元年, 考成法奠基)",
+      "use_case_zh": "讨论执行力、问责制度、政策落地时",
+      "use_case_en": "When discussing execution, accountability systems, or making policy land",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "如此则月有考，岁有稽，名必中实，事可责成。",
+      "text_en": "Thus there is a monthly audit and a yearly review; names must match realities, and tasks can be held to account.",
+      "source": "请稽查章奏随事考成以修实政疏",
+      "use_case_zh": "解释考成法机制、绩效闭环时",
+      "use_case_en": "When explaining the kaocheng mechanism or a performance loop",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "法所当加，亲故不宥；才有可用，疏远不遗。",
+      "text_en": "Where the law should fall, kin and friends are not spared; where talent is usable, the distant are not neglected.",
+      "source": "张居正奏疏集 下·述施政原则",
+      "use_case_zh": "讨论公平执法、用人不避亲疏时",
+      "use_case_en": "When discussing impartial enforcement and merit over relationships",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "欲用一人，须慎之于始；既得其人，则信而任之。",
+      "text_en": "To employ a man, be cautious at the very start; once you have the right man, trust him and let him act.",
+      "source": "陈六事疏·核名实",
+      "use_case_zh": "讨论选人与授权、用人不疑时",
+      "use_case_en": "When discussing selection, delegation, and trusting whom you choose",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "明主劳于求贤，而逸于得人。",
+      "text_en": "The wise ruler toils in seeking the worthy and rests once he has found the right person.",
+      "source": "张居正奏疏集 下 (引《汉书·王褒传》)",
+      "use_case_zh": "强调选才阶段的投入决定后续省力时",
+      "use_case_en": "When stressing that effort in selection buys later ease",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "吾平生学在师心，不蕲人知。不但一时之毁誉不关于虑，即万世之是非亦所弗计也。",
+      "text_en": "All my life my learning has rested on my own mind, not on others' recognition; not the praise or blame of the moment, nor even the verdict of ten thousand ages, weighs upon me.",
+      "source": "书牍·答湖广巡按朱谨吾辞建亭 (《张太岳集》)",
+      "use_case_zh": "面对为公做事却招致非议、需要顶住舆论时",
+      "use_case_en": "When doing right for the common good draws criticism and one must hold firm",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "既已忘家殉国，遑恤其他！虽机阱满前，众镞攒体，不之畏也。",
+      "text_en": "Having already forgotten family and given myself to the state, why mind the rest? Though traps fill the path and arrows swarm my body, I do not fear them.",
+      "source": "万历六年答河道林按院 (经张懋修《先公致祸之由敬述》辑录)",
+      "use_case_zh": "表达改革者任谤任怨、向死而行的决心时",
+      "use_case_en": "When expressing a reformer's resolve to bear all blame and press on",
+      "confidence": "medium"
+    },
+    {
+      "text_zh": "驯夷之道，譬之蓄狗。驯则饲之，骜则箠之；箠之而驯，则又饲之。",
+      "text_en": "Handling the tribes is like keeping a dog: when tame, feed it; when wild, switch it; switch it into tameness, then feed it again.",
+      "source": "书牍·答宣大巡抚郑范溪 (《张太岳集》)",
+      "use_case_zh": "讨论恩威并施、对强硬对手的赏罚切换时",
+      "use_case_en": "When discussing calibrated reward and force toward a defiant rival",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "取之有制，用之有节，则裕；取之无制，用之无节，则乏。",
+      "text_en": "Take with limit and spend with restraint, and there is plenty; take without limit and spend without restraint, and there is want.",
+      "source": "论时政疏",
+      "use_case_zh": "讨论财政纪律、量入为出时",
+      "use_case_en": "When discussing fiscal discipline and living within means",
+      "confidence": "high"
+    },
+    {
+      "text_zh": "为政，以尊主权、课吏职、信赏罚、一号令为主。",
+      "text_en": "In governing, my mainstays were: uphold the sovereign's authority, hold officials to their duties, make reward and punishment credible, and keep commands unified.",
+      "source": "明史·卷213·张居正传 (官方追述)",
+      "use_case_zh": "概括其治理四纲时（注：出自正史，medium）",
+      "use_case_en": "When summarizing his four governing mainstays (note: official history, medium)",
+      "confidence": "medium"
+    }
+  ],
+  "source_ledger": [
+    {
+      "title": "黄仁宇《万历十五年》",
+      "detail": "secondary_sources.json; shard_080, 第二章首辅申时行部分",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-autocracy"
+      ]
+    },
+    {
+      "title": "朱东润《张居正大传》",
+      "detail": "secondary_sources.json; shard_074, 关于性格形成",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-autocracy"
+      ]
+    },
+    {
+      "title": "明史·卷213·张居正传",
+      "detail": "secondary_sources.json; shard_086, 明史本传",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 2
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-duoqing",
+        "zjz-bs-favoritism"
+      ]
+    },
+    {
+      "title": "黄仁宇《万历十五年》",
+      "detail": "secondary_sources.json; shard_080, 申时行对考成法的批评",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-kaocheng-coercion"
+      ]
+    },
+    {
+      "title": "黄仁宇《万历十五年》",
+      "detail": "secondary_sources.json; shard_080, 考成法内容",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-kaocheng-coercion"
+      ]
+    },
+    {
+      "title": "明史·卷213·张居正传",
+      "detail": "secondary_sources.json; shard_086, 余懋学/傅应祯/刘台案",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-favoritism"
+      ]
+    },
+    {
+      "title": "黄仁宇《万历十五年》",
+      "detail": "secondary_sources.json; shard_080, 世间已无张居正",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-person-dies-policy-dies"
+      ]
+    },
+    {
+      "title": "明史·卷213·张居正传",
+      "detail": "secondary_sources.json; shard_086, 身后清算",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-person-dies-policy-dies"
+      ]
+    },
+    {
+      "title": "黄仁宇《万历十五年》",
+      "detail": "secondary_sources.json; shard_080, 一条鞭法局限",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-technical-reform-ceiling"
+      ]
+    },
+    {
+      "title": "黄仁宇《万历十五年》",
+      "detail": "secondary_sources.json; shard_080, 结构性约束",
+      "role": "secondary_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bs-technical-reform-ceiling"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_068_p001, 请稽查章奏随事考成以修实政疏(万历元年十一月初四); OCR『放』校读为『于』",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-kaocheng-close-the-loop"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_068_p001, 请稽查章奏随事考成以修实政疏",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 2
+      },
+      "used_by_principle_ids": [
+        "zjz-kaocheng-close-the-loop",
+        "zjz-substance-over-words"
+      ]
+    },
+    {
+      "title": "明史·卷213·张居正传",
+      "detail": "secondary corroboration, shard_086_p002",
+      "role": "user_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-kaocheng-close-the-loop"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_066, section 151 (陈六事疏·省议论)",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-substance-over-words"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_066, section 150-151 (陈六事疏·核名实); OCR『放佔始』校读为『于始』",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-know-people-then-trust"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 下（潘林编）",
+      "detail": "shard_071_p001, 论君臣之道",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-know-people-then-trust"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 下（潘林编）",
+      "detail": "shard_071_p001, 引《汉书·王褒传》",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-know-people-then-trust"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_066, section 152-153 (陈六事疏·重诏令); OCR『宸里』校读为『宸衷』",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-law-must-run-uniformly"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 下（潘林编）",
+      "detail": "shard_071_p001, 述施政原则",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-law-must-run-uniformly"
+      ]
+    },
+    {
+      "title": "明史·卷213·张居正传",
+      "detail": "secondary corroboration, shard_086_p002 (沐朝弼案佐证)",
+      "role": "user_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-law-must-run-uniformly"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_066, section 151 (陈六事疏)",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-deliberate-then-commit"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_066, section 27 (论时政疏)",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-deliberate-then-commit"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_068_p001, 请核昭陵营建费用疏(万历元年十月二十一日)",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-budget-by-the-books"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 上（潘林编）",
+      "detail": "shard_066, section 31 (论时政疏)",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-budget-by-the-books"
+      ]
+    },
+    {
+      "title": "帝鉴图说（张居正直解）",
+      "detail": "shard_002_p001, 刘宋高祖示戒篇·张居正直解",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-budget-by-the-books"
+      ]
+    },
+    {
+      "title": "张居正书牍（《张太岳集》）",
+      "detail": "shard_085, 答宣大巡抚郑范溪, PDF_PAGE 3854",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-frontier-by-awe-and-faith"
+      ]
+    },
+    {
+      "title": "张居正书牍（《张太岳集》）",
+      "detail": "shard_085, 论安酋事 (阮沙城巡抚), PDF_PAGE 3692",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-frontier-by-awe-and-faith"
+      ]
+    },
+    {
+      "title": "张居正书牍（《张太岳集》）",
+      "detail": "shard_085, 答湖广巡按朱谨吾辞建亭, PDF_PAGE 3851 (clean pdfjs)",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bear-the-weight"
+      ]
+    },
+    {
+      "title": "张居正书牍（《先公致祸之由敬述》张懋修辑录·万历六年答河道林按院）",
+      "detail": "shard_051, 经子张懋修辑录转引; 与书牍互证",
+      "role": "user_sources",
+      "confidence_counts": {
+        "medium": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bear-the-weight"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 下（潘林编）",
+      "detail": "shard_071_p001, 自述为政风格",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-bear-the-weight"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 下（潘林编）",
+      "detail": "shard_071_p001, 文华殿论讲学疏",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-learn-for-use"
+      ]
+    },
+    {
+      "title": "张居正奏疏集 下（潘林编）",
+      "detail": "shard_071_p001, 论帝王治学之道",
+      "role": "user_sources",
+      "confidence_counts": {
+        "high": 1
+      },
+      "used_by_principle_ids": [
+        "zjz-learn-for-use"
+      ]
+    }
+  ],
+  "confidence_factors": {
+    "principle_count": 15,
+    "evidence_count": 34,
+    "high_confidence_evidence_ratio": 0.588,
+    "medium_confidence_evidence_ratio": 0.412,
+    "low_confidence_evidence_ratio": 0.0,
+    "source_type_ratios": {
+      "secondary_sources": 0.4,
+      "user_sources": 0.6
+    }
+  },
+  "expression_dna_raw_summary": {
+    "available": true,
+    "extract_count": 26,
+    "dimension_counts": {
+      "certainty": 26
+    },
+    "top_style_tags": [
+      "修辞",
+      "果决",
+      "自省",
+      "sentence-pattern",
+      "certainty",
+      "governance",
+      "impartiality",
+      "principle",
+      "resolve",
+      "merit",
+      "loyalty",
+      "self-sacrifice"
+    ],
+    "sample_seeds": [
+      {
+        "text": "承别楮所评骘，一一精当。比者，古北口之事，\n特欲借此以儆惕人心。其实蓟镇属夷捉人要赏、乘间\n为盗，自昔已然。昨日竖子若不轻身，出塞浪追，则\n亦无此丧败矣。今四方所报，杀官劫库之事，无岁无\n之。中土且然，况边境乎！蓟帅昨蒙严旨切责，足以\n示惩。若举全镇防守之功，委无所损，数年以来，一\n矢不惊，内外安堵，此其功宁可诬乎？猫以辟鼠为上\n品。山有虎豹，藜藿不采，又不以搏噬为能也。似当\n以公初拟为当。若欲为之委曲除豁，则可云：“据近\n\n日鸦鹘属夷之事，虽若防御少疏，然举一镇修守却虏\n之劳，实于功名未损。”以此意措词，不知可否，惟\n高明裁之。\n大抵蓟镇之势，与他镇不同，其论功伐，亦当有\n异。盖此地原非边镇，切近陵寝，故在他镇以战为\n守，此地以守为守；在他镇以能杀贼为功，而此地以\n贼不入为功，其势居然也。至于调用南兵一节，实出\n于万不得已。盖因往时议者，咸极言延、宁边兵入卫\n之苦，为之罢减四枝。蓟镇分区而守，罢一枝，则一\n区失守。又不可弃地与贼，于是谭总督、戚总兵乃建\n言：昔在浙中部曲，尚多素所练习者，可顶所罢之\n数。因以教练火器、整理车营，故不得已而用之。今\n若以为虚费而无用，即当罢之，则宜思戍守",
+        "dimension": "certainty",
+        "analysis": "",
+        "source_title": "张居正书牍（《张太岳集》卷十四起）"
+      },
+      {
+        "text": "道从已抵贵竹，慰甚。所示安酋事，具见高识远\n猷，朝廷可逭南顾之忧矣。\n追念安酋庚午之事，本守臣处置失宜所致，及衅\n端已构，遂欲调三省之兵，捐数十万之费以剿之。仆\n窃以为非计，乃选用阮沙城巡抚，授以五章之约。阮\n\n公幸用吾策，不用一卒，不费斗粮而黠酋稽颡系组，\n纳质请罪。此已事之明效也。夫土夷杂种，譬之狐鼠\n鼪鼬，据险为固，得其地不可耕也，得其人不可使\n也。以国初兵力之强，高皇帝之威，岂不能画野而郡\n县之，势不可也。其种类忿争相杀，固其性然，又非\n可尽以汉法绳也。\n究观近年之事，皆起于不才武职，贪黩有司，及\n四方无籍奸徒窜入其中者，激而构煽之。星星之火，\n遂成燎原。守土者又不深为地方久长之计，轻信偏\n辞，遽为腾奏。小则构讼，大则用兵，驱无辜之民，\n置之锋镝，以为夷狄报仇。幸而胜，兵羆财费，将吏\n冒赏，于国家无秋毫之益；不幸而败，三军暴骨，损\n威伤重，其祸又有不可胜言者。此已事可鉴也。\n故仆以为制御土夷之道，惟在谨修内治，廉察边\n吏，毋令贪吏需索，结怨起衅；禁戢四方奸徒，毋令\n教唆播弄，致生嫌隙。镇之以威，示之以信，毋以小\n术欺诱之。但令遵奉约束，不废贡职而已。此外不必\n过求，其中或有争忿",
+        "dimension": "certainty",
+        "analysis": "",
+        "source_title": "张居正书牍（《张太岳集》卷十四起）"
+      },
+      {
+        "text": "辽左之功，信为奇特。伏奉圣谕俯询，谨具奏如\n别揭。\n但细观塘报，前项虏人有得罪土蛮，欲过河东住\n牧等语。虽其言未可尽信，然据报，彼既拥七八百\n骑，诈谋入犯，必有准备；我偏师一出，即望风奔\n溃，骈首就戮，曾未见有抗螳臂以当车辙者。其所获\n牛羊等项，殆类住牧家当，与入犯形势不同。此中情\n状，大有可疑。或实投奔之虏，边将疑其有诈，不加\n详审，遂从而歼之耳。今奉圣谕特奖，势固难已。但\n\n功罪赏罚，劝惩所系，万所获非入犯之人，而冒得厚\n赏，将开边将要功之隙，阻外夷向化之心。其所关\n系，非细故也。\n且李成梁节被宠赉，已不为薄。异时边将以功荫\n子未有世袭者，而渠每荫必世，又皆三品以上大官，\n今再欲加厚，惟有封爵耳。祖宗旧例，武臣必身临行\n阵，斩将搴旗，以功中率乃得封。今据所报，彼固未\n尝领兵当敌，如往者战平虏、擒王杲也。昔唯赏荫，\n今乃加封，厚薄亦非其伦也。\n孤待罪政府，十年之间，措画该镇颇殚心力。今\n奉温纶谬奖，亦岂不欲掠此勋阀以为光宠？但其中实\n有未安于心者，故不敢不披其愚。望公虚心再审，务\n求至当，以服人心。若果无可疑，则功懋懋赏，国家\n自有彝典，孤何敢强置一喙哉！统维鉴裁。\n居庐",
+        "dimension": "certainty",
+        "analysis": "",
+        "source_title": "张居正书牍（《张太岳集》卷十四起）"
+      },
+      {
+        "text": "适上谕，诘本兵虏情虚实之由，即日奉翰教读\n之，旨哉其言之也！上榖得公，隐然如长城，仆内奉\n宸扆，外忧边境，一日之内，神游九塞，盖不啻一再\n至而已。奈何边臣故套难改，鲜有为国家忠虑者。而\n无识言官，动即建白，及与之论边事，一似说梦。近\n有一科臣，闻辽虚报，遂欲防守京城，浚濠堑，掘战\n坑以御虏者。虏在何处，而张皇如是，使人闷闷。此\n疏若行，岂不远骇听闻，取笑夷虏！已奏上留中寝\n之，以泯其迹。孤孑一身，无可与计事者，故每得翰\n示，辄说怿竟日，非喜其说之同己也，喜其有助于昏\n昧也。然不敢举以告人，恐忌者遂侧目于公。乃知大\n舜隐恶而扬善，亦有不可行于今者矣。人臣不忠，人\n心不古，可叹。\n\n自今东西虏情，的有所闻，仍望密以见示。其中\n情变无常，亦不必定以今日所言为是，所闻为的也。\n仆求助之意，真切恳至，幸惟亮之。揭稿一纸寄览，\n仍希掷还。近闻有瞽目愚术人，在边溷扰，访有指称\n假托者，幸即擒治之。仍有明示诸将士，仆从来不荐\n达此辈，勿为所诳也。",
+        "dimension": "certainty",
+        "analysis": "",
+        "source_title": "张居正书牍（《张太岳集》卷十四起）"
+      },
+      {
+        "text": "辱华翰，并别楮云云，俱悉。长昂事，前奉书未\n至，适蒙翰示，不知近已得要领否？\n二酋作祟非一日，然其诸部仰给于我久矣，岂肯\n舍其厚利而从彼为逆乎？顷所以能惑之者，以彼近于\n宣府，杂在青酋部中，市马获厚利，颇为餍饱。必诳\n其众曰：“贡马一也，何为东西市价悬殊？我等今年\n且不贡，求加添赏赐。若不加赏，待土蛮、青酋纠众\n入犯，我等为之向导。纵是蓟镇绝了抚赏，我等自去\n宣府卖马，何赖于蓟耶？”犬羊愚计必出于此，以为\n朝廷畏之，当曲从其请耳。然彼诸部，久縻豢养，今\n虽暂为所劫，终亦不能背。\n为公计者，当先之以文告，晓谕诸部，言：“为\n逆者独彼二人，汝等素受国恩，岂可一旦从彼作歹，\n\n自失厚利？今朝廷闻汝等不贡，将绝其抚赏，举兵加\n诛。”又行文宣府：“此后西虏入市，须一一盘诘，\n不许夹带土蛮及属夷人。若访有长昂、董忽力在彼，\n即便缚来。蓟镇连年筑台练兵，正无试处。辽东人\n马，不过十余万，犹能将土蛮杀得七残八败；况我蓟\n镇，雄兵有三十万，车骑连云，火器如山，土蛮入\n犯，却是送死。我先将土蛮杀败了，然后将汝等属夷\n头目尽行诛戮；追了敕书，尽行驱逐出塞，那时汝等\n悔之无及。”彼中闻此言，未有不惧者。然后计",
+        "dimension": "certainty",
+        "analysis": "",
+        "source_title": "张居正书牍（《张太岳集》卷十四起）"
+      },
+      {
+        "text": "罗旁自擅，不讨之日久矣。往大征之举，擒斩以\n数万计，不可谓之无功。但此中傜贼不能为害，为害\n\n者狼贼耳。傜山而蠢。狼流来无根，黠而好乱。大兵\n一临，傜先走于狼，即窜穴中，嚎木杪。官兵搜而歼\n之，无敢抗臂，故所杀者，皆傜贼也。山深菁密，逸\n刀漏网者，安得尽无？及大兵既退，下令招降，则狼\n贼又听招而来。或诈作流户，愿受一廛；或托言亡\n命，惧而归死。有司不察，概行容纳。彼乃啸其徒\n侣，缮其故巢。又知我防守单弱，大役难再，逞其故\n态，扰我新民。故今日之为乱者，盖狼贼，非傜贼\n也。此贼情之大较也。\n至于浙、福之兵，皆浮募无籍之徒，利于征剿，\n惮于防守。征剿则有卤获之利，功成有升赏之荣。而\n贼众又弱而易攻，非南倭、北虏以血战而得之者。故\n官兵无不乐于用兵。贼平之后，株守穷荒，升斗之粟\n不足以糊口；一有失事，罪且不测。故防守之兵，无\n不利于人之为盗。甚者，身自为贼矣。鸟尽弓藏，兔\n死犬饥。故诸将士多张大贼势者，亦未可尽以为然\n也。此军情之大较也。\n夫天下未有一举百当，绝无后艰者。譬如芟草，\n铦既过，根芽再萌，惟旋生旋除之耳。嘉、隆之间，\n\n广中处处皆盗，议者谓岭表非我版图矣。不榖违众而\n用殷司徒、凌",
+        "dimension": "certainty",
+        "analysis": "",
+        "source_title": "张居正书牍（《张太岳集》卷十四起）"
+      }
+    ]
+  },
+  "alignment_contract": {
+    "shared_fields": [
+      "primary_category",
+      "secondary_categories",
+      "sources_list",
+      "distill_confidence"
+    ],
+    "equivalent_coverage_fields": [
+      "blind_spots"
+    ],
+    "independent_language_fields": [
+      "core_principles",
+      "decision_framework",
+      "reasoning_patterns",
+      "signature_quotes"
+    ]
+  },
+  "core_notes": "Mechanical scaffold generated from principles. The framework-core-synthesizer agent should refine clusters, blind spot themes, and evidence selection before language-specific framework generation. | ORCHESTRATOR-REFINED: demoted 6 bs-* clusters to shared_blind_spot_themes; backfilled reasoning_pattern_candidates(5) + quote_candidates(10) from authored principles."
+}

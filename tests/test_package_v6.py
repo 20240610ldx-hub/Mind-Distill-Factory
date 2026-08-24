@@ -1,0 +1,641 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load module from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+validator = load_module("validate_output", ROOT / "scripts" / "validate_output.py")
+
+CORE_SECTIONS = [
+    "身份卡", "响应策略", "核心原则", "决策框架",
+    "已知盲区", "表达风格 DNA", "价值取向与反模式", "溯源",
+]
+
+
+# 章节正文占位——必须撑过 P6 的深度下限（150 字符），否则连测试夹具自己的
+# "全部达标"用例都会被新加的 P6_SECTION_TOO_THIN 拦下。内容本身没有意义，
+# 只是保证夹具足够真实、不会被误判成"指针替身"。
+SECTION_FILLER = (
+    "占位正文，用于满足章节深度下限检查——这不是真实的人物洞见内容，"
+    "只是保证测试夹具本身足够长，不会被 P6 误判成指向 references/ 的一行指针替身。"
+    "为了确保稳稳超过下限，这里再补一句同样无意义但足够长的占位文字，凑够字数，"
+    "反复强调这段文字不承载任何真实洞见，纯粹是为了让长度超过 150 字符的下限。"
+)
+assert len(SECTION_FILLER) >= validator.PACKAGE_SCHEMA["min_section_chars"], (
+    "SECTION_FILLER must clear PACKAGE_SCHEMA['min_section_chars']"
+)
+
+
+def build_skill_md(sections=None, extra="") -> str:
+    sections = CORE_SECTIONS if sections is None else sections
+    parts = []
+    for name in sections:
+        if name == "核心原则":
+            # 核心原则章节还要撑过 P6_TOO_FEW_PRINCIPLES 的下限。
+            n = validator.PACKAGE_SCHEMA["min_principles"]
+            principles = "\n\n".join(
+                f"### 原则 {i}：占位标题 {i}\n\n{SECTION_FILLER}" for i in range(1, n + 1)
+            )
+            parts.append(f"## {name}\n\n{principles}")
+        else:
+            parts.append(f"## {name}\n\n{SECTION_FILLER}")
+    body = "\n\n".join(parts)
+    return (
+        "---\n"
+        "name: demo-wisdom\n"
+        "format_version: 6\n"
+        "description: 运用示例人物的框架处理决策问题。触发：示例。\n"
+        "---\n\n"
+        "# 示例人物的思维框架\n\n"
+        f"{body}\n\n{extra}\n"
+    )
+
+
+class PackageFixture:
+    """在临时目录里搭一个最小 v6 包，供各闸门测试复用。"""
+
+    def __init__(self, td: str):
+        self.root = Path(td)
+        self.out = self.root / "output" / "demo"
+        self.refs = self.out / "references"
+        self.refs.mkdir(parents=True)
+        raw = self.root / "sources" / "demo" / "raw"
+        raw.mkdir(parents=True)
+        (raw / "corpus.txt").write_text("月有考，岁有稽，事可责成。", encoding="utf-8")
+        self.write_skill(build_skill_md())
+        self.write_ref("evidence.md", "### 原则 1：甲\n\n> 月有考，岁有稽\n\n- confidence：high\n")
+        self.write_ref("voice.md", "### 样本 1（维度：句式）\n\n> 示例\n")
+        self.write_cases(clusters=1, counter=True)
+        self.write_framework_core(["cluster_001"])
+
+    def write_skill(self, text: str) -> None:
+        (self.out / "SKILL.md").write_text(text, encoding="utf-8")
+
+    def write_ref(self, name: str, text: str) -> None:
+        (self.refs / name).write_text(text, encoding="utf-8")
+
+    def write_framework_core(self, cluster_ids: list[str]) -> None:
+        data = {
+            "person_slug": "demo",
+            "principle_clusters": [{"cluster_id": cid} for cid in cluster_ids],
+        }
+        (self.out / "framework_core.json").write_text(
+            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def write_cases(self, clusters: int, counter: bool) -> None:
+        blocks = []
+        for c in range(1, clusters + 1):
+            for n in range(1, 3):
+                blocks.append(
+                    f"### 案例 {c}-{n}：示例（case_id: demo-c{c}-{n}，high）\n\n"
+                    f"**对应原则簇：** cluster_{c:03d}\n\n**情境：** 略。\n"
+                )
+        if counter:
+            blocks.append(
+                "### 案例 X：反例（case_id: demo-counter-1，high）\n\n"
+                "**对应原则簇：** cluster_001\n\n**反例：** 此处判断失误。\n"
+            )
+        self.write_ref("cases.md", "\n\n".join(blocks))
+
+
+class P3PathResolutionTests(unittest.TestCase):
+    def test_passes_when_all_backtick_paths_resolve(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_skill(build_skill_md(extra="详见 `references/cases.md`。"))
+            errors = validator.check_p3_paths(fx.out / "SKILL.md")
+            self.assertEqual(errors, [])
+
+    def test_fails_on_dangling_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_skill(build_skill_md(extra="详见 `references/nope.md`。"))
+            errors = validator.check_p3_paths(fx.out / "SKILL.md")
+            self.assertEqual(len(errors), 1)
+            self.assertTrue(errors[0].startswith("P3_DANGLING_PATH"))
+
+    def test_p3_fails_on_path_that_only_resolves_from_repo_root(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_skill(build_skill_md(extra="详见 `config/defaults.json`。"))
+            errors = validator.check_p3_paths(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P3_DANGLING_PATH") for e in errors))
+
+
+class P4CaseCoverageTests(unittest.TestCase):
+    def test_passes_with_two_cases_per_cluster_and_a_counter_case(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            errors = validator.check_p4_cases(fx.refs / "cases.md", ["cluster_001"])
+            self.assertEqual(errors, [])
+
+    def test_fails_when_cluster_has_one_case(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            # cluster_001 有 2 例（达标），cluster_002 只有 1 例（不达标）
+            fx.write_ref(
+                "cases.md",
+                "### 案例 1：甲（case_id: demo-a-1，high）\n\n"
+                "**对应原则簇：** cluster_001\n\n**情境：** 略。\n\n"
+                "### 案例 2：乙（case_id: demo-b-1，high）\n\n"
+                "**对应原则簇：** cluster_001\n\n**情境：** 略。\n\n"
+                "### 案例 X：反例（case_id: demo-counter-1，high）\n\n"
+                "**对应原则簇：** cluster_002\n\n**反例：** 略。\n",
+            )
+            errors = validator.check_p4_cases(
+                fx.refs / "cases.md", ["cluster_001", "cluster_002"]
+            )
+            self.assertTrue(any(e.startswith("P4_TOO_FEW_CASES") for e in errors))
+            self.assertTrue(any("cluster_002" in e for e in errors))
+            self.assertFalse(any("cluster_001" in e for e in errors))
+
+    def test_fails_when_no_counter_case(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_cases(clusters=1, counter=False)
+            errors = validator.check_p4_cases(fx.refs / "cases.md", ["cluster_001"])
+            self.assertTrue(any(e.startswith("P4_NO_COUNTER_CASE") for e in errors))
+
+    def test_p4_ignores_prose_mention_of_counter_example(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_ref(
+                "cases.md",
+                "### 案例 1：甲（case_id: demo-a-1，high）\n\n"
+                "**对应原则簇：** cluster_001\n\n"
+                "**情境：** 对方提出了一个反例，但我坚持原判。\n\n"
+                "### 案例 2：乙（case_id: demo-b-1，high）\n\n"
+                "**对应原则簇：** cluster_001\n\n**情境：** 略。\n",
+            )
+            errors = validator.check_p4_cases(fx.refs / "cases.md", ["cluster_001"])
+            self.assertTrue(any(e.startswith("P4_NO_COUNTER_CASE") for e in errors))
+
+
+class P5IndexConsistencyTests(unittest.TestCase):
+    def test_passes_when_index_matches_case_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            index = (
+                "## 案例索引\n\n"
+                "| 案例 | 触发情境 | case_id |\n|---|---|---|\n"
+                "| 示例 | 情境甲 | demo-c1-1 |\n"
+                "| 示例 | 情境乙 | demo-c1-2 |\n"
+                "| 反例 | 情境丙 | demo-counter-1 |\n"
+            )
+            fx.write_skill(build_skill_md(extra=index))
+            errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
+            self.assertEqual(errors, [])
+
+    def test_fails_when_index_references_unknown_case_id(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            index = (
+                "## 案例索引\n\n"
+                "| 案例 | 触发情境 | case_id |\n|---|---|---|\n"
+                "| 幽灵 | 情境甲 | demo-ghost-9 |\n"
+            )
+            fx.write_skill(build_skill_md(extra=index))
+            errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
+            self.assertTrue(any(e.startswith("P5_INDEX_ORPHAN") for e in errors))
+
+    def test_fails_when_case_is_not_indexed(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            index = (
+                "## 案例索引\n\n"
+                "| 案例 | 触发情境 | case_id |\n|---|---|---|\n"
+                "| 示例 | 情境甲 | demo-c1-1 |\n"
+            )
+            fx.write_skill(build_skill_md(extra=index))
+            errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
+            self.assertTrue(any(e.startswith("P5_CASE_NOT_INDEXED") for e in errors))
+
+    def test_p5_ignores_case_id_mentioned_outside_index_section(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_cases(clusters=1, counter=False)
+            extra = (
+                "## 案例索引\n\n"
+                "| 案例 | 触发情境 | case_id |\n|---|---|---|\n"
+                "| 示例 | 情境甲 | demo-c1-1 |\n\n"
+                "## 附录\n\n"
+                "另可参见 case_id: demo-c1-2 的教训。\n"
+            )
+            fx.write_skill(build_skill_md(extra=extra))
+            errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
+            self.assertTrue(
+                any(e.startswith("P5_CASE_NOT_INDEXED") and "demo-c1-2" in e for e in errors)
+            )
+
+
+class P6CoreSelfSufficiencyTests(unittest.TestCase):
+    def test_passes_with_all_eight_sections_under_line_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertEqual(errors, [])
+
+    def test_fails_when_a_core_section_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_skill(build_skill_md(sections=CORE_SECTIONS[:-1]))
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P6_MISSING_SECTION") for e in errors))
+
+    def test_fails_when_a_core_section_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            body = "\n\n".join(
+                f"## {name}\n" + ("" if name == "溯源" else "\n内容占位，非空。")
+                for name in CORE_SECTIONS
+            )
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P6_EMPTY_SECTION") for e in errors))
+
+    def test_fails_over_line_cap(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            fx.write_skill(build_skill_md(extra="填充行\n" * 600))
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P6_TOO_LONG") for e in errors))
+
+    def test_p6_accepts_section_whose_content_is_entirely_subsections(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            parts = []
+            for name in CORE_SECTIONS:
+                if name == "核心原则":
+                    parts.append(
+                        "## 核心原则\n\n"
+                        "### 原则 1：甲\n\n"
+                        "**理念：** 月有考，岁有稽，事可责成。\n"
+                    )
+                else:
+                    parts.append(f"## {name}\n\n内容占位，非空。")
+            body = "\n\n".join(parts)
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertFalse(any(e.startswith("P6_EMPTY_SECTION") for e in errors))
+
+    def test_p6_still_fails_on_a_genuinely_empty_section(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            parts = []
+            for name in CORE_SECTIONS:
+                if name == "已知盲区":
+                    parts.append(f"## {name}\n")
+                else:
+                    parts.append(f"## {name}\n\n内容占位，非空。")
+            body = "\n\n".join(parts)
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(
+                any(e.startswith("P6_EMPTY_SECTION") and "已知盲区" in e for e in errors)
+            )
+
+    def test_p6_fails_when_section_exists_only_as_nested_subheading(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            sections = [s for s in CORE_SECTIONS if s != "决策框架"]
+            extra = (
+                "## 案例索引\n\n"
+                "#### 决策框架应用示例\n\n"
+                "此处内容非空，用于验证嵌套子标题不应被误判为核心章节。\n"
+            )
+            fx.write_skill(build_skill_md(sections=sections, extra=extra))
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(
+                any(e.startswith("P6_MISSING_SECTION") and "决策框架" in e for e in errors)
+            )
+
+    def test_p6_rejects_pointer_only_sections(self) -> None:
+        # Regression: P6 previously only checked presence/emptiness, so replacing every
+        # required section's body with a one-line pointer to references/ (exactly the
+        # "routing table" degradation CLAUDE.md claims P6 makes structurally impossible)
+        # exited 0. A depth floor must catch it.
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            body = "\n\n".join(
+                f"## {name}\n\n详见 `references/cases.md`。" for name in CORE_SECTIONS
+            )
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P6_SECTION_TOO_THIN") for e in errors))
+            # Every section is a one-line pointer, so all 8 should be flagged.
+            self.assertEqual(
+                sum(1 for e in errors if e.startswith("P6_SECTION_TOO_THIN")),
+                len(CORE_SECTIONS),
+            )
+
+    def test_p6_rejects_too_few_principles(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            principles = "\n\n".join(
+                f"### 原则 {i}：甲{i}\n\n{SECTION_FILLER}" for i in range(1, 4)
+            )
+            parts = []
+            for name in CORE_SECTIONS:
+                if name == "核心原则":
+                    parts.append(f"## {name}\n\n{principles}")
+                else:
+                    parts.append(f"## {name}\n\n{SECTION_FILLER}")
+            body = "\n\n".join(parts)
+            fx.write_skill(
+                "---\nname: demo-wisdom\nformat_version: 6\n"
+                "description: 示例。触发：示例。\n---\n\n# 标题\n\n" + body + "\n"
+            )
+            errors = validator.check_p6_core(fx.out / "SKILL.md")
+            self.assertTrue(any(e.startswith("P6_TOO_FEW_PRINCIPLES") for e in errors))
+
+    def test_p6_accepts_the_real_pilot_package(self) -> None:
+        # The thresholds must not exceed genuine content — the real zhang-juzheng-v6
+        # pilot (9 principles, smallest section well over 150 chars) must keep passing.
+        pilot = ROOT / "output" / "zhang-juzheng-v6" / "SKILL.md"
+        errors = validator.check_p6_core(pilot)
+        self.assertEqual(errors, [])
+
+
+class PackageStageTests(unittest.TestCase):
+    def test_package_stage_is_registered(self) -> None:
+        self.assertIn("package", validator.STAGES)
+
+    def test_validate_package_reports_missing_reference_file(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                fx = PackageFixture(td)
+                (fx.refs / "voice.md").unlink()
+                os.chdir(fx.root)
+                errors = validator.validate_package("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(any("voice.md" in e for e in errors))
+
+    def test_package_fails_when_framework_core_missing(self) -> None:
+        # Regression: validate_package used to derive cluster_ids from
+        # framework_core.json but never required the file — missing, unparseable, or
+        # clusterless all silently degraded to an empty list, so the per-cluster P4
+        # loop ran zero times and validate_package exited 0. This is reachable in
+        # practice: publish_skill.py never copies framework_core.json into gallery/,
+        # so gallery-time revalidation hits exactly this path.
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                fx = PackageFixture(td)
+                (fx.out / "framework_core.json").unlink()
+                os.chdir(fx.root)
+                errors = validator.validate_package("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(
+                any(
+                    e.startswith("MISSING:") and "framework_core.json" in e
+                    for e in errors
+                )
+            )
+
+    def test_package_fails_when_framework_core_has_no_clusters(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                fx = PackageFixture(td)
+                fx.write_framework_core([])
+                os.chdir(fx.root)
+                errors = validator.validate_package("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(any(e.startswith("P4_EMPTY_CLUSTERS") for e in errors))
+
+
+class FormatDetectionTests(unittest.TestCase):
+    LEGACY = (
+        "---\nname: demo-wisdom\n"
+        "description: Apply demo frameworks. 运用示例框架。\n---\n\n"
+        "# Language Detection · 语言检测\n\n"
+        "## English\n\n### Identity Card\n略\n\n"
+        "## 中文版\n\n### 身份卡\n略\n"
+    )
+
+    def test_detects_v6_by_format_version(self) -> None:
+        self.assertTrue(validator.is_v6_skill(build_skill_md()))
+
+    def test_detects_legacy_when_format_version_absent(self) -> None:
+        self.assertFalse(validator.is_v6_skill(self.LEGACY))
+
+    def test_v6_skill_stage_does_not_demand_english_block(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                fx = PackageFixture(td)
+                os.chdir(fx.root)
+                errors = validator.validate_skill("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertFalse(any("## English" in e for e in errors))
+            self.assertFalse(any("MISSING_LANG_DETECTION" in e for e in errors))
+
+    def test_legacy_skill_stage_still_demands_english_block(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                (out / "SKILL.md").write_text(
+                    self.LEGACY.replace("## English\n\n### Identity Card\n略\n\n", ""),
+                    encoding="utf-8",
+                )
+                os.chdir(td)
+                errors = validator.validate_skill("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(any("'## English'" in e for e in errors))
+
+    def test_legacy_skill_documenting_v6_in_body_is_not_misrouted(self) -> None:
+        legacy_with_v6_example = (
+            "---\nname: demo-wisdom\n"
+            "description: Apply demo frameworks. 运用示例框架。\n---\n\n"
+            "# Language Detection · 语言检测\n\n"
+            "## English\n\n### Identity Card\n略\n\n"
+            "Example v6 frontmatter:\n\n```yaml\nformat_version: 6\n```\n\n"
+            "## 中文版\n\n### 身份卡\n略\n"
+        )
+        self.assertFalse(validator.is_v6_skill(legacy_with_v6_example))
+
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                (out / "SKILL.md").write_text(legacy_with_v6_example, encoding="utf-8")
+                os.chdir(td)
+                errors = validator.validate_skill("demo")
+            finally:
+                os.chdir(cwd)
+            # Went through _validate_merged_skill (legacy path): missing sections
+            # like Response Strategy / Core Principles surface as MISSING_SECTION.
+            self.assertTrue(any("MISSING_SECTION" in e for e in errors))
+            # Must NOT have been routed to validate_package, which would flag the
+            # '## English' block as a v6 violation.
+            self.assertFalse(any("V6_HAS_ENGLISH_BLOCK" in e for e in errors))
+
+    def test_validate_package_rejects_legacy_doc_mentioning_v6_in_body(self) -> None:
+        legacy_with_v6_example = (
+            "---\nname: demo-wisdom\n"
+            "description: Apply demo frameworks. 运用示例框架。\n---\n\n"
+            "# Language Detection · 语言检测\n\n"
+            "## English\n\n### Identity Card\n略\n\n"
+            "Example v6 frontmatter:\n\n```yaml\nformat_version: 6\n```\n\n"
+            "## 中文版\n\n### 身份卡\n略\n"
+        )
+        self.assertFalse(validator.is_v6_skill(legacy_with_v6_example))
+
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                (out / "SKILL.md").write_text(legacy_with_v6_example, encoding="utf-8")
+                os.chdir(td)
+                errors = validator.validate_package("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(any(e.startswith("NOT_V6:") for e in errors))
+            # Drift-catching assertion (same pattern as the Task 6
+            # is_v6_package/is_v6_skill pinning test): validate_package's v6
+            # classification must agree with is_v6_skill on identical content, so
+            # future drift between the anchored discriminator and any
+            # substring/regex shortcut fails the suite immediately.
+            self.assertEqual(
+                any(e.startswith("NOT_V6:") for e in errors),
+                not validator.is_v6_skill(legacy_with_v6_example),
+            )
+
+    def test_v6_detected_despite_incidental_whitespace(self) -> None:
+        space_before_colon = (
+            "---\nname: demo-wisdom\nformat_version : 6\n"
+            "description: 示例。触发：示例。\n---\n\n# 标题\n"
+        )
+        indented = (
+            "---\nname: demo-wisdom\n  format_version: 6\n"
+            "description: 示例。触发：示例。\n---\n\n# 标题\n"
+        )
+        self.assertTrue(validator.is_v6_skill(space_before_colon))
+        self.assertTrue(validator.is_v6_skill(indented))
+
+
+class FrameworksLanguageTests(unittest.TestCase):
+    def _write_core(self, out: Path) -> None:
+        (out / "framework_core.json").write_text(
+            json.dumps({"person_slug": "demo", "principle_clusters": [{"cluster_id": "cluster_001"}]}),
+            encoding="utf-8",
+        )
+
+    def test_missing_en_framework_is_not_an_error_when_zh_only(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                self._write_core(out)
+                (out / "frameworks.zh.json").write_text("{}", encoding="utf-8")
+                os.chdir(td)
+                errors = validator.validate_frameworks("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertFalse(
+                any(e.startswith("MISSING:") and "frameworks.en.json" in e for e in errors)
+            )
+
+    def test_missing_en_framework_is_an_error_when_en_requested(self) -> None:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                self._write_core(out)
+                (out / "frameworks.zh.json").write_text("{}", encoding="utf-8")
+                (out / "en_requested.flag").write_text("yes", encoding="utf-8")
+                os.chdir(td)
+                errors = validator.validate_frameworks("demo")
+            finally:
+                os.chdir(cwd)
+            self.assertTrue(
+                any(e.startswith("MISSING:") and "frameworks.en.json" in e for e in errors)
+            )
+
+
+class FrameworksV6PrincipleBoundsTests(unittest.TestCase):
+    """原则数区间随 format_version 而变：v6（顶层 format_version: 6）用 8-11，
+    legacy（无该字段）保持既有的 5-8 不变。"""
+
+    def _write_core(self, out: Path) -> None:
+        (out / "framework_core.json").write_text(
+            json.dumps({"person_slug": "demo", "principle_clusters": [{"cluster_id": "cluster_001"}]}),
+            encoding="utf-8",
+        )
+
+    def _write_frameworks(self, out: Path, n_principles: int, format_version) -> None:
+        data = {"lang": "zh", "core_principles": [{"id": f"p{i}"} for i in range(n_principles)]}
+        if format_version is not None:
+            data["format_version"] = format_version
+        (out / "frameworks.zh.json").write_text(json.dumps(data), encoding="utf-8")
+
+    def _run(self, n_principles: int, format_version) -> list[str]:
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                out = Path(td) / "output" / "demo"
+                out.mkdir(parents=True)
+                self._write_core(out)
+                self._write_frameworks(out, n_principles, format_version)
+                os.chdir(td)
+                errors = validator.validate_frameworks("demo")
+            finally:
+                os.chdir(cwd)
+        return errors
+
+    def test_frameworks_stage_accepts_ten_principles_for_v6(self) -> None:
+        errors = self._run(n_principles=10, format_version=6)
+        self.assertFalse(any("TOO_MANY_PRINCIPLES" in e for e in errors))
+        self.assertFalse(any("TOO_FEW_PRINCIPLES" in e for e in errors))
+
+    def test_frameworks_stage_still_caps_legacy_at_eight(self) -> None:
+        errors = self._run(n_principles=10, format_version=None)
+        self.assertTrue(any("TOO_MANY_PRINCIPLES" in e for e in errors))
+
+    def test_frameworks_stage_rejects_twelve_principles_for_v6(self) -> None:
+        errors = self._run(n_principles=12, format_version=6)
+        self.assertTrue(any("TOO_MANY_PRINCIPLES" in e for e in errors))
+
+
+if __name__ == "__main__":
+    unittest.main()

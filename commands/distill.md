@@ -1,13 +1,13 @@
 ---
 description: >-
-  蒸馏一位历史名人或当代人物的思想，产出可安装的双语 Claude Code Skill。
+  蒸馏一位历史名人或当代人物的思想，产出中文 Claude Code Skill 包（英文版按需追加）。
   使用方式：/distill <人物名>，如 /distill 孙子 或 /distill "Charlie Munger"
 argument-hint: <人物名/charactor name>
 ---
 
 # /distill 编排命令
 
-你是**思维蒸馏工厂的总编排者**。用户调用 `/distill <人物名>` 时，你负责协调整个蒸馏流水线，产出双语（中文 + 英文）的 Claude Code Skill 文件。
+你是**思维蒸馏工厂的总编排者**。用户调用 `/distill <人物名>` 时，你负责协调整个蒸馏流水线，产出中文 Claude Code Skill 包（英文版按需追加）。
 
 ## 核心规则（不可违反）
 
@@ -131,7 +131,7 @@ python scripts/local_source_pipeline.py index {slug}
 
 #### A1：local-source-worker[N]（按 shard 并行）
 
-- 每个 worker **只读取一个** `local_shards/shard_XXX.json`
+- 每个 worker **只读取一个** `sources/{slug}/processed/local_shards/shard_XXX.json`
 - 每个 worker 提取 8-15 条高价值候选：
   - `quote`
   - `principle`
@@ -198,9 +198,9 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 - 输出至 `sources/{slug}/processed/expression_dna.json`
 - **如果网络搜索全部失败**：从用户提供的 PDF/TXT 资料中提取表达风格素材（演讲段落、论辩用语、典型句式），不得留空
 
-**注意：** 如果用户提供了充足素材（子代理 A 产出丰富），子代理 B/C 可以精简搜索范围。**子代理 D 始终执行，且必须产出非空的 `expression_dna.json`**——表达风格是消除"套公式"感的核心依据，跳过此步骤将导致 SKILL 质量严重下降。
+**注意：** 如果用户提供了充足素材（子代理 A 产出丰富），子代理 B/C 可以精简搜索范围。**子代理 D 始终执行，且必须产出非空的 `sources/{slug}/processed/expression_dna.json`**——表达风格是消除"套公式"感的核心依据，跳过此步骤将导致 SKILL 质量严重下降。
 
-当 Stage 1A 的 `user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 应改为**补缺搜索**：围绕本地素材缺失的著作、演讲、传记争议或出处验证进行窄搜索，不得重新铺开泛泛搜索。
+当 Stage 1A 的 `sources/{slug}/processed/user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 应改为**补缺搜索**：围绕本地素材缺失的著作、演讲、传记争议或出处验证进行窄搜索，不得重新铺开泛泛搜索。
 
 **搜索工具回退策略：** 子代理 B/C/D 的网络搜索按以下优先级选择工具：
 
@@ -223,18 +223,18 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 □ sources/{slug}/processed/expression_dna.json    （子代理 D 输出）⚠️ 必须存在
 ```
 
-如果 `raw/` 有文件但 `local_shards/manifest.json` 不存在：
+如果 `raw/` 有文件但 `sources/{slug}/processed/local_shards/manifest.json` 不存在：
 
 - 不要让 `source-researcher user_provided` 单独处理全部 raw
 - 立即执行 local-source-indexer
 - 再按 shard 派发 local-source-worker
-- 最后执行 local-source-reducer 生成 `user_sources.json`
+- 最后执行 local-source-reducer 生成 `sources/{slug}/processed/user_sources.json`
 
-如果 `expression_dna.json` 不存在或为空：
+如果 `sources/{slug}/processed/expression_dna.json` 不存在或为空：
 
 - **不要跳过** — 立即补充执行子代理 D
-- 如果网络搜索不可用，指示子代理 D 从 `user_sources.json` 中提取表达样本
-- 只有确认 `expression_dna.json` 非空后才能进入格式校验
+- 如果网络搜索不可用，指示子代理 D 从 `sources/{slug}/processed/user_sources.json` 中提取表达样本
+- 只有确认 `sources/{slug}/processed/expression_dna.json` 非空后才能进入格式校验
 
 **第二步：格式校验**
 
@@ -271,9 +271,9 @@ python scripts/validate_output.py principles {slug}
 
 ## Stage 3：框架合成（三段式减压）
 
-**执行者：framework-core-synthesizer → framework-synthesizer-zh / framework-synthesizer-en → framework-alignment-reviewer**
+**执行者：framework-core-synthesizer → framework-synthesizer-zh（英文分支触发时另加 framework-synthesizer-en）→ framework-alignment-reviewer**
 
-Stage 3 不再由一个 agent 同时完成共同去重和双语生成。必须拆成三段：
+Stage 3 不再由一个 agent 同时完成共同去重和语言生成。必须拆成三段：
 
 ### Stage 3A：共同核心合成（framework-core-synthesizer，1 个）
 
@@ -306,49 +306,27 @@ python scripts/build_framework_core.py {slug}
 
 但 scaffold 只是起点，framework-core-synthesizer 必须根据素材精修核心聚类和盲区主题。
 
-### Stage 3B：语言专属框架生成（并行 2 个）
+### Stage 3B：中文框架生成（framework-synthesizer-zh，1 个）
 
-并行派发：
+**默认只跑中文。** 英文合成器不在默认路径上——它由 Stage 6.5 按用户意愿单独触发。
 
-- `framework-synthesizer-zh`
-  - 输入：`output/{slug}/framework_core.json`
-  - 输出：`output/{slug}/frameworks.zh.json`
-  - 成功后标记 `framework_zh` completed
-- `framework-synthesizer-en`
-  - 输入：`output/{slug}/framework_core.json`
-  - 输出：`output/{slug}/frameworks.en.json`
-  - 成功后标记 `framework_en` completed
+- 输入：`output/{slug}/framework_core.json`
+- 输出：`output/{slug}/frameworks.zh.json`
+- **顶层必须带 `"format_version": 6`。** 这是校验器把原则数区间从 legacy 的 5-8 放宽到 v6
+  的 8-11（目标 9-11）的唯一依据——缺了这个字段，9 条以上的原则会被当 legacy 框架判定为
+  `TOO_MANY_PRINCIPLES`
+- 原则数：**9-11 条**（目标区间；`config/defaults.json` 的 `min_principles` 硬下限为 8，语料确实撑不起 9 条时可低至 8 条，见 `agents/skill-assembler.md` 的核心层加厚要求）
+- 每条原则必须含新增的两个字段：`failure_boundary`（失效边界）与 `prerequisite_intel`（情报前提）
+- 成功后标记 `framework_zh` completed
 
-两者允许：
+### Stage 3C：中文自检（framework-alignment-reviewer，1 个）
 
-- 不同数量的核心原则（5-8 条）
-- 不同的决策框架步骤顺序
-- 不同的语言 framing 与引用选择
+单语路径下，本阶段不做双语对齐，改做中文自检：
 
-两者必须共享：
-
-- `primary_category` / `secondary_categories`
-- shared blind spot themes 的核心风险覆盖
-- `sources_list` 覆盖范围
-- `distill_confidence` 的基础逻辑
-- 同一套 `framework_core.json` 证据底座
-
-### Stage 3C：对齐审查（framework-alignment-reviewer，1 个）
-
-- 输入：
-  - `output/{slug}/framework_core.json`
-  - `output/{slug}/frameworks.zh.json`
-  - `output/{slug}/frameworks.en.json`
-- 任务：
-  1. 检查两个 frameworks 是否 schema 合规
-  2. 检查盲区主题是否等价覆盖
-  3. 检查分类、来源清单、置信度逻辑是否一致
-  4. 检查是否有任一语言版引入无来源原则
-- 输出：
-
-```text
-output/{slug}/framework_alignment_review.md
-```
+- 决策框架每一步是否都是过滤器型（yes/no 闸门），无开放式收尾步骤
+- 每条盲区是否都带缓解建议
+- 每条原则是否都有 `failure_boundary` 与 `prerequisite_intel`
+- 输出：`output/{slug}/framework_alignment_review.md`
 
 结论必须为 `[PASS]` / `[REVISE: ...]` / `[FAIL: ...]`。
 
@@ -360,81 +338,63 @@ output/{slug}/framework_alignment_review.md
 python scripts/validate_output.py frameworks {slug}
 ```
 
-通过后进入 Stage 4。校验项包括：`framework_core.json` 是否存在且 principle clusters 非空、双语文件是否各自完整、盲区是否有缓解建议、决策框架是否为过滤器形式、**表达风格 DNA 8 维是否完整、价值取向与反模式是否达标**。
+通过后进入 Stage 4。校验项包括：`output/{slug}/framework_core.json` 是否存在且 principle clusters 非空、中文框架文件是否完整（英文分支启用时另检查 `output/{slug}/frameworks.en.json`）、盲区是否有缓解建议、决策框架是否为过滤器形式、**表达风格 DNA 8 维是否完整、价值取向与反模式是否达标**。常见报错处置：
+
+| 报错 | 处置 |
+|---|---|
+| `TOO_MANY_PRINCIPLES` | `output/{slug}/frameworks.zh.json` 缺少顶层 `"format_version": 6`，被当 legacy 框架卡在 8 条上限——补上该字段，不要删原则 |
+| `TOO_FEW_PRINCIPLES` | 语料确实撑不起目标区间，回 framework-core-synthesizer 补聚类或接受降至硬下限 8 条 |
+| `MISSING_MITIGATION` | 回 framework-synthesizer-zh 给对应盲区补 `mitigation` 字段 |
+| `STAGE3_UNRESOLVED_UNITS` | `output/{slug}/stage3_status.json` 有 failed/blocked unit——按 unit_id 重派，不整段重跑 |
 
 ---
 
-## Stage 4：Skill 组装（双语独立 → 单文件合并）
+## Stage 4：核心层组装
 
 **执行者：skill-assembler 子代理（1 个）**
 
-### 4.1 生成双语草稿
+从 `output/{slug}/frameworks.zh.json` + `templates/skill-template.v6.zh.md` 生成
+`output/{slug}/SKILL.md`。
 
-分别从独立 frameworks JSON 生成各语言版本（不是互译）：
+**硬约束：**
 
-- 中文版输入：`output/{slug}/frameworks.zh.json` + `templates/skill-template.zh.md`
-- 英文版输入：`output/{slug}/frameworks.en.json` + `templates/skill-template.en.md`
-- 参考示例：`templates/examples/` 中的已完成 Skill
+- frontmatter 必须含 `format_version: 6`
+- 纯中文；**不得含英文语言区块**；**不含**语言检测头
+- **≤500 行**（超限时减少原则条数，不压缩每条深度）
+- `description` ≤300 字符
+- 必须含「案例索引」章与「附件调用」表。此时 `output/{slug}/references/cases.md` 尚未生成（Stage 4.5 才产出）——
+  「案例索引」章在本阶段只按 cluster 写占位行（不得虚构 case_id），真正的 case_id 要等 Stage 4.5
+  附件齐备后回写
 
-**重要原则：中英文版本各自从独立的 frameworks JSON 生成，不是互译。**
+## Stage 4.5：附件生成
 
-例：
+三个附件可并行生成：
 
-- 中文版 frameworks.zh.json 可能有 7 条原则，英文版 frameworks.en.json 可能只有 6 条
-- 中文版强调概念的中文哲学内涵（如孙子的"势"需展开为"形势、趋势、态势"）
-- 英文版优先使用西方读者熟悉的框架映射该概念
+| 子代理 | 产出 | 模板 |
+|---|---|---|
+| evidence-carder | `output/{slug}/references/evidence.md` | `templates/refs/evidence.zh.md` |
+| case-builder | `output/{slug}/references/cases.md` | `templates/refs/cases.zh.md` |
+| skill-assembler（续） | `output/{slug}/references/voice.md` | `templates/refs/voice.zh.md` |
 
-草稿输出（开发中间产物，保留在 output/ 供审查）：
+另由 skill-assembler 产出 `output/{slug}/人物档案.md`（模板 `templates/refs/dossier.zh.md`）。
 
-- `output/{slug}/draft.zh.md`
-- `output/{slug}/draft.en.md`
+附件齐备后回写核心层的「案例索引」表——把 Stage 4 写下的占位行替换成 `output/{slug}/references/cases.md`
+中真实的 case_id，索引与 cases.md 必须双向一一对应（P5 闸门）。
 
-### 4.2 合并为单个 SKILL.md
-
-**关键约束：Claude Code 只识别每个 skill 目录下的 `SKILL.md`（大小写敏感）。`SKILL.zh.md`、`SKILL.en.md` 等命名不会被加载。**
-
-将两个草稿合并为单个 `output/{slug}/SKILL.md`，结构必须如下：
-
-```markdown
----
-name: {person-slug}-wisdom
-description: >-
-  [Short English description + triggers (1-2 sentences)]
-  [简短中文描述 + 触发词（1-2 句）]
-argument-hint: <describe your situation / 描述你的决策场景>
----
-
-# Language Detection · 语言检测
-
-**CRITICAL:** Before processing any request, detect the user's primary language:
-- If the user writes in **Chinese** → follow the `## 中文版` section below and respond in Chinese.
-- If the user writes in **English** (or any other language) → follow the `## English` section below and respond in English.
-
----
-
-## English
-[完整的英文版内容 — 从 draft.en.md 提取 body 部分]
-
----
-
-## 中文版
-[完整的中文版内容 — 从 draft.zh.md 提取 body 部分]
-```
-
-合并注意事项：
-
-- Frontmatter `description` 宜短小精悍（每语言 1-2 句），中英文各自独立简短。不要求覆盖所有触发场景，精确比全面更重要
-- `argument-hint` 使用双语形式
-- 两个 `## English` / `## 中文版` 区块各自独立完整，不含 frontmatter（frontmatter 已在上方统一处理）
-- 语言检测指令必须放在正文最顶部、两个语言区块之前
-
-### ✓ 检查点 4：Skill 格式校验
+### ✓ 检查点 4：包校验
 
 ```bash
-python scripts/validate_output.py skill {slug}
+python scripts/validate_output.py package {slug}
 ```
 
-通过后进入 Stage 5。校验项包括：frontmatter 完整性、双语 description 都存在、语言检测指令位置正确、`## English` 和 `## 中文版` 区块都存在且完整、无未填充占位符。
+六道闸门全过方可进入 Stage 5。常见报错处置：
+
+| 报错 | 处置 |
+|---|---|
+| `P2_NOT_IN_CORPUS` | 回 evidence-carder 改逐字引文；确属底本讹字则加 `textual_note` |
+| `P4_TOO_FEW_CASES` | 回 case-builder 补该 cluster 的案例 |
+| `P5_INDEX_ORPHAN` / `P5_CASE_NOT_INDEXED` | 同步核心层索引与 cases.md |
+| `P6_TOO_LONG` | 减原则条数，不压深度 |
 
 ---
 
@@ -442,26 +402,27 @@ python scripts/validate_output.py skill {slug}
 
 **执行者：quality-reviewer 子代理（1 个）**
 
-审查项目：
+**默认 8 个审查维度；`en_requested.flag` 存在时加「双语一致性」共 9 个**（详见
+`agents/quality-reviewer.md`）：
 
-1. **准确性** — 引用的名言是否来自可靠来源？是否有明显错误归因？
-2. **深度** — 原则是否真正独特于这位思想家，还是通用格言？
-3. **可操作性** — 决策框架是否真的可以逐步执行？
-4. **文化敏感性** — 是否准确表达了该人物的文化背景？
-5. **双语等价性** — 两个语言区块是否共享证据底座、盲区覆盖和质量标准（允许原则数量、顺序、语言 framing 差异）？
-6. **格式合规** — SKILL.md 是否符合合并文件结构（语言检测指令 + 两个语言区块）？
-7. **合并完整性** — frontmatter 是否包含中英双语 description？语言检测指令是否在最顶部？
-8. **表达风格辨识度** — 表达 DNA 是否足够具体，能让回应区别于通用分析口吻？校准示例是否有效？
-9. **反套公式合规** — 响应策略章节是否包含完整的反套公式指令？是否有按输入类型适配的规则？
-10. **价值观完整性** — 追求/反对/内在张力三层是否均有内容？反模式是否与盲区互补（而非重复）？
+1. **准确性** — 引文能否在证据底座中找到对应？归因是否明显错误？（逐字性不由本代理判——那是
+   `scripts/verify_provenance.py` 的 P1/P2 闸门；本代理只查 `output/{slug}/references/evidence.md` 里每条 `textual_note` 的裁决是否站得住脚）
+2. **独特性** — 原则去掉人名后是否仍能认出是这个人？
+3. **可操作性** — 决策框架每一步是否是可执行的过滤判断？
+4. **表达辨识度** — 第一人称沉浸、表达 DNA 8 维、结构自然性指令、边界规则是否到位？
+5. **价值观完整性** — 追求/反对/内在张力三层是否均有内容，且反模式与盲区互补而非重复？
+6. **双语一致性**（仅英文分支启用时评审）— 中英是否共享同一个 `output/{slug}/framework_core.json` 证据底座与盲区核心风险覆盖？
+7. **案例层质量** — `output/{slug}/references/cases.md` 的案例是否真的展示了判断过程，反例是否体现「失效边界被触碰」？
+8. **附件可用性** — 「附件调用」触发条件是否逐字保留、未被软化？`output/{slug}/references/voice.md` 样本是否≥20 条且正反例齐全？
+9. **格式合规** — frontmatter 是否含 `format_version: 6`？八个核心章节是否齐备无占位符残留？
 
 输出：`output/{slug}/review.md`，结论为以下三者之一：
 
-- `[PASS]` — 可以进入安装流程
-- `[REVISE: {具体问题}]` — 返回 Stage 4 修订
+- `[PASS]` — 综合得分 ≥3.5 且准确性、表达辨识度均 ≥3，可以进入安装流程
+- `[REVISE: {具体问题}]` — 返回 Stage 4 / Stage 4.5 修订
 - `[FAIL: {根本原因}]` — 需要从 Stage 1/2 重新开始
 
-**如果 REVISE，编排者将审查反馈传递给 skill-assembler，最多重试 2 次。**
+**如果 REVISE，编排者将审查反馈传递给 skill-assembler（核心层问题）或 case-builder / evidence-carder（附件问题），最多重试 2 次。**
 
 ---
 
@@ -476,7 +437,7 @@ python scripts/validate_output.py skill {slug}
 - 人物基本信息（时代、门类）
 - 提取到的核心原则清单（仅标题）
 - 质量审查结论
-- 两个文件的预览（各展示前 50 行）
+- `output/{slug}/SKILL.md` 核心层预览（前 50 行）+ `references/` 下三个附件的文件清单
 
 ### 6.2 询问操作选择
 
@@ -490,39 +451,44 @@ python scripts/validate_output.py skill {slug}
 
 ### 6.3 执行安装（如用户选择 [1]）
 
+顺序是**发布 → 校验 → 安装**——校验不过绝不能先把文件 cp 进用户的真实 skills 目录。
+
 ```bash
-# 创建 skill 目录
-mkdir -p ~/.claude/skills/{person-slug}-wisdom/
-
-# 复制合并后的 SKILL.md（Claude Code 只识别此文件名）
-cp output/{slug}/SKILL.md ~/.claude/skills/{person-slug}-wisdom/SKILL.md
-
-# 更新 gallery（保留开发中间产物供后续修改）
-mkdir -p gallery/{slug}/
-cp output/{slug}/SKILL.md gallery/{slug}/SKILL.md
-cp output/{slug}/draft.zh.md gallery/{slug}/draft.zh.md   # 可选：保留草稿供后续编辑
-cp output/{slug}/draft.en.md gallery/{slug}/draft.en.md   # 可选：保留草稿供后续编辑
-
-# 更新 gallery/index.json
+# 1. 发布到 gallery 并写 manifest（脚本会自动识别 v6 包并同步 references/）
+python scripts/publish_skill.py --slug {slug}
 ```
 
-发布后必须立即校验 gallery 与 output 是否一致：
+**`output/{slug}/人物档案.md` 不进安装目录**——它只留在 `gallery/{slug}/` 供人阅读。
+把一份第三人称档案放进 skill 目录会诱发人称漂移，违反第一人称沉浸铁律。
 
 ```bash
+# 2. 发布后必须先校验
 python scripts/validate_output.py gallery {slug}
 ```
 
-如果此检查失败，不得向用户宣称已安装完成；先重新同步 `output/{slug}/SKILL.md` 到 `gallery/{slug}/SKILL.md`，再重跑校验。
+此检查会逐文件比对 output/ 与 gallery/ 的哈希（v6 包含全部 references）。
+**校验失败时不得执行下一步的 cp，也不得向用户宣称已安装完成**——先重新同步再重跑校验，
+只有通过后才能继续安装。
+
+```bash
+# 3. 校验通过后才安装到 Claude Code。白名单：只有 SKILL.md 与 references/ 进安装目录
+mkdir -p ~/.claude/skills/{person-slug}-wisdom/references/
+cp gallery/{slug}/SKILL.md ~/.claude/skills/{person-slug}-wisdom/SKILL.md
+cp gallery/{slug}/references/*.md ~/.claude/skills/{person-slug}-wisdom/references/
+```
 
 ### 6.4 更新 gallery/index.json
 
-在 gallery/index.json 中添加条目：
+`scripts/publish_skill.py` 已自动写入大部分字段；核对条目包含以下字段：
 
 ```json
 {
   "slug": "{slug}",
   "name_zh": "{人物中文名}",
   "name_en": "{Person English Name}",
+  "lang": "zh",
+  "format_version": 6,
+  "has_attachments": true,
   "primary_category": "{category_id}",
   "secondary_categories": ["{cat2}", "{cat3}"],
   "distilled_on": "{YYYY-MM-DD}",
@@ -531,15 +497,50 @@ python scripts/validate_output.py gallery {slug}
 }
 ```
 
-### 6.5 安装确认
+### 6.5 询问是否生成英文版
+
+中文包安装完成后询问用户：
+
+> 中文版已完成并安装。是否同时生成英文版？英文版会作为**独立 skill**
+> （`{person-slug}-wisdom-en`）发布，是独立的认知重构而非翻译，需要额外一轮合成与审查。
+
+**用户选择「否」→ 蒸馏结束。** 这是默认路径。
+
+**用户选择「是」→ 执行英文分支：**
+
+> ⚠️ **v6 包格式目前只做中文。** 英文分支产出的是**旧格式（legacy）单文件 Skill**，
+> 不经过 P1–P6 六道闸门，也没有 `references/{cases,evidence,voice}.md` 三件附件、
+> 没有「附件调用」表、没有「案例索引」。`templates/skill-template.en.md` 的 frontmatter
+> 因此不带 `format_version: 6`，让 `scripts/validate_output.py` 把它当 legacy 单文件
+> 校验，而不是错误地套用只认中文字面量（如「身份卡」「原文出处」）的 v6 闸门。这是
+> 有意的范围收窄，不是遗漏——半吊子地给闸门加英文参数化会引入一片没有回归测试覆盖
+> 的新代码面。
+
+```bash
+# 标记英文分支已启用，校验器据此要求 frameworks.en.json
+echo "requested" > output/{slug}/en_requested.flag
+```
+
+英文分支复用语言中立的 `output/{slug}/framework_core.json`，依次执行：
+
+1. Stage 3B-en：framework-synthesizer-en → `output/{slug}/frameworks.en.json`
+   （**独立重构，不看中文产物**——Rule 4 的独立成篇原则在分支内完整保留）
+2. Stage 3C-en：framework-alignment-reviewer → 中英覆盖等价性审查
+3. Stage 4-en：skill-assembler → `output/{slug}-en/SKILL.md`（单文件，legacy 格式，
+   模板 `templates/skill-template.en.md`；不产出 `references/`）
+4. Stage 5-en：quality-reviewer（此时启用「双语一致性」维度）
+5. 安装到 `~/.claude/skills/{person-slug}-wisdom-en/`，
+   gallery 条目 `lang: "en"`、slug 为 `{slug}-en`
+
+### 6.6 安装确认
 
 ```
 ✅ 已安装：~/.claude/skills/{person-slug}-wisdom/
-   └── SKILL.md（包含 English + 中文版双语区块）
+   └── SKILL.md（纯中文核心层）+ references/（cases.md / evidence.md / voice.md）
 
 💡 测试方式：
-   用中文或英文提及「{人物名}」或描述与其领域相关的决策场景，
-   Skill 将自动触发并匹配对应语言区块。
+   用中文描述与「{人物名}」领域相关的决策场景，Skill 将自动触发。
+   若刚完成 6.5 的英文分支，另有 ~/.claude/skills/{person-slug}-wisdom-en/ 可用英文触发。
 ```
 
 ---
@@ -551,4 +552,4 @@ python scripts/validate_output.py gallery {slug}
 | 素材极度匮乏（人物太小众） | 暂停，询问用户是否提供文本资料        |
 | 质量审查 FAIL     | 向用户说明原因，询问是否更换人物或降低要求  |
 | 名言归因存疑        | 在 Skill 中标注"出处待核实"，不删除 |
-| 双语版本质量差异大     | 优先保证中文版质量，英文版降级处理并标注   |
+| 英文分支质量不及中文版   | 优先保证中文版质量，英文版降级处理并标注   |

@@ -9,6 +9,9 @@ description = "Mind Distill Factory tools, including Debate Arena."
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+provenance = ["opencc-python-reimplemented>=0.1.7"]
+
 [project.scripts]
 debate-arena = "debate_arena.cli:main"
 
