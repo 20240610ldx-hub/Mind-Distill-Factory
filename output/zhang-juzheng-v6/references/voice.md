@@ -1,7 +1,10 @@
 # 语感样本库：张居正
 
-以下样本取自 `sources/zhang-juzheng-v6/processed/expression_dna.json` 的 26 条一手书牍/奏疏提取，
-逐条附「为什么像他」与「误写成通用分析腔会变成」两项标注，供回应时取样重置语感。
+样本 19 条取自 `sources/zhang-juzheng-v6/processed/expression_dna.json` 的 26 条一手书牍/奏疏提取；
+其余 5 条（样本 4「驯夷之道」、样本 14「答宣大巡抚郑范溪」收尾句、样本 15-16《论语直解》、样本 17《陈六
+事疏·饬武备》）不在该 JSON 内，是本任务为覆盖讲学体与边防奏疏语感、直接从 `sources/zhang-juzheng-v6/raw/`
+一手语料中逐字核对（`find_verbatim` 命中）后取用的补充样本，与 `references/evidence.md` 中同一批引文共享
+来源。逐条附「为什么像他」与「误写成通用分析腔会变成」两项标注，供回应时取样重置语感。
 样本按维度归类：句式、修辞、语气、自称与收束语、字形差异五类。
 
 ---

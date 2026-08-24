@@ -7,7 +7,6 @@ v6 包验收度量。Run: python scripts/measure_package.py <slug>
 
 from __future__ import annotations
 
-import glob
 import importlib.util
 import json
 import os
@@ -56,15 +55,29 @@ def measure(slug: str, root: Path) -> dict:
         for extract in data.get("extracts", []) if isinstance(data, dict) else []:
             denominator += len(prov.normalize(extract.get("text", "")))
 
-    # 分子：核心层 + 证据卡的逐字引文，去重
-    verbatim: set[str] = set()
+    # 分子：核心层 + 证据卡的逐字引文，去重——子串感知。SKILL.md 里的引文
+    # 常常是 evidence.md 对应卡片的一个截短片段（同一句话，卡片给更长上下
+    # 文），二者只是字符串不同，不是内容不同；若只用精确字符串 set 去重，
+    # 这种「短引文完整包含于长卡片」的情况会被计两次，虚增存活率。做法：
+    # 按长度从长到短排序，若某片段已完整出现在某个已保留的更长片段中，
+    # 则视为重复、不再计入；否则保留。
+    fragments: list[str] = []
     for _, quote in prov.extract_skill_quotes(skill_text):
-        verbatim.add(prov.normalize(quote))
+        normalized = prov.normalize(quote)
+        if normalized:
+            fragments.append(normalized)
     evidence_path = refs / "evidence.md"
     if evidence_path.exists():
         for card in prov.parse_evidence_cards(evidence_path.read_text(encoding="utf-8")):
-            verbatim.add(prov.normalize(card["verbatim"]))
-    numerator = sum(len(v) for v in verbatim if v)
+            normalized = prov.normalize(card["verbatim"])
+            if normalized:
+                fragments.append(normalized)
+
+    kept: list[str] = []
+    for fragment in sorted(set(fragments), key=len, reverse=True):
+        if not any(fragment in longer for longer in kept):
+            kept.append(fragment)
+    numerator = sum(len(f) for f in kept)
 
     cases = counter = 0
     clusters: set[str] = set()
