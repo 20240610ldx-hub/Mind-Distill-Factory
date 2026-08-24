@@ -312,6 +312,9 @@ python scripts/build_framework_core.py {slug}
 
 - 输入：`output/{slug}/framework_core.json`
 - 输出：`output/{slug}/frameworks.zh.json`
+- **顶层必须带 `"format_version": 6`。** 这是校验器把原则数区间从 legacy 的 5-8 放宽到 v6
+  的 8-11（目标 9-11）的唯一依据——缺了这个字段，9 条以上的原则会被当 legacy 框架判定为
+  `TOO_MANY_PRINCIPLES`
 - 原则数：**9-11 条**（目标区间；`config/defaults.json` 的 `min_principles` 硬下限为 8，语料确实撑不起 9 条时可低至 8 条，见 `agents/skill-assembler.md` 的核心层加厚要求）
 - 每条原则必须含新增的两个字段：`failure_boundary`（失效边界）与 `prerequisite_intel`（情报前提）
 - 成功后标记 `framework_zh` completed
@@ -335,7 +338,14 @@ python scripts/build_framework_core.py {slug}
 python scripts/validate_output.py frameworks {slug}
 ```
 
-通过后进入 Stage 4。校验项包括：`output/{slug}/framework_core.json` 是否存在且 principle clusters 非空、中文框架文件是否完整（英文分支启用时另检查 `output/{slug}/frameworks.en.json`）、盲区是否有缓解建议、决策框架是否为过滤器形式、**表达风格 DNA 8 维是否完整、价值取向与反模式是否达标**。
+通过后进入 Stage 4。校验项包括：`output/{slug}/framework_core.json` 是否存在且 principle clusters 非空、中文框架文件是否完整（英文分支启用时另检查 `output/{slug}/frameworks.en.json`）、盲区是否有缓解建议、决策框架是否为过滤器形式、**表达风格 DNA 8 维是否完整、价值取向与反模式是否达标**。常见报错处置：
+
+| 报错 | 处置 |
+|---|---|
+| `TOO_MANY_PRINCIPLES` | `output/{slug}/frameworks.zh.json` 缺少顶层 `"format_version": 6`，被当 legacy 框架卡在 8 条上限——补上该字段，不要删原则 |
+| `TOO_FEW_PRINCIPLES` | 语料确实撑不起目标区间，回 framework-core-synthesizer 补聚类或接受降至硬下限 8 条 |
+| `MISSING_MITIGATION` | 回 framework-synthesizer-zh 给对应盲区补 `mitigation` 字段 |
+| `STAGE3_UNRESOLVED_UNITS` | `output/{slug}/stage3_status.json` 有 failed/blocked unit——按 unit_id 重派，不整段重跑 |
 
 ---
 
@@ -352,7 +362,9 @@ python scripts/validate_output.py frameworks {slug}
 - 纯中文；**不得含英文语言区块**；**不含**语言检测头
 - **≤500 行**（超限时减少原则条数，不压缩每条深度）
 - `description` ≤300 字符
-- 必须含「案例索引」章与「附件调用」表
+- 必须含「案例索引」章与「附件调用」表。此时 `output/{slug}/references/cases.md` 尚未生成（Stage 4.5 才产出）——
+  「案例索引」章在本阶段只按 cluster 写占位行（不得虚构 case_id），真正的 case_id 要等 Stage 4.5
+  附件齐备后回写
 
 ## Stage 4.5：附件生成
 
@@ -366,7 +378,8 @@ python scripts/validate_output.py frameworks {slug}
 
 另由 skill-assembler 产出 `output/{slug}/人物档案.md`（模板 `templates/refs/dossier.zh.md`）。
 
-附件齐备后回写核心层的「案例索引」表——索引的 case_id 必须与 `output/{slug}/references/cases.md` 双向一一对应（P5 闸门）。
+附件齐备后回写核心层的「案例索引」表——把 Stage 4 写下的占位行替换成 `output/{slug}/references/cases.md`
+中真实的 case_id，索引与 cases.md 必须双向一一对应（P5 闸门）。
 
 ### ✓ 检查点 4：包校验
 
@@ -438,27 +451,31 @@ python scripts/validate_output.py package {slug}
 
 ### 6.3 执行安装（如用户选择 [1]）
 
-```bash
-# 发布到 gallery 并写 manifest（脚本会自动识别 v6 包并同步 references/）
-python scripts/publish_skill.py --slug {slug}
+顺序是**发布 → 校验 → 安装**——校验不过绝不能先把文件 cp 进用户的真实 skills 目录。
 
-# 安装到 Claude Code。白名单：只有 SKILL.md 与 references/ 进安装目录
-mkdir -p ~/.claude/skills/{person-slug}-wisdom/references/
-cp gallery/{slug}/SKILL.md ~/.claude/skills/{person-slug}-wisdom/SKILL.md
-cp gallery/{slug}/references/*.md ~/.claude/skills/{person-slug}-wisdom/references/
+```bash
+# 1. 发布到 gallery 并写 manifest（脚本会自动识别 v6 包并同步 references/）
+python scripts/publish_skill.py --slug {slug}
 ```
 
 **`output/{slug}/人物档案.md` 不进安装目录**——它只留在 `gallery/{slug}/` 供人阅读。
 把一份第三人称档案放进 skill 目录会诱发人称漂移，违反第一人称沉浸铁律。
 
-发布后必须立即校验：
-
 ```bash
+# 2. 发布后必须先校验
 python scripts/validate_output.py gallery {slug}
 ```
 
 此检查会逐文件比对 output/ 与 gallery/ 的哈希（v6 包含全部 references）。
-失败时不得宣称安装完成——先重新同步再重跑。
+**校验失败时不得执行下一步的 cp，也不得向用户宣称已安装完成**——先重新同步再重跑校验，
+只有通过后才能继续安装。
+
+```bash
+# 3. 校验通过后才安装到 Claude Code。白名单：只有 SKILL.md 与 references/ 进安装目录
+mkdir -p ~/.claude/skills/{person-slug}-wisdom/references/
+cp gallery/{slug}/SKILL.md ~/.claude/skills/{person-slug}-wisdom/SKILL.md
+cp gallery/{slug}/references/*.md ~/.claude/skills/{person-slug}-wisdom/references/
+```
 
 ### 6.4 更新 gallery/index.json
 

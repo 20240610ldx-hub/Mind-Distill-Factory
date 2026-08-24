@@ -1,5 +1,6 @@
 ---
 name: {person-slug}-wisdom
+format_version: 6
 description: >-
   Apply {person_name_en}'s {primary_domain_en} frameworks for {category_description_en}.
   Triggers: {person_name_en}, {keyword_list_en}
@@ -7,11 +8,13 @@ argument-hint: <describe your situation or decision / 描述你面临的决策�
 ---
 
 <!--
-  NOTE: This is a development template. The FINAL deliverable MUST be a single SKILL.md
-  that merges both English and Chinese sections with a language-detection header.
-  Claude Code only recognizes SKILL.md (exact case-sensitive match) in each skill directory.
-  For current quality references, see gallery/wang-yangming/SKILL.md
-  and gallery/sun-tzu/SKILL.md. gallery/charlie-munger/SKILL.md is legacy only.
+  v6 EN package. Produced ONLY by the on-demand English branch (Stage 6.5),
+  never on the default path. Installs to {person-slug}-wisdom-en/ as a SEPARATE skill.
+  Same hard constraints as the zh core: format_version: 6, <=500 lines,
+  no language-detection header, no ## 中文版 block.
+  Attachments live in references/{cases,evidence,voice}.md, same contracts as zh.
+  Rule 4 still applies WITHIN this branch: this is an independent cognitive
+  reconstruction from framework_core.json, NOT a translation of the Chinese version.
 -->
 
 # {person_name_en}'s Thinking Frameworks
