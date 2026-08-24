@@ -42,7 +42,7 @@
 
 | 出厂文本 | 语料实际文本 | 缺陷类型 | 最长逐字前缀 |
 |---|---|---|---|
-| 「如此则月有考，岁有稽，名必中实，事可责成」（principle1 与 quote2 同一句） | 「如此，月有考，岁有稽，**不惟使**声必中实，事可责成」 | 跨缺口缝合 | **0 字** |
+| 「如此则月有考，岁有稽，名必中实，事可责成」（principle1 与 quote2 同一句） | 「如此，月有考，岁有稽，**不惟使**声必中实，事可责成」 | 跨缺口缝合 | **3 / 17 字**（仅「如此则」，无锚点巧合命中） |
 | 「…毋得彼此**推护**，徒**记空言**」（principle2） | 「…毋得彼此**推诿**，徒**托空言**」 | 字符讹误 | 21 / 26 字 |
 | 「欲用一人，须慎之于始；既得其人，则信而任之」（quote4） | 「欲用一人须慎之于始**务求相应**既得其人则信而任之」 | 静默省略未加省略号 | 9 字 |
 
@@ -146,7 +146,7 @@ if __name__ == "__main__":
 python -X utf8 -m pytest tests/test_provenance_core.py -v
 ```
 
-Expected: FAIL — `RuntimeError: Could not load module from .../scripts/verify_provenance.py`（文件尚不存在）
+Expected: FAIL — 收集期报错，文件尚不存在（实际抛 `FileNotFoundError`；`load_module` 的 `RuntimeError` 只在 spec 为 None 时触发）
 
 - [ ] **Step 3: 写最小实现**
 
@@ -249,7 +249,7 @@ def longest_verbatim_prefix(needle: str, corpus: list[tuple[str, str]]) -> int:
 python -X utf8 -m pytest tests/test_provenance_core.py -v
 ```
 
-Expected: PASS — 10 passed
+Expected: PASS — 9 passed（修复轮后为 11 条：另加 errors=replace 与 opencc 降级两条覆盖测试）
 
 - [ ] **Step 5: 声明可选依赖**
 
@@ -441,7 +441,8 @@ class GateTests(unittest.TestCase):
             )
             self.assertEqual(len(errors), 1)
             self.assertTrue(errors[0].startswith("P2_NOT_IN_CORPUS"))
-            self.assertIn("最长逐字前缀=0", errors[0])
+            # 2 而非 0：longest_verbatim_prefix 无锚点，「如此」两字在语料开头巧合命中
+            self.assertIn("最长逐字前缀=2", errors[0])
 
     def test_p2_downgrades_to_warning_when_textual_note_present(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -593,13 +594,30 @@ def check_p2_corpus_closure(evidence_md: Path, slug: str, root: Path) -> list[st
 python -X utf8 -m pytest tests/test_provenance_core.py -v
 ```
 
-Expected: PASS — 22 passed
+Expected: PASS — 23 passed（Task 1 的 11 条 + 本任务新增 12 条）
 
 - [ ] **Step 5: 提交**
 
 ```bash
 git add scripts/verify_provenance.py tests/test_provenance_core.py && git commit -m "feat: add P1 quote-closure and P2 corpus-closure gates"
 ```
+
+> **修复轮已应用（commit `02fe867`）——重跑本任务时请连同下列改动一并实现：**
+> 1. `QUOTES_SECTION_RE` 改为容忍标题漂移：`r"^##(?!#)[^
+]*标志性名言[^
+]*$(.*?)(?=^##\s|\Z)"`
+>    （`(?!#)` 排除 `###`；`[^
+]*` 而非 `.*`，避免在 DOTALL 下越过行尾）。
+> 2. `check_p1_quote_closure` 增加失败关闭守卫：统计 `**原文出处：**` 标记数，与
+>    `extract_skill_quotes` 实际收获的 `原文出处` 类引文数比较，短缺者按
+>    `P1_UNPARSEABLE_CITATION` 报错（附 ≤80 字定位片段）。**不得**改动两个函数的签名。
+> 3. 新增 3 条测试：`test_p1_fails_on_citation_quote_that_wraps_to_next_line`、
+>    `test_extract_skill_quotes_tolerates_heading_drift`、`test_p2_reports_empty_corpus_distinctly`。
+>    本任务最终为 **26 passed**，非 23。
+>
+> 理由：原实现在引文跨行、或标题写成「标志性名言与佳句」时**静默返回空列表**，闸门报 PASS——
+> 对溯源校验器而言只会制造**假通过**。已在真实产物上验证：该守卫正确拦下了一份用 ASCII 引号
+> 而非 `「」` 的 SKILL.md 的 11 处引文。
 
 ---
 
@@ -865,6 +883,13 @@ Expected: FAIL — `AttributeError: module 'validate_output' has no attribute 'c
 在 `scripts/validate_output.py` 的 `FRAMEWORK_CORE_SCHEMA`（第 77-84 行）之后插入：
 
 ```python
+> ⚠️ **同时必须让 `FRAMEWORK_SCHEMA` 的原则数上下界随格式变化。** 它今天硬编码
+> `min_principles: 5, max_principles: 8`，而 v6 要求 9–11——若不改，一份合规的 v6 框架会被
+> `frameworks` stage 以 `TOO_MANY_PRINCIPLES` 拒绝。**注意 `validate_output.py` 从不读
+> `config/defaults.json`**，所以把 8/11 写进 defaults.json 不会产生任何效果（这正是本计划最初
+> 犯的错）。做法：`frameworks.zh.json` 顶层带 `"format_version": 6` 时用 8–11，缺失时保持 5–8
+> 原样，legacy 行为逐字节不变。上界取 11 是算出来的：12 条 × ~900 字会突破 P6 的 500 行硬闸门。
+
 PACKAGE_SCHEMA = {
     "skill_max_lines": 500,
     "reference_dir": "references",
@@ -1091,7 +1116,7 @@ STAGES = {
 python -X utf8 -m pytest tests/test_package_v6.py -v
 ```
 
-Expected: PASS — 15 passed
+Expected: PASS — 14 passed
 
 - [ ] **Step 7: 更新 config/defaults.json**
 
@@ -1288,7 +1313,7 @@ class FrameworksLanguageTests(unittest.TestCase):
 python -X utf8 -m pytest tests/test_package_v6.py -v -k "FormatDetection or FrameworksLanguage"
 ```
 
-Expected: FAIL — `AttributeError: module 'validate_output' has no attribute 'is_v6_skill'`
+Expected: FAIL — 6 条新测试全部为红。其中 2 条报 `AttributeError: module 'validate_output' has no attribute 'is_v6_skill'`；另 4 条为普通断言失败或（实现前）伪通过——判据是「红→绿」，不是错误文本一致
 
 - [ ] **Step 4: 实现格式判别**
 
@@ -1374,7 +1399,7 @@ def en_branch_requested(slug: str) -> bool:
 python -X utf8 -m pytest tests/ -v
 ```
 
-Expected: PASS — 全部通过（含 Task 1-3 的 22 + 15 个测试）
+Expected: PASS — `tests/` 共 **61 passed**（Task 1-3 后为 55：18 package + 26 provenance + 11 既有；本任务 +6）
 
 ```bash
 python -X utf8 scripts/validate_output.py gallery zhang-juzheng > /tmp/after_zhang.txt 2>&1; echo "exit=$?" >> /tmp/after_zhang.txt; diff /tmp/baseline_zhang.txt /tmp/after_zhang.txt && echo "存量行为零变化"
@@ -1388,10 +1413,14 @@ Expected: `存量行为零变化`（diff 无输出）
 for s in $(python -X utf8 -c "
 import json
 print(' '.join(e['slug'] for e in json.load(open('gallery/index.json',encoding='utf-8'))['skills']))
-"); do printf '%-24s ' "$s"; python -X utf8 scripts/validate_output.py gallery "$s" >/dev/null 2>&1 && echo OK || echo FAIL; done
+"); do printf '%-22s ' "$s"; if python -X utf8 scripts/validate_output.py gallery "$s" >/dev/null 2>&1; then echo OK; else echo FAIL; fi; done > /tmp/gallery_now.txt; diff .superpowers/sdd/2026-08-23-skill-package-v6/gallery-baseline.txt /tmp/gallery_now.txt && echo "存量行为零变化"
 ```
 
-Expected: 全部 `OK`。任何一个 `FAIL` 都是回归，必须先修复再继续。
+Expected: `存量行为零变化`（diff 无输出）。
+
+⚠️ **判据是与基线一致，不是全部 OK。** 基线为 **23 OK / 1 FAIL**：`charlie-munger` 恒 FAIL，
+原因是 `output/charlie-munger/` 根本不存在（它是手写的 legacy 示例，从未经管线产出，而 `output/`
+被 gitignore）。该失败在 Task 3 之前即已存在，与本改造无关。任何**偏离基线**的行才是回归。
 
 - [ ] **Step 8: 提交**
 
@@ -1422,6 +1451,11 @@ git add scripts/validate_output.py tests/test_package_v6.py && git commit -m "fe
 
 创建 `tests/test_templates_v6.py`：
 
+> ⚠️ **`assertRegex` 的第三个位置参数是 `msg`，不是 `flags`。** 写
+> `self.assertRegex(text, pattern, re.MULTILINE)` 会**静默丢弃**多行模式，导致 `^`/`$`
+> 只匹配整串首尾——对多行文件而言这些断言要么恒假、要么因错误的原因通过。
+> 因此下面所有跨行断言一律用内联 `(?m)`，不要传 flags 参数。
+
 ```python
 from __future__ import annotations
 
@@ -1442,10 +1476,10 @@ class V6CoreTemplateTests(unittest.TestCase):
         self.text = self.path.read_text(encoding="utf-8")
 
     def test_declares_format_version_6(self) -> None:
-        self.assertRegex(self.text, r"^format_version:\s*6\s*$")
+        self.assertRegex(self.text, r"(?m)^format_version:\s*6\s*$")
 
     def test_has_no_english_block(self) -> None:
-        self.assertNotRegex(self.text, r"^##\s+English")
+        self.assertNotRegex(self.text, r"(?m)^##\s+English")
 
     def test_has_no_language_detection_header(self) -> None:
         self.assertNotIn("Language Detection", self.text)
@@ -1453,10 +1487,10 @@ class V6CoreTemplateTests(unittest.TestCase):
     def test_contains_all_core_sections(self) -> None:
         for name in CORE_SECTIONS:
             with self.subTest(section=name):
-                self.assertRegex(self.text, rf"^#{{2,4}}\s*.*{re.escape(name)}", re.MULTILINE)
+                self.assertRegex(self.text, rf"(?m)^#{{2,4}}\s*.*{re.escape(name)}")
 
     def test_has_case_index_section(self) -> None:
-        self.assertRegex(self.text, r"^##\s*案例索引\s*$")
+        self.assertRegex(self.text, r"(?m)^##\s*案例索引\s*$")
 
     def test_principle_block_has_failure_boundary(self) -> None:
         self.assertIn("{failure_boundary_zh}", self.text)
@@ -1484,15 +1518,15 @@ class AttachmentTemplateTests(unittest.TestCase):
 
     def test_evidence_template_matches_parser_contract(self) -> None:
         text = (ROOT / "templates" / "refs" / "evidence.zh.md").read_text(encoding="utf-8")
-        self.assertRegex(text, r"^###\s+原则", re.MULTILINE)
-        self.assertRegex(text, r"^>\s", re.MULTILINE)
-        self.assertRegex(text, r"^-\s*confidence\s*[：:]", re.MULTILINE)
+        self.assertRegex(text, r"(?m)^###\s+原则")
+        self.assertRegex(text, r"(?m)^>\s")
+        self.assertRegex(text, r"(?m)^-\s*confidence\s*[：:]")
         self.assertIn("textual_note", text)
 
     def test_cases_template_matches_parser_contract(self) -> None:
         text = (ROOT / "templates" / "refs" / "cases.zh.md").read_text(encoding="utf-8")
         self.assertIn("case_id:", text)
-        self.assertRegex(text, r"^\*\*对应原则簇：\*\*", re.MULTILINE)
+        self.assertRegex(text, r"(?m)^\*\*对应原则簇：\*\*")
         self.assertIn("反例", text)
 
     def test_voice_template_has_positive_and_negative_pair(self) -> None:
@@ -1555,7 +1589,7 @@ argument-hint: <描述你面临的决策场景或困境>
 
 <!--
   v6 包格式。本文件是恒载核心，必须自足——删掉 references/ 后仍是一份完整框架。
-  硬约束：≤500 行、纯中文、不含 ## English、不含语言检测头。
+  硬约束：≤500 行、纯中文、不得含英文语言区块、不含语言检测头。
   附件在 references/{cases,evidence,voice}.md，由下方「附件调用」表的触发条件驱动。
   英文版是独立 skill（{person-slug}-wisdom-en），不在本文件内。
 -->
@@ -1601,6 +1635,17 @@ argument-hint: <描述你面临的决策场景或困境>
 
 {/repeat_block}
 ```
+
+改动五（**P3 闸门强制要求**），清除仓库相对路径：
+
+现有 zh 模板的反套公式指令第 1 条以反引号引用了 `config/post-review-tuning-guide.md`。
+v6 的 P3 闸门只按 **SKILL.md 自身所在目录**解析反引号路径（CWD 回退已在 Task 3 修复轮中删除，
+因为它会让悬空路径靠仓库根巧合通过）。已安装的 skill 位于 `~/.claude/skills/{slug}-wisdom/`，
+那里不存在 `config/`——所以模板中**任何仓库相对的反引号路径都会被 P3 判为悬空**。
+
+处理：把该引用改写为散文（如「替代工具箱见工厂的 post-review 调优指南」，不加反引号路径），
+并检查模板全文，确保**仅有** `references/cases.md`、`references/evidence.md`、`references/voice.md`
+三个反引号路径——它们相对包目录可解析。这是「出厂 skill 必须自足」的直接推论。
 
 改动四，在「## 核心原则」之前插入案例索引章：
 
@@ -1800,7 +1845,7 @@ Gates P1–P6 (`python scripts/validate_output.py package {slug}`) are all rule-
 python -X utf8 -m pytest tests/test_templates_v6.py -v
 ```
 
-Expected: PASS — 18 passed
+Expected: PASS — 19 passed（+15 subtests）
 
 - [ ] **Step 7: 确认核心模板能过 P6 闸门**
 
@@ -1973,11 +2018,20 @@ REFERENCE_DIR = "references"
 
 
 def is_v6_package(skill_md: Path) -> bool:
-    """v6 包由 SKILL.md frontmatter 的 format_version 判定。"""
-    import re
-    return bool(re.search(
-        r"^format_version:\s*6\s*$", skill_md.read_text(encoding="utf-8"), re.MULTILINE
-    ))
+    """v6 包由 SKILL.md frontmatter 的 format_version 判定。
+
+    **委托给 validate_output.is_v6_skill，不得自建正则。** 格式判别位只能有一个实现：
+    发布器与校验器若各判各的，就会出现「按 v6 发布、按 legacy 校验」的永久不一致，
+    而发布器是会留下损坏的那一半。
+    """
+    import importlib.util
+    path = Path(__file__).resolve().parent / "validate_output.py"
+    spec = importlib.util.spec_from_file_location("validate_output", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.is_v6_skill(skill_md.read_text(encoding="utf-8"))
 
 
 def copy_package(output_dir: Path, gallery_dir: Path, is_v6: bool) -> list[str]:
@@ -2299,6 +2353,10 @@ Expected: FAIL — `FileNotFoundError: agents/case-builder.md`
 
 把 `agents/skill-assembler.md` 中所有关于「生成双语草稿 → 合并 SKILL.md」的表述替换为 v6 包组装。核心段落写作：
 
+> ⚠️ **不要在这个文件里写出英文区块标记的字面量。** 本任务的测试
+> `test_no_longer_merges_bilingual_blocks` 断言该字面量不出现在 `skill-assembler.md` 中——
+> 写「不含 `## Eng`+`lish`」这类说明会让文件被自己的测试判失败。用「不得含英文语言区块」表述。
+
 ```markdown
 ## 产出物
 
@@ -2306,7 +2364,7 @@ Expected: FAIL — `FileNotFoundError: agents/case-builder.md`
 
 | 文件 | 模板 | 硬约束 |
 |---|---|---|
-| `output/{slug}/SKILL.md` | `templates/skill-template.v6.zh.md` | frontmatter 含 `format_version: 6`；纯中文；**≤500 行**；不含 `## English`；不含语言检测头 |
+| `output/{slug}/SKILL.md` | `templates/skill-template.v6.zh.md` | frontmatter 含 `format_version: 6`；纯中文；**≤500 行**；不得含英文语言区块；不含语言检测头 |
 | `output/{slug}/references/cases.md` | `templates/refs/cases.zh.md` | 由 case-builder 产出，本代理只做收口 |
 | `output/{slug}/references/evidence.md` | `templates/refs/evidence.zh.md` | 由 evidence-carder 产出，本代理只做收口 |
 | `output/{slug}/references/voice.md` | `templates/refs/voice.zh.md` | ≥20 条样本，每条含正例标注与「误写成通用分析腔」反例 |
@@ -2396,7 +2454,7 @@ model: haiku
 1. **逐字，一字不改。** 卡内 blockquote 必须是从语料**连续复制**的原文。
 2. **禁止缝合。** 不得把相隔的两段拼成一句。已确证的真实事故：
    出厂引文「如此则月有考，岁有稽，名必中实，事可责成」是三处邻近文本的缝合，
-   在语料中最长逐字前缀为 **0 字**，而 LLM 评审当时判定它「EXACT」。
+   在语料中最长逐字前缀仅 **3 / 17 字**（且属无锚点巧合命中），而 LLM 评审当时判定它「EXACT」。
 3. **禁止静默省略。** 中间略去内容必须写省略号；已确证事故：
    「欲用一人，须慎之于始；既得其人，则信而任之」静默吞掉了原文的「务求相应」。
 4. **不改字。** 已确证事故：「毋得彼此推护，徒记空言」——语料作「推诿」「托空言」。
@@ -2412,7 +2470,7 @@ python scripts/validate_output.py package {slug}
 ```
 
 必须做到 `P2_NOT_IN_CORPUS` 零条（或全部带 `textual_note` 降级为 WARNING）。
-报错中的「最长逐字前缀=N字」直接指出分歧位置：N=0 是缝合，N 接近全长是改字或省略。
+报错中的「最长逐字前缀=N字」指出分歧位置：N 远小于全长即缝合（该函数无锚点，短前缀可能是巧合命中，故 N 很少恰为 0），N 接近全长是改字或省略。
 ```
 
 - [ ] **Step 6: 改写 quality-reviewer.md**
@@ -2425,11 +2483,13 @@ python scripts/validate_output.py package {slug}
 | 双语一致性 | **仅在英文分支启用时评审**（存在 `output/{slug}/en_requested.flag`）。默认中文单语包不评此项，权重重新分配给「案例层」。 |
 ```
 
-新增两个维度：
+新增两个维度。**注意权重不再拼成 100 的字面和**：默认路径下「双语一致性」退出评审、
+不计入分母，而新增两项权重之和（25）大于它腾出的 10，所以综合得分必须按
+`Σ(得分 × 权重) / Σ(权重)` 的**加权平均**计算，不要试图把各权重硬凑回 100。
 
 ```markdown
-| 案例层质量（15%） | 每个原则簇 ≥2 例？至少 1 个反例？案例是历史事实而非现代类比？case_id 与索引双向对应？（结构合规由 P4/P5 闸门保证，此处只评**内容质量**：案例是否真的展示了该原则的判断过程） |
-| 附件可用性（10%） | 「附件调用」表的三条触发条件是否逐字保留、未被软化为「可酌情参考」？案例索引是否让模型能在不打开附件时就知道有什么？ |
+| 案例层质量（权重 15） | 每个原则簇 ≥2 例？至少 1 个反例？案例是历史事实而非现代类比？case_id 与索引双向对应？（结构合规由 P4/P5 闸门保证，此处只评**内容质量**：案例是否真的展示了该原则的判断过程） |
+| 附件可用性（权重 10） | 「附件调用」表的三条触发条件是否逐字保留、未被软化为「可酌情参考」？案例索引是否让模型能在不打开附件时就知道有什么？ |
 ```
 
 在「引文准确性」维度下追加一行：
@@ -2592,7 +2652,7 @@ Expected: FAIL — `AssertionError: 'Stage 4.5' not found`
 **硬约束：**
 
 - frontmatter 必须含 `format_version: 6`
-- 纯中文；**不含** `## English` 区块；**不含**语言检测头
+- 纯中文；**不得含英文语言区块**；**不含**语言检测头
 - **≤500 行**（超限时减少原则条数，不压缩每条深度）
 - `description` ≤300 字符
 - 必须含「案例索引」章与「附件调用」表
@@ -2767,8 +2827,10 @@ git add commands/distill.md templates/skill-template.en.md evaluation/regression
 
 **Files:**
 - Create: `scripts/audit_legacy_quotes.py`
-- Create: `output/zhang-juzheng/references/evidence.md`
 - Create: `tests/test_zhang_provenance_audit.py`
+
+> 注：本任务**不**产出 `output/zhang-juzheng/references/evidence.md`——证据卡属 Task 10 的样板包。
+> Task 9 只做只读审计，不写任何 `output/` 产物。
 
 **Interfaces:**
 - Consumes: Task 1/2 的 `verify_provenance` 全部函数
@@ -2823,11 +2885,14 @@ class ZhangAuditTests(unittest.TestCase):
     def test_ten_pass(self) -> None:
         self.assertEqual(self.result["passed"], 10)
 
-    def test_stitched_quote_has_zero_prefix(self) -> None:
+    def test_stitched_quote_has_negligible_prefix(self) -> None:
+        # 归一化后 17 字的引文只有前 3 字（如此则）能在语料中找到——
+        # 注意 longest_verbatim_prefix 是「无锚点」的：它问「这个前缀是否出现在语料任何位置」，
+        # 短前缀因此可能是巧合命中。3/17 在语义上即「几乎全无逐字依据」。
         stitched = [f for f in self.result["failed"] if "名必中实" in f["quote"]]
-        self.assertTrue(stitched)
+        self.assertEqual(len(stitched), 2)  # principle1 与 quote2 是同一句
         for item in stitched:
-            self.assertEqual(item["longest_prefix"], 0)
+            self.assertEqual(item["longest_prefix"], 3)
 
     def test_character_corruption_has_partial_prefix(self) -> None:
         corrupted = [f for f in self.result["failed"] if "推护" in f["quote"]]
@@ -2960,7 +3025,7 @@ python -X utf8 scripts/audit_legacy_quotes.py zhang-juzheng
 ```
 
 Expected: 输出 `逐字审计 'zhang-juzheng': 10/14 PASS`，其后 4 行 FAIL，
-最长逐字前缀分别为 0、0、21、9（两条 0 是同一句 principle1 与 quote2），退出码 2。
+最长逐字前缀分别为 3、3、21、9（两条 3 是同一句 principle1 与 quote2），退出码 2。
 
 - [ ] **Step 6: 提交**
 
@@ -3249,10 +3314,10 @@ Expected（对照规格 §八）：
 python -X utf8 -m pytest tests/ -v && for s in $(python -X utf8 -c "
 import json
 print(' '.join(e['slug'] for e in json.load(open('gallery/index.json',encoding='utf-8'))['skills']))
-"); do printf '%-24s ' "$s"; python -X utf8 scripts/validate_output.py gallery "$s" >/dev/null 2>&1 && echo OK || echo FAIL; done
+"); do printf '%-22s ' "$s"; if python -X utf8 scripts/validate_output.py gallery "$s" >/dev/null 2>&1; then echo OK; else echo FAIL; fi; done > /tmp/gallery_now.txt; diff .superpowers/sdd/2026-08-23-skill-package-v6/gallery-baseline.txt /tmp/gallery_now.txt && echo "存量行为零变化"
 ```
 
-Expected: 测试全绿；全部存量 slug `OK`
+Expected: 测试全绿；`存量行为零变化`（基线 23 OK / 1 FAIL，charlie-munger 恒 FAIL 属既有状态）
 
 - [ ] **Step 10: 提交**
 

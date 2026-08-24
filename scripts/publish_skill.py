@@ -45,6 +45,83 @@ def run_command(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout, proc.stderr
 
 
+DOSSIER_NAME = "人物档案.md"
+REFERENCE_DIR = "references"
+
+
+def _load_validator():
+    """按路径加载同目录的 validate_output 模块（scripts/ 不是包）。"""
+    import importlib.util
+    path = Path(__file__).resolve().parent / "validate_output.py"
+    spec = importlib.util.spec_from_file_location("validate_output", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def is_v6_package(skill_md: Path) -> bool:
+    """v6 包由 SKILL.md frontmatter 的 format_version 判定。
+
+    委托给 validate_output.is_v6_skill（Task 4 已加固：只在解析出的 frontmatter
+    块内匹配，避免正文示例代码块误判），避免两套独立实现互相漂移。
+    """
+    content = skill_md.read_text(encoding="utf-8")
+    return _load_validator().is_v6_skill(content)
+
+
+def copy_package(output_dir: Path, gallery_dir: Path, is_v6: bool) -> list[str]:
+    """把 output/{slug}/ 的包内容同步到 gallery/{slug}/，返回已复制的相对路径。"""
+    gallery_dir.mkdir(parents=True, exist_ok=True)
+    copied: list[str] = []
+
+    shutil.copy2(output_dir / "SKILL.md", gallery_dir / "SKILL.md")
+    copied.append("SKILL.md")
+    if not is_v6:
+        return copied
+
+    refs_src = output_dir / REFERENCE_DIR
+    if refs_src.exists():
+        refs_dst = gallery_dir / REFERENCE_DIR
+        refs_dst.mkdir(exist_ok=True)
+        for path in sorted(refs_src.glob("*.md")):
+            shutil.copy2(path, refs_dst / path.name)
+            copied.append(f"{REFERENCE_DIR}/{path.name}")
+
+    dossier = output_dir / DOSSIER_NAME
+    if dossier.exists():
+        shutil.copy2(dossier, gallery_dir / DOSSIER_NAME)
+        copied.append(DOSSIER_NAME)
+
+    return copied
+
+
+def file_sha256(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def write_manifest(gallery_dir: Path, copied: list[str], is_v6: bool) -> Path:
+    """写 gallery/{slug}/manifest.json，含每个文件的 sha256。
+
+    format_version 必须反映实际检测到的包格式——legacy 发布（is_v6=False）不能被
+    打上 6 的戳，否则会跟同一次运行打印的 format_version=legacy 与
+    index.json 里记的 format_version: 1 互相矛盾。
+    """
+    manifest = {
+        "format_version": 6 if is_v6 else 1,
+        "files": {rel: file_sha256(gallery_dir / rel) for rel in sorted(copied)},
+    }
+    path = gallery_dir / "manifest.json"
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def main() -> int:
     # Handle Windows console encoding for UTF-8 output
     if sys.platform.startswith('win'):
@@ -67,7 +144,6 @@ def main() -> int:
     output_dir = root / "output" / slug
     output_skill = output_dir / "SKILL.md"
     gallery_dir = root / "gallery" / slug
-    gallery_skill = gallery_dir / "SKILL.md"
     index_file = root / "gallery" / "index.json"
 
     print(f"=== Publishing Distilled Skill for '{slug}' ===")
@@ -124,8 +200,11 @@ def main() -> int:
     print(f"Syncing artifacts to {gallery_dir}...")
     gallery_dir.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copy2(output_skill, gallery_skill)
-        print(f"  Copied {output_skill.name} to {gallery_skill}")
+        v6 = is_v6_package(output_skill)
+        copied = copy_package(output_dir, gallery_dir, is_v6=v6)
+        manifest_path = write_manifest(gallery_dir, copied, is_v6=v6)
+        print(f"  Copied {len(copied)} file(s) to {gallery_dir}: {', '.join(copied)}")
+        print(f"  Wrote {manifest_path.name} (format_version={'6' if v6 else 'legacy'})")
     except Exception as e:
         print(f"ERROR copying files: {e}", file=sys.stderr)
         return 1
@@ -146,6 +225,12 @@ def main() -> int:
 
     current_date = dt.date.today().isoformat()
 
+    # "lang": "zh" only means something for a v6 package (zh-only core; English is a
+    # separate {slug}-en skill). A legacy skill is a single bilingual file — stamping
+    # "zh" on it would misrepresent it as zh-only on every republish, so the field is
+    # only set for v6 publishes and left untouched/absent otherwise (matching the
+    # pre-v6 status quo: none of the existing legacy gallery/index.json entries carry
+    # a "lang" key today).
     if entry:
         print(f"Updating existing index entry for '{slug}'...")
         entry["name_zh"] = name_zh
@@ -156,6 +241,10 @@ def main() -> int:
         entry["era"] = era
         entry["distilled_on"] = current_date
         entry["review_status"] = "PASS"
+        if v6:
+            entry["lang"] = "zh"
+        entry["format_version"] = 6 if v6 else 1
+        entry["has_attachments"] = v6
         if args.notes:
             entry["notes"] = args.notes
     else:
@@ -173,8 +262,12 @@ def main() -> int:
             "review_status": "PASS",
             "skill_dir": f"gallery/{slug}/",
             "install_path": f"{slug}-wisdom",
-            "notes": args.notes or f"Distilled skill for {name_en}."
+            "notes": args.notes or f"Distilled skill for {name_en}.",
+            "format_version": 6 if v6 else 1,
+            "has_attachments": v6,
         }
+        if v6:
+            new_entry["lang"] = "zh"
         skills_list.append(new_entry)
 
     save_json(index_file, index_data)

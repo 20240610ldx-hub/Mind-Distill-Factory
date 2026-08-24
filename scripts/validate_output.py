@@ -10,6 +10,7 @@ Stages:
   principles — validate output/{slug}/principles_*.json
   frameworks — validate output/{slug}/frameworks.{zh,en}.json
   skill     — validate output/{slug}/SKILL.md frontmatter and bilingual structure
+  package   — validate the v6 package: output/{slug}/SKILL.md + references/ (gates P1-P6)
   gallery   — validate gallery/{slug}/SKILL.md and ensure it matches output/{slug}/SKILL.md
 """
 
@@ -74,6 +75,15 @@ FRAMEWORK_SCHEMA = {
     "min_tensions": 1,
 }
 
+# v6 frameworks（frameworks.{lang}.json 顶层带 "format_version": 6）用加厚后的原则数区间
+# 替换上面 FRAMEWORK_SCHEMA 的 5-8——不读 config/defaults.json，仍是模块级常量，
+# 与本文件其余 schema 的风格一致。没有 format_version 字段的 legacy 框架不受影响，
+# 继续用 FRAMEWORK_SCHEMA 的 min_principles/max_principles。
+FRAMEWORK_SCHEMA_V6_PRINCIPLES = {
+    "min_principles": 8,
+    "max_principles": 11,
+}
+
 FRAMEWORK_CORE_SCHEMA = {
     "required_fields": ["person_slug", "core_version", "synthesized_at",
                         "principle_clusters", "shared_blind_spot_themes",
@@ -81,6 +91,25 @@ FRAMEWORK_CORE_SCHEMA = {
                         "confidence_factors", "expression_dna_raw_summary",
                         "alignment_contract"],
     "min_clusters": 1,
+}
+
+PACKAGE_SCHEMA = {
+    "skill_max_lines": 500,
+    "reference_dir": "references",
+    "required_refs": ["cases.md", "evidence.md", "voice.md"],
+    "min_cases_per_cluster": 2,
+    "min_counter_cases": 1,
+    "core_sections": ["身份卡", "响应策略", "核心原则", "决策框架",
+                      "已知盲区", "表达风格 DNA", "价值取向与反模式", "溯源"],
+    "format_version": 6,
+    # P6 深度下限：真实样板包（zhang-juzheng-v6）最薄的必需章节（身份卡）有
+    # 322 字符；用一行指针把整章替换成「详见 references/xxx.md」只有约 15-25
+    # 字符。150 介于二者之间、离真实内容有约 2 倍余量，足以拦住「指针替身」而
+    # 不会误伤真实的薄章节。
+    "min_section_chars": 150,
+    # 核心原则数下限，与 FRAMEWORK_SCHEMA_V6_PRINCIPLES["min_principles"] 保持
+    # 同一个 v6 底线（8）；样板包实际有 9 条。
+    "min_principles": 8,
 }
 
 SKILL_FRONTMATTER_PATTERN = re.compile(
@@ -317,9 +346,10 @@ def validate_frameworks(slug: str) -> list[str]:
             expected_outputs = {
                 "framework_core": output_dir / "framework_core.json",
                 "framework_zh": output_dir / "frameworks.zh.json",
-                "framework_en": output_dir / "frameworks.en.json",
                 "alignment_review": output_dir / "framework_alignment_review.md",
             }
+            if en_branch_requested(slug):
+                expected_outputs["framework_en"] = output_dir / "frameworks.en.json"
             for unit_id in status.get("completed_units", []):
                 expected = expected_outputs.get(unit_id)
                 if expected and not expected.exists():
@@ -327,7 +357,8 @@ def validate_frameworks(slug: str) -> list[str]:
         except Exception as e:
             errors.append(f"STAGE3_STATUS_PARSE_ERROR: {stage3_status_path}: {e}")
 
-    for lang in ["zh", "en"]:
+    langs = ["zh", "en"] if en_branch_requested(slug) else ["zh"]
+    for lang in langs:
         fw_file = output_dir / f"frameworks.{lang}.json"
         errors.extend(validate_json_file(fw_file, FRAMEWORK_SCHEMA["required_fields"]))
         if fw_file.exists():
@@ -336,12 +367,16 @@ def validate_frameworks(slug: str) -> list[str]:
                 # Check lang field
                 if data.get("lang") != lang:
                     errors.append(f"LANG_MISMATCH: {fw_file}: lang='{data.get('lang')}' expected '{lang}'")
-                # Check principle count
+                # Check principle count — bounds depend on format_version (v6 widens 5-8 to 8-11)
+                is_v6_framework = data.get("format_version") == PACKAGE_SCHEMA["format_version"]
+                principle_bounds = FRAMEWORK_SCHEMA_V6_PRINCIPLES if is_v6_framework else FRAMEWORK_SCHEMA
+                min_principles = principle_bounds["min_principles"]
+                max_principles = principle_bounds["max_principles"]
                 n_principles = len(data.get("core_principles", []))
-                if n_principles < FRAMEWORK_SCHEMA["min_principles"]:
-                    errors.append(f"TOO_FEW_PRINCIPLES: {fw_file}: {n_principles} < {FRAMEWORK_SCHEMA['min_principles']}")
-                if n_principles > FRAMEWORK_SCHEMA["max_principles"]:
-                    errors.append(f"TOO_MANY_PRINCIPLES: {fw_file}: {n_principles} > {FRAMEWORK_SCHEMA['max_principles']}")
+                if n_principles < min_principles:
+                    errors.append(f"TOO_FEW_PRINCIPLES: {fw_file}: {n_principles} < {min_principles}")
+                if n_principles > max_principles:
+                    errors.append(f"TOO_MANY_PRINCIPLES: {fw_file}: {n_principles} > {max_principles}")
                 # Check blind spots
                 n_blindspots = len(data.get("blind_spots", []))
                 if n_blindspots < FRAMEWORK_SCHEMA["min_blind_spots"]:
@@ -388,8 +423,10 @@ def validate_frameworks(slug: str) -> list[str]:
             except Exception as e:
                 errors.append(f"PARSE_ERROR: {fw_file}: {e}")
 
-    # Cross-check: blind spots must cover same themes
+    # Cross-check: blind spots must cover same themes（仅在英文分支启用时）
     try:
+        if not en_branch_requested(slug):
+            return errors
         zh_data = read_json_file(output_dir / "frameworks.zh.json")
         en_data = read_json_file(output_dir / "frameworks.en.json")
         zh_bs = len(zh_data.get("blind_spots", []))
@@ -414,6 +451,27 @@ def validate_frameworks(slug: str) -> list[str]:
     return errors
 
 
+def is_v6_skill(content: str) -> bool:
+    """v6 包由 frontmatter 的 format_version 判定；无此字段一律按 legacy 处理。
+
+    只在解析出的 frontmatter 块内匹配，避免正文中示例代码块（如文档自身讲解
+    v6 格式时贴出的 ```yaml 片段）触发误判。
+    """
+    match = SKILL_FRONTMATTER_PATTERN.search(content)
+    if not match:
+        return False
+    frontmatter = match.group(1)
+    return bool(re.search(
+        rf"^[ \t]*format_version[ \t]*:[ \t]*{PACKAGE_SCHEMA['format_version']}[ \t]*$",
+        frontmatter, re.MULTILINE,
+    ))
+
+
+def en_branch_requested(slug: str) -> bool:
+    """英文分支是否已被用户选用（Stage 6.5 落 en_requested.flag）。"""
+    return Path(f"output/{slug}/en_requested.flag").exists()
+
+
 def validate_skill(slug: str) -> list[str]:
     """Validate the merged SKILL.md file (bilingual single-file format).
 
@@ -426,6 +484,8 @@ def validate_skill(slug: str) -> list[str]:
     # ── Try merged SKILL.md first (preferred format) ──
     merged_file = output_dir / "SKILL.md"
     if merged_file.exists():
+        if is_v6_skill(merged_file.read_text(encoding="utf-8")):
+            return validate_package(slug)
         return _validate_merged_skill(merged_file, slug)
 
     # ── Fallback: separate SKILL.{lang}.md files ──
@@ -461,15 +521,29 @@ def validate_gallery(slug: str) -> list[str]:
     if not gallery_file.exists():
         return [f"MISSING: {gallery_file}"]
 
-    output_hash = _sha256(output_file)
-    gallery_hash = _sha256(gallery_file)
-    if output_hash != gallery_hash:
-        errors.append(
-            f"GALLERY_OUT_OF_SYNC: {gallery_file} does not match {output_file} "
-            f"(gallery={gallery_hash[:12]}, output={output_hash[:12]})"
-        )
+    v6 = is_v6_skill(gallery_file.read_text(encoding="utf-8"))
+    sync_targets = ["SKILL.md"]
+    if v6:
+        refs_src = Path(f"output/{slug}/references")
+        if refs_src.exists():
+            sync_targets += [f"references/{p.name}" for p in sorted(refs_src.glob("*.md"))]
 
-    errors.extend(_validate_merged_skill(gallery_file, slug))
+    for rel in sync_targets:
+        out_path = Path(f"output/{slug}/{rel}")
+        gal_path = Path(f"gallery/{slug}/{rel}")
+        if not gal_path.exists():
+            errors.append(f"GALLERY_MISSING_FILE: {gal_path} (present in output/)")
+            continue
+        if _sha256(out_path) != _sha256(gal_path):
+            errors.append(
+                f"GALLERY_OUT_OF_SYNC: {gal_path} does not match {out_path} "
+                f"(gallery={_sha256(gal_path)[:12]}, output={_sha256(out_path)[:12]})"
+            )
+
+    if v6:
+        errors.extend(validate_package(slug))
+    else:
+        errors.extend(_validate_merged_skill(gallery_file, slug))
 
     index_file = Path("gallery/index.json")
     if not index_file.exists():
@@ -489,6 +563,229 @@ def validate_gallery(slug: str) -> list[str]:
             errors.append(f"PARSE_ERROR: {index_file}: {e}")
 
     return errors
+
+
+# ── v6 包闸门（P3–P6）────────────────────────────────────────────────
+
+BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:md|json|py|txt))`")
+CASE_ID_RE = re.compile(r"case_id:\s*([A-Za-z0-9_-]+)")
+CASE_CLUSTER_RE = re.compile(r"^\*\*对应原则簇：\*\*\s*(\S+)\s*$", re.MULTILINE)
+CASE_HEADING_RE = re.compile(r"^###\s+.*$", re.MULTILINE)
+CASE_COUNTER_FIELD_RE = re.compile(r"^\*\*反例[:：]\*\*", re.MULTILINE)
+
+
+def check_p3_paths(skill_md: Path) -> list[str]:
+    """P3：SKILL.md 中每个反引号路径必须解析到实际文件。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    base = skill_md.parent
+    errors = []
+    for match in BACKTICK_PATH_RE.finditer(skill_md.read_text(encoding="utf-8")):
+        rel = match.group(1)
+        if (base / rel).exists():
+            continue
+        errors.append(f"P3_DANGLING_PATH: {skill_md}: `{rel}` 无法解析到实际文件")
+    return errors
+
+
+def _parse_cases(cases_md: Path) -> list[dict]:
+    text = cases_md.read_text(encoding="utf-8")
+    headings = list(CASE_HEADING_RE.finditer(text))
+    cases = []
+    for i, match in enumerate(headings):
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
+        block = text[match.start():end]
+        case_id = CASE_ID_RE.search(block)
+        cluster = CASE_CLUSTER_RE.search(block)
+        cases.append({
+            "case_id": case_id.group(1) if case_id else None,
+            "cluster": cluster.group(1) if cluster else None,
+            "is_counter": bool(CASE_COUNTER_FIELD_RE.search(block)),
+        })
+    return cases
+
+
+def check_p4_cases(cases_md: Path, cluster_ids: list[str]) -> list[str]:
+    """P4：每个 principle cluster ≥2 例；全库 ≥1 反例。"""
+    if not cases_md.exists():
+        return [f"MISSING: {cases_md}"]
+    cases = _parse_cases(cases_md)
+    errors = []
+    for case in cases:
+        if not case["case_id"]:
+            errors.append(f"P4_MISSING_CASE_ID: {cases_md}: 存在无 case_id 的案例")
+    for cluster_id in cluster_ids:
+        count = sum(1 for c in cases if c["cluster"] == cluster_id)
+        if count < PACKAGE_SCHEMA["min_cases_per_cluster"]:
+            errors.append(
+                f"P4_TOO_FEW_CASES: {cases_md}: cluster '{cluster_id}' 只有 {count} 例 "
+                f"< {PACKAGE_SCHEMA['min_cases_per_cluster']}"
+            )
+    counters = sum(1 for c in cases if c["is_counter"])
+    if counters < PACKAGE_SCHEMA["min_counter_cases"]:
+        errors.append(f"P4_NO_COUNTER_CASE: {cases_md}: 全库反例数 {counters} < 1")
+    return errors
+
+
+def check_p5_index(skill_md: Path, cases_md: Path) -> list[str]:
+    """P5：SKILL.md 案例索引与 cases.md 的 case_id 必须双向一一对应。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    if not cases_md.exists():
+        return [f"MISSING: {cases_md}"]
+    content = skill_md.read_text(encoding="utf-8")
+    section = re.search(
+        r"^##\s*案例索引\s*$(.*?)(?=^##\s|\Z)",
+        content,
+        re.MULTILINE | re.DOTALL,
+    )
+    indexed = set()
+    if section:
+        index_text = section.group(1)
+        indexed.update(CASE_ID_RE.findall(index_text))
+        for line in index_text.splitlines():
+            if line.strip().startswith("|"):
+                for cell in line.split("|"):
+                    token = cell.strip()
+                    if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)+", token):
+                        indexed.add(token)
+    actual = {c["case_id"] for c in _parse_cases(cases_md) if c["case_id"]}
+    errors = []
+    for orphan in sorted(indexed - actual):
+        errors.append(f"P5_INDEX_ORPHAN: {skill_md}: 索引引用了不存在的 case_id '{orphan}'")
+    for missing in sorted(actual - indexed):
+        errors.append(f"P5_CASE_NOT_INDEXED: {cases_md}: case_id '{missing}' 未出现在案例索引中")
+    return errors
+
+
+PRINCIPLE_SUBHEADING_RE = re.compile(r"^###\s*原则", re.MULTILINE)
+
+
+def check_p6_core(skill_md: Path) -> list[str]:
+    """P6：核心自足——≤500 行，8 个必需章节齐备、非空、有实质深度，核心原则数
+    达标（不检查指针，那是 P3 的事）。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    content = skill_md.read_text(encoding="utf-8")
+    errors = []
+    line_count = len(content.splitlines())
+    if line_count > PACKAGE_SCHEMA["skill_max_lines"]:
+        errors.append(
+            f"P6_TOO_LONG: {skill_md}: {line_count} 行 > "
+            f"{PACKAGE_SCHEMA['skill_max_lines']} 行上限"
+        )
+    headings = list(re.finditer(r"^(#{2,4})\s*(.+?)\s*$", content, re.MULTILINE))
+    for name in PACKAGE_SCHEMA["core_sections"]:
+        hit = None
+        for i, match in enumerate(headings):
+            if match.group(1) == "##" and match.group(2).startswith(name):
+                # 章节体一直延伸到下一个 H2（不是任意级别的下一个标题）——
+                # 这样内容全部挂在 ### 子标题下的章节不会被误判为空。
+                # 标题匹配规则本身不变：仍只认 H2、仍要求 startswith(name)。
+                end = len(content)
+                for later in headings[i + 1:]:
+                    if later.group(1) == "##":
+                        end = later.start()
+                        break
+                hit = content[match.end():end].strip()
+                break
+        if hit is None:
+            errors.append(f"P6_MISSING_SECTION: {skill_md}: 缺少必需章节 '{name}'")
+        elif not hit:
+            errors.append(f"P6_EMPTY_SECTION: {skill_md}: 章节 '{name}' 为空")
+        else:
+            if len(hit) < PACKAGE_SCHEMA["min_section_chars"]:
+                errors.append(
+                    f"P6_SECTION_TOO_THIN: {skill_md}: 章节 '{name}' 正文（去空白）仅 "
+                    f"{len(hit)} 字符 < {PACKAGE_SCHEMA['min_section_chars']} 字符下限"
+                    f"——疑似被替换成指向 references/ 的一行指针，核心层未能自足"
+                )
+            if name == "核心原则":
+                n_principles = len(PRINCIPLE_SUBHEADING_RE.findall(hit))
+                if n_principles < PACKAGE_SCHEMA["min_principles"]:
+                    errors.append(
+                        f"P6_TOO_FEW_PRINCIPLES: {skill_md}: 核心原则章节仅含 "
+                        f"{n_principles} 条「### 原则」子标题 < "
+                        f"{PACKAGE_SCHEMA['min_principles']} 条下限"
+                    )
+    return errors
+
+
+def validate_package(slug: str) -> list[str]:
+    """v6 包整体校验：结构 + P1–P6 六道闸门。"""
+    root = Path(".")
+    output_dir = root / "output" / slug
+    skill_md = output_dir / "SKILL.md"
+    refs_dir = output_dir / PACKAGE_SCHEMA["reference_dir"]
+    errors: list[str] = []
+
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+
+    content = skill_md.read_text(encoding="utf-8")
+    if not is_v6_skill(content):
+        errors.append(
+            f"NOT_V6: {skill_md}: frontmatter 缺少 "
+            f"'format_version: {PACKAGE_SCHEMA['format_version']}'"
+        )
+    if re.search(r"^##\s+English", content, re.MULTILINE):
+        errors.append(f"V6_HAS_ENGLISH_BLOCK: {skill_md}: v6 包不得含 '## English' 区块")
+
+    for name in PACKAGE_SCHEMA["required_refs"]:
+        if not (refs_dir / name).exists():
+            errors.append(f"MISSING: {refs_dir / name}")
+
+    errors.extend(check_p3_paths(skill_md))
+    errors.extend(check_p6_core(skill_md))
+
+    cases_md = refs_dir / "cases.md"
+    evidence_md = refs_dir / "evidence.md"
+
+    cluster_ids: list[str] = []
+    core_file = output_dir / "framework_core.json"
+    if not core_file.exists():
+        # 硬性失败：cluster_ids 缺失会让下面的按簇覆盖检查静默退化成空循环、
+        # 不报任何错——framework_core.json 不进 gallery/（publish_skill.py 不
+        # 复制它），所以 gallery-time 重新校验正是会踩中这个洞的真实路径。
+        errors.append(f"MISSING: {core_file}")
+    else:
+        try:
+            core = read_json_file(core_file)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            errors.append(f"PARSE_ERROR: {core_file}: {e}")
+        else:
+            cluster_ids = [
+                c.get("cluster_id") for c in core.get("principle_clusters", [])
+                if c.get("cluster_id")
+            ]
+            if not cluster_ids:
+                errors.append(
+                    f"P4_EMPTY_CLUSTERS: {core_file}: principle_clusters 为空或均无 "
+                    f"cluster_id，P4 的按簇覆盖检查无法执行"
+                )
+
+    if cases_md.exists():
+        errors.extend(check_p4_cases(cases_md, cluster_ids))
+        errors.extend(check_p5_index(skill_md, cases_md))
+
+    if evidence_md.exists():
+        prov = _load_provenance()
+        errors.extend(prov.check_p1_quote_closure(skill_md, evidence_md))
+        errors.extend(prov.check_p2_corpus_closure(evidence_md, slug, root))
+
+    return errors
+
+
+def _load_provenance():
+    """按路径加载同目录的 verify_provenance 模块（scripts/ 不是包）。"""
+    import importlib.util
+    path = Path(__file__).resolve().parent / "verify_provenance.py"
+    spec = importlib.util.spec_from_file_location("verify_provenance", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _validate_merged_skill(filepath: Path, slug: str) -> list[str]:
@@ -667,6 +964,7 @@ STAGES = {
     "principles": validate_principles,
     "frameworks": validate_frameworks,
     "skill": validate_skill,
+    "package": validate_package,
     "gallery": validate_gallery,
 }
 
