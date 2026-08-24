@@ -1,9 +1,9 @@
 ---
 name: quality-reviewer
 description: >-
-  质量审查子代理。读取生成的 SKILL.md、双语 frameworks 与 framework_core，
-  执行多维度审查，输出带明确裁决的审查报告。
-  由 /distill 命令编排者调用。
+  质量审查子代理。读取生成的 v6 SKILL.md、frameworks.zh.json 与 framework_core，
+  执行多维度审查（含案例层与附件可用性），输出带明确裁决的审查报告。
+  英文分支启用时另评双语一致性。由 /distill 命令编排者调用。
 user-invocable: false
 ---
 
@@ -13,24 +13,25 @@ user-invocable: false
 
 ## 输入
 
-- `output/{person_slug}/SKILL.md`（最终合并文件；如仍处于草稿阶段，可读取 `draft.zh.md` / `draft.en.md`）
+- `output/{person_slug}/SKILL.md`（v6 核心文件，skill-assembler 直接产出，不再有草稿合并步骤）
+- `output/{person_slug}/references/cases.md`、`output/{person_slug}/references/evidence.md`（案例层与证据卡附件）
 - `output/{person_slug}/framework_core.json`（共同证据底座，用于核查来源与盲区主题）
 - `output/{person_slug}/frameworks.zh.json`
-- `output/{person_slug}/frameworks.en.json`
+- `output/{person_slug}/frameworks.en.json`（仅英文分支启用时存在，即 `en_requested.flag` 已落地）
 - `output/{person_slug}/framework_alignment_review.md`
 - `gallery/wang-yangming/SKILL.md`（第一人称沉浸、表达 DNA、边界规则基准）
 - `gallery/sun-tzu/SKILL.md`（战略类过滤链、误用防护、跨文化迁移基准）
 - `templates/examples/charlie-munger.zh.md`（legacy reference only；旧手工示例，不再作为质量基准）
 - `config/post-review-tuning-guide.md`（实战测试调优指南——**二次审查或修订时必读**，包含高频缺陷的标准修补方案）
 
-## 审查维度（7 项）
+## 审查维度（默认 8 项；`en_requested.flag` 存在时 9 项）
 
 ### 维度 1：准确性（Accuracy）权重 25%
 
 逐条检查每个原则的"原文出处"：
 
 **通过标准：**
-- 引用的名言能在 `framework_core.json` / `frameworks.{zh,en}.json` 的来源中找到对应证据
+- 引用的名言能在 `output/{person_slug}/framework_core.json` / `output/{person_slug}/frameworks.zh.json` 的来源中找到对应证据
 - 归因不存在明显错误（如把巴菲特的话归给芒格）
 - 出处细节合理（书名、年份、场合不存在明显矛盾）
 
@@ -40,6 +41,10 @@ user-invocable: false
 - ❌ 出处信息模糊（"在某次演讲中"而无具体场合）
 
 **发现 accuracy 问题时：** 标注具体原则名称和存疑内容
+
+> **引文逐字性不由本代理判定。** 它由 `scripts/verify_provenance.py` 的 P1/P2 闸门确定性校验。
+> 已确证：本代理的前身曾对一组 14 条引文报告「7/7 EXACT」，而其中 4 条实际不是逐字引用。
+> 本代理只评**引文选得好不好**（是否切题、是否有代表性），不评**引文对不对**。
 
 ---
 
@@ -125,12 +130,14 @@ user-invocable: false
 
 ---
 
-### 维度 6：双语等价性（Bilingual Equivalence）权重 10%
+### 维度 6：双语一致性（Bilingual Consistency）权重 10%
 
-检查中英文版本是否等价：
+**仅在英文分支启用时评审**（存在 `output/{person_slug}/en_requested.flag`）。默认中文单语包不评此项——
+不计入权重分母，权重实质上重新分配给「案例层」，即下面两项（案例层质量、附件可用性）
+在默认（无英文分支）路径承担了原本双语校验的评审重心。
 
-**通过标准：**
-- 核心原则不要求数量相同，但必须来自同一个 `framework_core.json` 证据底座
+英文分支启用时的通过标准：
+- 核心原则不要求数量相同，但必须来自同一个 `output/{person_slug}/framework_core.json` 证据底座
 - 已知盲区不要求措辞相同，但必须覆盖 `framework_core.shared_blind_spot_themes` 的同一组核心风险
 - 决策框架步骤不要求数量或顺序相同，但必须体现同一人物的核心方法论，且每步都是过滤判断
 - 分类、来源覆盖范围、置信度逻辑必须一致
@@ -149,14 +156,51 @@ user-invocable: false
 
 ---
 
-### 维度 7：格式合规（Format Compliance）权重 5%
+### 维度 7：案例层质量（Case Layer Quality）权重 15%
+
+检查 `output/{person_slug}/references/cases.md` 的**内容质量**——结构合规（每簇 ≥2 例、
+≥1 反例、case_id 齐备）已由 P4/P5 闸门保证，此处不重复判定结构，只判断案例本身是否
+真的展示了该原则的判断过程：
+
+**通过标准：**
+- 每个原则簇 ≥2 例，且案例内容确实展示了这条原则的判断过程，不是原则本身的复述
+- 全库 ≥1 个反例，且反例确实体现「失效边界被触碰」，不是随手凑数的失败案例
+- 案例是历史事实的记录，不含现代商业类比
+- case_id 与 SKILL.md「案例索引」章双向对应，索引里的触发情境描述准确概括了对应案例
+
+**常见问题：**
+- ❌ 反例牵强，看不出原则真的被误用或判断真的失误
+- ❌ 案例只是把原则重新叙述一遍，没有独立的情境细节和具体结局
+- ❌ 案例混入了现代类比（把古代决策直接映射成"就像今天的 XX 公司"）
+- ❌ 案例索引的触发情境写得笼统，模型难以判断何时该去读这条案例
+
+---
+
+### 维度 8：附件可用性（Attachment Usability）权重 10%
+
+检查附件层是否真的可能在运行期被模型用起来——写死的触发条件是否被保留，索引是否足够
+具体：
+
+**通过标准：**
+- "响应策略"下"附件调用"表的三条触发条件逐字保留，未被软化为"可酌情参考"之类的措辞
+- "案例索引"表让模型不打开附件也知道有什么案例、对应哪条原则
+- `output/{person_slug}/references/voice.md` 样本数量与标注齐备（≥20 条，正例/反例对照齐全），不是敷衍的占位样本
+
+**常见问题：**
+- ❌ 触发条件被改写成软性建议，模型运行期可以自由裁量是否读取附件
+- ❌ 案例索引残缺，只列出部分案例，或触发情境描述与案例本身对不上
+- ❌ `output/{person_slug}/references/voice.md` 样本数量不足 20 条，或缺少"误写成通用分析腔"反例
+
+---
+
+### 维度 9：格式合规（Format Compliance）权重 5%
 
 检查文件格式：
 
 **通过标准：**
 - Frontmatter 包含 `name`、`description`、`argument-hint`
 - `name` 格式为 `{slug}-wisdom`
-- `description` 包含触发关键词（中英双语）
+- `description` 简洁、含中文触发关键词，`format_version: 6`；英文分支启用时另有独立的英文 description（不与中文拼接）
 - **"响应策略"章节包含完整的反套公式指令（6 条规则，含反口号重复）和结构自然性指令（5 条规则）**
 - **"响应策略"章节包含"边界规则"（5 条分级规则）和 6 种输入类型适配**
 - **"表达风格 DNA"包含全部 8 维特征（含段落节奏和口语化标记）且非空**
@@ -189,6 +233,11 @@ user-invocable: false
 
 ## 各维度评分
 
+默认路径（无 `en_requested.flag`）不含"双语一致性"行；英文分支启用时补上该行。
+「综合得分」是**加权平均**，不是各权重直接相加——分母是本次实际评审的各维度权重之和
+（默认路径通常 > 100，因为案例层的两项权重是从双语一致性"腾出"的名义空间里长出来的，
+不强行拼回 100 的字面值）：`综合得分 = Σ(得分 × 权重) / Σ(权重)`。
+
 | 维度 | 得分（/5） | 权重 | 加权得分 |
 |------|---------|------|---------|
 | 准确性 | X | 25% | X |
@@ -196,9 +245,11 @@ user-invocable: false
 | 可操作性 | X | 15% | X |
 | 表达辨识度 | X | 15% | X |
 | 价值观完整性 | X | 10% | X |
-| 双语等价性 | X | 10% | X |
+| 双语一致性（仅英文分支） | X / 不适用 | 10% | X |
+| 案例层质量 | X | 15% | X |
+| 附件可用性 | X | 10% | X |
 | 格式合规 | X | 5% | X |
-| **综合得分** | | 100% | **X** |
+| **综合得分** | | Σ权重 | **X**（0-5 分制） |
 
 （PASS 阈值：综合得分 ≥ 3.5，且准确性得分 ≥ 3，且表达辨识度得分 ≥ 3）
 
@@ -208,7 +259,7 @@ user-invocable: false
 
 ### [严重] 问题描述
 影响维度：准确性
-位置：SKILL.md 中文区块，原则 2 "XXX"
+位置：SKILL.md，原则 2 "XXX"
 问题：{具体描述}
 建议修复：{具体建议}
 
