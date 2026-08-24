@@ -500,15 +500,29 @@ def validate_gallery(slug: str) -> list[str]:
     if not gallery_file.exists():
         return [f"MISSING: {gallery_file}"]
 
-    output_hash = _sha256(output_file)
-    gallery_hash = _sha256(gallery_file)
-    if output_hash != gallery_hash:
-        errors.append(
-            f"GALLERY_OUT_OF_SYNC: {gallery_file} does not match {output_file} "
-            f"(gallery={gallery_hash[:12]}, output={output_hash[:12]})"
-        )
+    v6 = is_v6_skill(gallery_file.read_text(encoding="utf-8"))
+    sync_targets = ["SKILL.md"]
+    if v6:
+        refs_src = Path(f"output/{slug}/references")
+        if refs_src.exists():
+            sync_targets += [f"references/{p.name}" for p in sorted(refs_src.glob("*.md"))]
 
-    errors.extend(_validate_merged_skill(gallery_file, slug))
+    for rel in sync_targets:
+        out_path = Path(f"output/{slug}/{rel}")
+        gal_path = Path(f"gallery/{slug}/{rel}")
+        if not gal_path.exists():
+            errors.append(f"GALLERY_MISSING_FILE: {gal_path} (present in output/)")
+            continue
+        if _sha256(out_path) != _sha256(gal_path):
+            errors.append(
+                f"GALLERY_OUT_OF_SYNC: {gal_path} does not match {out_path} "
+                f"(gallery={_sha256(gal_path)[:12]}, output={_sha256(out_path)[:12]})"
+            )
+
+    if v6:
+        errors.extend(validate_package(slug))
+    else:
+        errors.extend(_validate_merged_skill(gallery_file, slug))
 
     index_file = Path("gallery/index.json")
     if not index_file.exists():

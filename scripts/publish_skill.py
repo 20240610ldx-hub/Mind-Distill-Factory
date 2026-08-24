@@ -45,6 +45,75 @@ def run_command(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout, proc.stderr
 
 
+INSTALL_WHITELIST = ("SKILL.md", "references")
+DOSSIER_NAME = "人物档案.md"
+REFERENCE_DIR = "references"
+
+
+def is_v6_package(skill_md: Path) -> bool:
+    """v6 包由 SKILL.md frontmatter 的 format_version 判定。"""
+    import re
+    return bool(re.search(
+        r"^format_version:\s*6\s*$", skill_md.read_text(encoding="utf-8"), re.MULTILINE
+    ))
+
+
+def copy_package(output_dir: Path, gallery_dir: Path, is_v6: bool) -> list[str]:
+    """把 output/{slug}/ 的包内容同步到 gallery/{slug}/，返回已复制的相对路径。"""
+    gallery_dir.mkdir(parents=True, exist_ok=True)
+    copied: list[str] = []
+
+    shutil.copy2(output_dir / "SKILL.md", gallery_dir / "SKILL.md")
+    copied.append("SKILL.md")
+    if not is_v6:
+        return copied
+
+    refs_src = output_dir / REFERENCE_DIR
+    if refs_src.exists():
+        refs_dst = gallery_dir / REFERENCE_DIR
+        refs_dst.mkdir(exist_ok=True)
+        for path in sorted(refs_src.glob("*.md")):
+            shutil.copy2(path, refs_dst / path.name)
+            copied.append(f"{REFERENCE_DIR}/{path.name}")
+
+    dossier = output_dir / DOSSIER_NAME
+    if dossier.exists():
+        shutil.copy2(dossier, gallery_dir / DOSSIER_NAME)
+        copied.append(DOSSIER_NAME)
+
+    return copied
+
+
+def file_sha256(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def write_manifest(gallery_dir: Path, copied: list[str]) -> Path:
+    """写 gallery/{slug}/manifest.json，含每个文件的 sha256。"""
+    manifest = {
+        "format_version": 6,
+        "files": {rel: file_sha256(gallery_dir / rel) for rel in sorted(copied)},
+    }
+    path = gallery_dir / "manifest.json"
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def install_paths(gallery_dir: Path) -> list[Path]:
+    """只有白名单内的路径进 ~/.claude/skills/——档案留在 gallery。"""
+    result = []
+    for name in INSTALL_WHITELIST:
+        candidate = gallery_dir / name
+        if candidate.exists():
+            result.append(candidate)
+    return result
+
+
 def main() -> int:
     # Handle Windows console encoding for UTF-8 output
     if sys.platform.startswith('win'):
@@ -67,7 +136,6 @@ def main() -> int:
     output_dir = root / "output" / slug
     output_skill = output_dir / "SKILL.md"
     gallery_dir = root / "gallery" / slug
-    gallery_skill = gallery_dir / "SKILL.md"
     index_file = root / "gallery" / "index.json"
 
     print(f"=== Publishing Distilled Skill for '{slug}' ===")
@@ -124,8 +192,11 @@ def main() -> int:
     print(f"Syncing artifacts to {gallery_dir}...")
     gallery_dir.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copy2(output_skill, gallery_skill)
-        print(f"  Copied {output_skill.name} to {gallery_skill}")
+        v6 = is_v6_package(output_skill)
+        copied = copy_package(output_dir, gallery_dir, is_v6=v6)
+        manifest_path = write_manifest(gallery_dir, copied)
+        print(f"  Copied {len(copied)} file(s) to {gallery_dir}: {', '.join(copied)}")
+        print(f"  Wrote {manifest_path.name} (format_version={'6' if v6 else 'legacy'})")
     except Exception as e:
         print(f"ERROR copying files: {e}", file=sys.stderr)
         return 1
@@ -156,6 +227,9 @@ def main() -> int:
         entry["era"] = era
         entry["distilled_on"] = current_date
         entry["review_status"] = "PASS"
+        entry["lang"] = "zh"
+        entry["format_version"] = 6 if v6 else 1
+        entry["has_attachments"] = v6
         if args.notes:
             entry["notes"] = args.notes
     else:
@@ -173,7 +247,10 @@ def main() -> int:
             "review_status": "PASS",
             "skill_dir": f"gallery/{slug}/",
             "install_path": f"{slug}-wisdom",
-            "notes": args.notes or f"Distilled skill for {name_en}."
+            "notes": args.notes or f"Distilled skill for {name_en}.",
+            "lang": "zh",
+            "format_version": 6 if v6 else 1,
+            "has_attachments": v6,
         }
         skills_list.append(new_entry)
 
