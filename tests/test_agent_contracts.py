@@ -115,5 +115,50 @@ class AlignmentReviewerContractTests(unittest.TestCase):
         self.assertIn("en_requested.flag", self.text)
 
 
+class OrchestratorContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.text = (ROOT / "commands" / "distill.md").read_text(encoding="utf-8")
+
+    def test_has_attachment_stage(self) -> None:
+        self.assertIn("Stage 4.5", self.text)
+
+    def test_has_english_on_demand_stage(self) -> None:
+        self.assertIn("Stage 6.5", self.text)
+
+    def test_english_stage_writes_the_flag_file(self) -> None:
+        self.assertIn("en_requested.flag", self.text)
+
+    def test_english_installs_to_separate_directory(self) -> None:
+        self.assertIn("{person-slug}-wisdom-en", self.text)
+
+    def test_stage3_no_longer_runs_en_synthesizer_by_default(self) -> None:
+        self.assertIn("默认只跑中文", self.text)
+
+    def test_checkpoint_uses_package_stage(self) -> None:
+        self.assertIn("validate_output.py package", self.text)
+
+    def test_install_copies_references_directory(self) -> None:
+        self.assertIn("references/", self.text)
+
+    def test_dossier_excluded_from_install(self) -> None:
+        self.assertIn("人物档案.md", self.text)
+        install_section = self.text[self.text.index("### 6.3"):]
+        self.assertIn("不进安装目录", install_section)
+
+
+class RegressionProtocolTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.text = (ROOT / "evaluation" / "regression-protocol.md").read_text(encoding="utf-8")
+
+    def test_adds_attachment_read_checkpoint(self) -> None:
+        self.assertIn("附件是否被读取", self.text)
+
+    def test_requires_two_successful_attachment_reads(self) -> None:
+        self.assertIn("至少 2 次", self.text)
+
+    def test_requires_core_only_turns_to_hold_quality(self) -> None:
+        self.assertIn("未读附件", self.text)
+
+
 if __name__ == "__main__":
     unittest.main()
