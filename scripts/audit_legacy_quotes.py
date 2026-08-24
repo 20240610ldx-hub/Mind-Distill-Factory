@@ -131,7 +131,7 @@ def _run_view(tag_quote_pairs: list[tuple[str, str]], prov, corpus, origins: dic
     }
 
 
-def _find_divergences(json_view: dict, skill_md_view: dict) -> list[dict]:
+def _find_divergences(json_view: dict, skill_md_view: dict) -> dict:
     """比对「同一条原文出处引文」在 JSON 视图与 SKILL.md 视图里的通过/失败状态。
 
     只有 core_principles[].original_quote ↔ SKILL.md 中文版「**原文出处：**」行
@@ -141,24 +141,35 @@ def _find_divergences(json_view: dict, skill_md_view: dict) -> list[dict]:
     表格用的是三级标题，而 extract_skill_quotes 的 QUOTES_SECTION_RE 只认二级
     标题，因此匹配不到任何「标志性名言」行（这是 verify_provenance.py 的既有
     行为，本工具按约束不改动它）——故不参与本比对。
+
+    按位对齐这个假设本身可能不成立：如果某个 Skill 的 SKILL.md 渲染出的
+    「原文出处」行数与 JSON 的 principle 数不一致（缺章节、标题变体、装配器
+    漏渲染……），zip() 会在较短的一侧停止，未配对的 principle 就此从比对中
+    静默消失——这正是本工具本来要拦截的那类「看不出问题」。因此这里不假装
+    两者必然等长：数量对不上时仍然比对能对齐的那一段（能比多少比多少），但
+    把两侧的计数都如实带回给调用方，让不完整的比对没法被误读成完整的比对。
     """
     json_principles = sorted(
         (item for item in json_view["ordered"] if PRINCIPLE_TAG_RE.match(item["tag"])),
         key=lambda item: int(PRINCIPLE_TAG_RE.match(item["tag"]).group(1)),
     )
     skill_source_lines = [item for item in skill_md_view["ordered"] if item["tag"] == "原文出处"]
-    divergences: list[dict] = []
+    pairs: list[dict] = []
     for j, s in zip(json_principles, skill_source_lines):
         if j["status"] == s["status"]:
             continue
-        divergences.append({
+        pairs.append({
             "json_tag": j["tag"],
             "json_status": j["status"],
             "json_quote": j["quote"],
             "skill_md_status": s["status"],
             "skill_md_quote": s["quote"],
         })
-    return divergences
+    return {
+        "pairs": pairs,
+        "json_principle_count": len(json_principles),
+        "skill_md_source_line_count": len(skill_source_lines),
+    }
 
 
 def audit(slug: str, root: Path) -> dict:
@@ -177,10 +188,19 @@ def audit(slug: str, root: Path) -> dict:
         skill_md_quotes = prov.extract_skill_quotes(skill_md_text)
     skill_md_view = _run_view(skill_md_quotes, prov, corpus, origins)
 
+    divergence_result = _find_divergences(json_view, skill_md_view)
+    json_count = divergence_result["json_principle_count"]
+    skill_md_count = divergence_result["skill_md_source_line_count"]
+
     return {
         "json": json_view,
         "skill_md": skill_md_view,
-        "divergences": _find_divergences(json_view, skill_md_view),
+        "divergences": divergence_result["pairs"],
+        "divergence_coverage": {
+            "json_principle_count": json_count,
+            "skill_md_source_line_count": skill_md_count,
+            "matched": json_count == skill_md_count,
+        },
     }
 
 
@@ -205,6 +225,16 @@ def main() -> int:
 
     print(f"逐字审计 '{slug}' [skill_md: 组装后 SKILL.md]: {skill_md_view['passed']}/{skill_md_view['total']} PASS")
     _print_failures(skill_md_view)
+
+    coverage = result["divergence_coverage"]
+    if not coverage["matched"]:
+        print(
+            "WARNING 分歧比对不完整：json 侧 "
+            f"{coverage['json_principle_count']} 条 principle vs skill_md 侧 "
+            f"{coverage['skill_md_source_line_count']} 条「原文出处」行，数量不一致——"
+            "只比对了两者中较短的一段，未配对的 principle 未纳入下方分歧检测，"
+            "以下列表并不完整。"
+        )
 
     if result["divergences"]:
         print("JSON/SKILL.md 分歧（同一条原文出处引文在两个产物里的通过/失败状态不同）：")

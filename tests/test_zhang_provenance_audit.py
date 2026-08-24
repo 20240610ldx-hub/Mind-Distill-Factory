@@ -119,5 +119,44 @@ class ZhangAuditTests(unittest.TestCase):
         self.assertEqual(processed_only, [])
 
 
+class DivergenceMismatchTests(unittest.TestCase):
+    """`_find_divergences` 的按位配对假设不成立时的行为——不依赖真实语料或
+    corpus，直接构造两个视图的 `ordered` 列表来驱动 `_find_divergences`。
+    """
+
+    def test_divergence_reports_count_mismatch_rather_than_truncating(self) -> None:
+        # 3 条 json principle vs 1 条 skill_md「原文出处」行：数量不一致，
+        # zip() 只会配对第 1 组（json 也在此处状态相异，构成 1 条真实分歧），
+        # principle2/principle3 完全没有对应的 skill_md 行可比对。
+        json_view = {
+            "ordered": [
+                {"tag": "principle1", "status": "pass", "quote": "q1-json"},
+                {"tag": "principle2", "status": "fail", "quote": "q2-json"},
+                {"tag": "principle3", "status": "pass", "quote": "q3-json"},
+            ]
+        }
+        skill_md_view = {
+            "ordered": [
+                {"tag": "原文出处", "status": "fail", "quote": "q1-skill_md"},
+            ]
+        }
+        result = audit_mod._find_divergences(json_view, skill_md_view)
+
+        self.assertEqual(result["json_principle_count"], 3)
+        self.assertEqual(result["skill_md_source_line_count"], 1)
+        self.assertNotEqual(
+            result["json_principle_count"], result["skill_md_source_line_count"]
+        )
+        # 数量不一致本身必须在返回值里可见，而不是被 zip() 悄悄截断后无声无息
+        # ——调用方不能把「比对到的分歧少」误读成「两个视图基本一致」。
+
+        # 仍然比对了两者都能对齐的那一段（第 1 组：pass vs fail，构成分歧），
+        # 而不是数量一不一致就整体放弃比对。
+        self.assertEqual(len(result["pairs"]), 1)
+        self.assertEqual(result["pairs"][0]["json_tag"], "principle1")
+        self.assertEqual(result["pairs"][0]["json_status"], "pass")
+        self.assertEqual(result["pairs"][0]["skill_md_status"], "fail")
+
+
 if __name__ == "__main__":
     unittest.main()
