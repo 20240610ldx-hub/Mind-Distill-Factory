@@ -7,11 +7,21 @@ argument-hint: <describe your situation or decision / 描述你面临的决策�
 ---
 
 <!--
-  NOTE: This is a development template. The FINAL deliverable MUST be a single SKILL.md
-  that merges both English and Chinese sections with a language-detection header.
-  Claude Code only recognizes SKILL.md (exact case-sensitive match) in each skill directory.
-  For current quality references, see gallery/wang-yangming/SKILL.md
-  and gallery/sun-tzu/SKILL.md. gallery/charlie-munger/SKILL.md is legacy only.
+  EN branch, produced ONLY by the on-demand English path (Stage 6.5), never on the
+  default path. Installs to {person-slug}-wisdom-en/ as a SEPARATE skill.
+
+  NOT a v6 package. This template deliberately omits `format_version: 6` so
+  scripts/validate_output.py routes it through the legacy single-file skill
+  validator (_validate_merged_skill) instead of the v6 package gates (P1-P6) —
+  because it would fail every one of them: the required section names P6 checks
+  are Chinese literals, P1's quote markers are Chinese literals (harvesting zero
+  quotes here), and this template has no references/{cases,evidence,voice}.md,
+  no 附件调用 table, and no 案例索引. v6 support for English is not implemented;
+  this is a conscious scope decision, not an oversight — see CRITICAL/IMPORTANT
+  findings in the 2026-08-23 skill-package-v6 final review for the reasoning.
+
+  Rule 4 still applies WITHIN this branch: this is an independent cognitive
+  reconstruction from framework_core.json, NOT a translation of the Chinese version.
 -->
 
 # {person_name_en}'s Thinking Frameworks
@@ -90,7 +100,7 @@ The strongest AI tell isn't in individual sentences — it's the mechanical unif
 
 ## Core Principles
 
-{repeat_block: 5-8 principles}
+{repeat_block: 9-11 principles}
 
 ### Principle {n}: {principle_name_en}
 

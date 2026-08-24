@@ -8,7 +8,10 @@
       "name_en": "Charlie Munger",
       "name_original": "Charles Thomas Munger",
       "primary_category": "enterprise",
-      "secondary_categories": ["inquiry", "conduct"],
+      "secondary_categories": [
+        "inquiry",
+        "conduct"
+      ],
       "era": "1924-2023",
       "distilled_on": "2026-05-01",
       "distill_method": "hand-crafted",
@@ -23,7 +26,10 @@
       "name_en": "Mao Zedong",
       "name_original": "毛泽东",
       "primary_category": "strategy",
-      "secondary_categories": ["governance", "philosophy"],
+      "secondary_categories": [
+        "governance",
+        "philosophy"
+      ],
       "era": "1893-1976",
       "distilled_on": "2026-05-02",
       "distill_method": "pipeline",
@@ -38,7 +44,10 @@
       "name_en": "Sun Tzu",
       "name_original": "孙武 (约前544–前496)",
       "primary_category": "strategy",
-      "secondary_categories": ["philosophy", "governance"],
+      "secondary_categories": [
+        "philosophy",
+        "governance"
+      ],
       "era": "c. 544-496 BCE",
       "distilled_on": "2026-05-14",
       "distill_method": "pipeline",
@@ -53,7 +62,10 @@
       "name_en": "Wang Yangming",
       "name_original": "王守仁 (1472-1529)",
       "primary_category": "philosophy",
-      "secondary_categories": ["conduct", "resilience"],
+      "secondary_categories": [
+        "conduct",
+        "resilience"
+      ],
       "era": "1472-1529",
       "distilled_on": "2026-05-15",
       "distill_method": "pipeline",
@@ -68,7 +80,10 @@
       "name_en": "Zeng Guofan",
       "name_original": "曾国藩 (1811-1872)",
       "primary_category": "conduct",
-      "secondary_categories": ["governance", "resilience"],
+      "secondary_categories": [
+        "governance",
+        "resilience"
+      ],
       "era": "1811-1872",
       "distilled_on": "2026-05-16",
       "distill_method": "pipeline",
@@ -83,7 +98,10 @@
       "name_en": "Chiang Kai-shek",
       "name_original": "蒋中正 (1887-1975)",
       "primary_category": "governance",
-      "secondary_categories": ["strategy", "resilience"],
+      "secondary_categories": [
+        "strategy",
+        "resilience"
+      ],
       "era": "1887-1975",
       "distilled_on": "2026-05-17",
       "distill_method": "pipeline",
@@ -98,7 +116,10 @@
       "name_en": "Richard Feynman",
       "name_original": "Richard Phillips Feynman (1918-1988)",
       "primary_category": "inquiry",
-      "secondary_categories": ["pedagogy", "conduct"],
+      "secondary_categories": [
+        "pedagogy",
+        "conduct"
+      ],
       "era": "1918-1988",
       "distilled_on": "2026-05-16",
       "distill_method": "pipeline",
@@ -106,6 +127,27 @@
       "skill_dir": "gallery/richard-feynman/",
       "install_path": "richard-feynman-wisdom",
       "notes": "用户提供13份PDF素材（自传、演讲、信件、讲义、传记）。106条素材摘录，30条候选原则。中文8原则/英文8原则独立框架。4个已知盲区含缓解建议。表达DNA 8维完整。首个inquiry类蒸馏。"
+    },
+    {
+      "slug": "zhang-juzheng-v6",
+      "name_zh": "张居正",
+      "name_en": "Zhang Juzheng V6",
+      "name_original": "张居正",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "enterprise",
+        "strategy"
+      ],
+      "era": "明代中后期；神宗（万历）朝内阁首辅（1572–1582），万历新政总设计师——考成法核吏治、清丈田亩、推一条鞭法、整边备。十年雷霆之治，身后旋遭清算。",
+      "distilled_on": "2026-08-24",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/zhang-juzheng-v6/",
+      "install_path": "zhang-juzheng-v6-wisdom",
+      "notes": "Distilled skill for Zhang Juzheng V6.",
+      "format_version": 6,
+      "has_attachments": true,
+      "lang": "zh"
     }
   ]
 }

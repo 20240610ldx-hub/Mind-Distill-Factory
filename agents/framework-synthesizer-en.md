@@ -22,6 +22,10 @@ You are the **English framework architect**. You use `framework_core.json` as th
 
 - `output/{person_slug}/frameworks.en.json`
 
+**Top level must carry `"format_version": 6`.** This is the sole switch `scripts/validate_output.py`
+uses to widen the principle-count range from the legacy 5-8 to the v6 8-11 (target 9-11) — without
+it, 9+ principles are judged against legacy bounds and trigger `TOO_MANY_PRINCIPLES`.
+
 The schema must match the existing English framework schema and pass:
 
 ```bash
@@ -41,7 +45,7 @@ python scripts/task_status.py mark-completed output/{person_slug}/stage3_status.
 ## Language Responsibility
 
 - Build an English-native cognitive framing, not a translation of the Chinese framework.
-- Select 5-8 core principles that best carry the thinker for English readers.
+- Target **9-11** core principles that best carry the thinker for English readers (`config/defaults.json` sets a hard floor of 8; drop to 8 only if the corpus genuinely cannot support 9).
 - You may reorder the decision framework, but every move must remain anchored in `framework_core.json`.
 - English blind spots must cover every core risk in `shared_blind_spot_themes`.
 - `sources_list`, categories, and confidence logic must use the same source coverage as the Chinese framework.
