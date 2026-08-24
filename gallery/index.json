@@ -432,6 +432,27 @@
       "skill_dir": "gallery/zhang-juzheng/",
       "install_path": "zhang-juzheng-wisdom",
       "notes": "治理+经营+谋略 三类组合（明代改革家首例）。用户提供13份素材（~24MB→86分片/3.32M tokens，index-and-sample-first 采样10分片）：一手 张居正奏疏集(潘林编,含考成法奠基疏《请稽查章奏随事考成以修实政疏》+陈六事疏)/《张太岳集》书牍(pdfjs干净抽取)/帝鉴图说直解；二手 明史本传+朱东润《张居正大传》+黄仁宇《万历十五年》(供盲区)。general-purpose+haiku 子代理分批采集，Stage2-4 编排者内联合成。英文6原则/中文7原则独立框架(Rule4)；中文7道过滤闸(实效→立限→用人→平准→财用→御争→担当+刹车)，英文6道。6个已知盲区含缓解(专权集权/夺情越礼/考成苛酷屈打成招/口言一概之平而容亲信压言官/人亡政息抄家/一条鞭技术改革天花板)，每条影射其所腐蚀的正面原则；原则7『任天下之重』内置刹车。质量4.9/5(隔离haiku冷审,7/7抽样引文EXACT、零杜撰、熊召政小说红线确认)。关键设计：①儒表法里——话语儒家、手段法家，作内在张力诚实呈现；②考成法=绩效问责/执行闭环(经营副类核心)；③ZH命脉/EN镜像(母语文言)；④逝者时间锚1582身后抄家以『人亡政息』鉴戒陈述、非第一人称；⑤已设防熊召政小说/电视剧对白误植 + Stage1 剔除帝鉴图说唐暨礼现代注评8条时代错置(选举权/纳税人/Acton)；⑥奏疏繁体OCR字形校读(放→于·宸里→宸衷)注于source_detail；⑦一条鞭法缺一手专疏、据黄仁宇二手降medium。"
+    },
+    {
+      "slug": "zhang-juzheng-v6",
+      "name_zh": "张居正",
+      "name_en": "Zhang Juzheng V6",
+      "name_original": "张居正",
+      "primary_category": "governance",
+      "secondary_categories": [
+        "enterprise",
+        "strategy"
+      ],
+      "era": "明代中后期；神宗（万历）朝内阁首辅（1572–1582），万历新政总设计师——考成法核吏治、清丈田亩、推一条鞭法、整边备。十年雷霆之治，身后旋遭清算。",
+      "distilled_on": "2026-08-24",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/zhang-juzheng-v6/",
+      "install_path": "zhang-juzheng-v6-wisdom",
+      "notes": "Distilled skill for Zhang Juzheng V6.",
+      "format_version": 6,
+      "has_attachments": true,
+      "lang": "zh"
     }
   ]
 }
