@@ -160,5 +160,43 @@ class RegressionProtocolTests(unittest.TestCase):
         self.assertIn("未读附件", self.text)
 
 
+class PrincipleCountConsistencyTests(unittest.TestCase):
+    """v6 targets 9-11 core principles. That count has drifted back to the legacy 5-8 in
+    files V6_DOCS never scans (templates and downstream agent docs) three separate times.
+    These assertions target the specific *target-count* statement — a repeat_block's
+    principle count, or a line stating "目标"/"Target" — rather than banning the "5-8"
+    substring outright, because both synthesizers legitimately explain that
+    format_version: 6 widens the legacy 5-8 range to v6's 8-11; that contrastive prose
+    must stay untouched.
+    """
+
+    REPEAT_BLOCK_PRINCIPLE_RE = re.compile(
+        r"\{repeat_block:\s*([0-9]+-[0-9]+)\s*principles", re.IGNORECASE
+    )
+    TARGET_RE = re.compile(r"(?:目标\s*\*{0,2}|[Tt]arget\s*\*{0,2})([0-9]+-[0-9]+)")
+
+    def test_v6_templates_declare_9_11_principle_repeat_block(self) -> None:
+        for path in (
+            ROOT / "templates" / "skill-template.v6.zh.md",
+            ROOT / "templates" / "skill-template.en.md",
+        ):
+            text = path.read_text(encoding="utf-8")
+            counts = self.REPEAT_BLOCK_PRINCIPLE_RE.findall(text)
+            with self.subTest(template=path.name):
+                self.assertIn("9-11", counts, f"{path.name}: no repeat_block declares 9-11 principles")
+                self.assertNotIn("5-8", counts, f"{path.name}: a repeat_block still declares 5-8 principles")
+
+    def test_synthesizers_state_9_11_target_not_5_8(self) -> None:
+        for path in (
+            ROOT / "agents" / "framework-synthesizer-zh.md",
+            ROOT / "agents" / "framework-synthesizer-en.md",
+        ):
+            text = path.read_text(encoding="utf-8")
+            targets = self.TARGET_RE.findall(text)
+            with self.subTest(agent=path.name):
+                self.assertIn("9-11", targets, f"{path.name}: no explicit 9-11 target statement found")
+                self.assertNotIn("5-8", targets, f"{path.name}: still states a 5-8 target")
+
+
 if __name__ == "__main__":
     unittest.main()

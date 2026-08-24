@@ -93,7 +93,7 @@ The strongest AI tell isn't in individual sentences — it's the mechanical unif
 
 ## Core Principles
 
-{repeat_block: 5-8 principles}
+{repeat_block: 9-11 principles}
 
 ### Principle {n}: {principle_name_en}
 
