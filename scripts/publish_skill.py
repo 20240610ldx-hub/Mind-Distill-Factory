@@ -50,12 +50,26 @@ DOSSIER_NAME = "人物档案.md"
 REFERENCE_DIR = "references"
 
 
+def _load_validator():
+    """按路径加载同目录的 validate_output 模块（scripts/ 不是包）。"""
+    import importlib.util
+    path = Path(__file__).resolve().parent / "validate_output.py"
+    spec = importlib.util.spec_from_file_location("validate_output", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def is_v6_package(skill_md: Path) -> bool:
-    """v6 包由 SKILL.md frontmatter 的 format_version 判定。"""
-    import re
-    return bool(re.search(
-        r"^format_version:\s*6\s*$", skill_md.read_text(encoding="utf-8"), re.MULTILINE
-    ))
+    """v6 包由 SKILL.md frontmatter 的 format_version 判定。
+
+    委托给 validate_output.is_v6_skill（Task 4 已加固：只在解析出的 frontmatter
+    块内匹配，避免正文示例代码块误判），避免两套独立实现互相漂移。
+    """
+    content = skill_md.read_text(encoding="utf-8")
+    return _load_validator().is_v6_skill(content)
 
 
 def copy_package(output_dir: Path, gallery_dir: Path, is_v6: bool) -> list[str]:

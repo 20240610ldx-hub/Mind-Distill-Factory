@@ -19,6 +19,7 @@ def load_module(name: str, path: Path):
 
 
 publisher = load_module("publish_skill", ROOT / "scripts" / "publish_skill.py")
+validator = load_module("validate_output", ROOT / "scripts" / "validate_output.py")
 
 
 def build_v6_output(root: Path) -> Path:
@@ -62,6 +63,41 @@ class CopyPackageTests(unittest.TestCase):
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=False)
             self.assertEqual(copied, ["SKILL.md"])
+
+
+class IsV6PackageTests(unittest.TestCase):
+    def test_is_v6_package_agrees_with_validator_on_legacy_doc_mentioning_v6(self) -> None:
+        content = (
+            "---\nname: demo-wisdom\n"
+            "description: Apply demo frameworks. 运用示例框架。\n---\n\n"
+            "# Language Detection · 语言检测\n\n"
+            "## English\n\n### Identity Card\n略\n\n"
+            "Example v6 frontmatter:\n\n```yaml\nformat_version: 6\n```\n\n"
+            "## 中文版\n\n### 身份卡\n略\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            skill_md = Path(td) / "SKILL.md"
+            skill_md.write_text(content, encoding="utf-8")
+            self.assertFalse(publisher.is_v6_package(skill_md))
+            self.assertEqual(publisher.is_v6_package(skill_md), validator.is_v6_skill(content))
+
+    def test_is_v6_package_accepts_whitespace_variants(self) -> None:
+        space_before_colon = (
+            "---\nname: demo-wisdom\nformat_version : 6\n"
+            "description: 示例。触发：示例。\n---\n\n# 标题\n"
+        )
+        indented = (
+            "---\nname: demo-wisdom\n  format_version: 6\n"
+            "description: 示例。触发：示例。\n---\n\n# 标题\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            path_a = root / "space.md"
+            path_a.write_text(space_before_colon, encoding="utf-8")
+            path_b = root / "indented.md"
+            path_b.write_text(indented, encoding="utf-8")
+            self.assertTrue(publisher.is_v6_package(path_a))
+            self.assertTrue(publisher.is_v6_package(path_b))
 
 
 class InstallWhitelistTests(unittest.TestCase):
