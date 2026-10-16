@@ -123,11 +123,14 @@ python scripts/local_source_pipeline.py index {slug}
   - 推荐目标：20k-35k tokens
   - 软上限：50k tokens
   - 硬上限：60k tokens，超过必须重新分片，不得派 worker
-- 按 manifest 的 `recommended_worker_count` 决定并行 worker 数：
-  - `<40k tokens`：1 个 worker
-  - `40k-150k tokens`：2-4 个 worker
-  - `150k-500k tokens`：4-8 个 worker
-  - `>500k tokens`：先索引和抽样，不直接全量派 agent
+- 先读取 manifest 生成的 `sources/{slug}/processed/local_shards/sampling_plan.json`、`sources/{slug}/processed/local_shards/dispatch_plan.json`、`sources/{slug}/processed/local_shards/cost_estimate.json`，再决定派工。
+- 主 agent 必须动态分批派发 local workers，不能一次性把全部 shard 交给并行 agents：
+  - 每个 worker 只读取一个 shard；
+  - `sources/{slug}/processed/local_shards/dispatch_plan.json` 按上下文窗口、token 量、OCR 状态和理解难度给出 batch；
+  - 高难度 shard 单独派发，完成/失败后才释放下一槽位；
+  - 同一 shard 连续失败时先拆分或降低并发，不让整个 Stage 1A 阻塞。
+- `recommended_worker_count` 只是总量提示，不是强制并发数。实际并发由主 agent 根据当前上下文窗口动态裁决。
+- `sources/{slug}/processed/local_shards/cost_estimate.json` 的 upper bound 超过配置预算时，必须先调用 AskUserQuestion：全量处理 / 分层抽样 / 只用本地素材并降低预算 / 取消；用户选择前不得派 worker 或网络补充。
 
 #### A1：local-source-worker[N]（按 shard 并行）
 
@@ -173,6 +176,7 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 **可靠性要求：**
 
 - 单个本地 worker 不应超过 40 次 tool use；目标区间是 15-30 次
+- worker 输出必须回写 `shard_id` 与 `input_fingerprint`；指纹不匹配的输出不得进入 reducer
 - 如果某个 worker 需要读取过多文件或超过 60k tokens，立即回到 A0 重新分片
 - PDF 文本抽取由脚本完成，agent 不得反复打开 PDF 全文
 - 最终对 Stage 2 暴露的接口仍是 `sources/{slug}/processed/user_sources.json`

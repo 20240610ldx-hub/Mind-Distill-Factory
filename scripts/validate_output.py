@@ -159,9 +159,19 @@ def validate_sources(slug: str) -> list[str]:
     if not processed_dir.exists():
         return [f"MISSING_DIR: {processed_dir}"]
 
-    json_files = list(processed_dir.glob("*.json"))
+    # Registry, manifest, sidecar, and cost metadata are contracts, not
+    # source extract files. Only the four extract payloads enter the legacy
+    # SOURCE_FILE_SCHEMA loop below.
+    metadata_names = {
+        "source_registry.json",
+        "provenance_manifest.json",
+        "corpus_inventory.json",
+        "sampling_plan.json",
+        "cost_estimate.json",
+    }
+    json_files = [p for p in processed_dir.glob("*.json") if p.name not in metadata_names]
     if not json_files:
-        return [f"EMPTY_DIR: {processed_dir} (no .json files)"]
+        return [f"EMPTY_DIR: {processed_dir} (no source extract .json files)"]
 
     # ── Completeness check: required source files ──
     required_sources = {

@@ -31,8 +31,12 @@ python scripts/local_source_pipeline.py index {person_slug}
 4. 检查 `sources/{person_slug}/processed/local_shards/manifest.json`：
    - `shard_count` 必须大于 0
    - 每个 shard 的 `token_estimate` 必须小于等于 `hard_limit_tokens`
-   - `recommended_worker_count` 用于后续 worker 派发
+   - `input_fingerprint` 必须存在并绑定当前 source registry
+   - `sampling_plan.json`、`dispatch_plan.json`、`cost_estimate.json` 必须存在
+   - `recommended_max_concurrency` 与当前上下文窗口匹配
 5. 如果 manifest 中存在 `over_limit_shards`，停止并报告给编排者，不要继续派 worker。
+6. 主 agent 读取 `dispatch_plan.json` 的 next batch 动态派工：高难度 shard 单独派发；低/中难度 shard 只在剩余上下文足够时并行。每个 worker 完成或失败后再取下一批，避免一次性提交全部任务阻塞。
+7. 如果 `cost_estimate.json` 的 upper bound 超过配置预算，先通过 AskUserQuestion 让用户选择全量、分层抽样、降低预算或取消；用户未选择前不得派发 worker 或启动网络补充。
 
 ## 输出
 

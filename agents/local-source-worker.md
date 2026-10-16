@@ -16,6 +16,8 @@ user-invocable: false
 - `person_name`：人物名
 - `person_slug`：slug
 - `shard_path`：例如 `sources/{slug}/processed/local_shards/shard_001.json`
+- `dispatch_plan`：索引器生成的动态派工计划；主 agent 根据当前上下文窗口逐批派发，不一次性启动全部 worker
+- shard 中的 `input_fingerprint`：必须原样带入 worker 输出
 
 ## 执行流程
 
@@ -54,6 +56,7 @@ python scripts/task_status.py mark-failed sources/{slug}/processed/local_shards/
 {
   "person_slug": "slug",
   "shard_id": "shard_001",
+  "input_fingerprint": "必须与 shard 输入完全一致",
   "extracts": [
     {
       "text": "摘录原文",
