@@ -1,0 +1,47 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12", "3.13"]
+    defaults:
+      run:
+        # bash on Windows too, so `scripts/*.py` expands the same way everywhere.
+        shell: bash
+    env:
+      # Offline only: no LLM calls, no API keys.
+      MIND_DISTILL_EVAL_LLM: "off"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # pyproject.toml has no base dependencies and the suite runs from the repo
+      # root, so no `pip install` is needed. Optional extras (pdf/ocr/...) stay off.
+
+      - name: Compile scripts
+        run: python -m py_compile scripts/*.py
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
