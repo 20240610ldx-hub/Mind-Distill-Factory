@@ -92,7 +92,7 @@ python scripts/mdf.py harness plan zhang-juzheng-v6 --target codex
 
 ## 已知限制
 
-- **AGENTS.md 过时**：它还停在 v6 之前的规则（「双语合一 SKILL.md」），Codex 和 pi 都会读到。编排 skill 已声明以 `CLAUDE.md` 为准，但根治需要同步 `AGENTS.md`；文档分支 `claude/dreamy-hamilton-3fd992` 做了这件事，尚未合并。`mdf harness` 会对此给出 ⚠️。
+- **AGENTS.md 与 CLAUDE.md 是两份文件**：`AGENTS.md` 已对齐 v6，并补了 `mdf` 入口与进度协议；以后改规则要两份一起改，冲突时以 `CLAUDE.md` 为准。`mdf harness` 会检查 `AGENTS.md` 是否仍是 v6。
 - **Codex 子代理**：二手资料称已正式提供，但说法互相矛盾，官方文档里没有核实到，所以流水线不依赖它，统一走简报 + 新进程。
 - **gallery 包的 frontmatter**：含 `format_version`、`argument-hint` 等非 Agent Skills 标准字段。Codex、pi 是否对此告警没有逐一验证；`harness plan` 会提示。
 - **Codex、pi 仍没有端到端实测**：墨子试跑（[harness-trial-mozi.md](harness-trial-mozi.md)）用 `claude -p` 新进程走完了简报路径（到发布），修掉了简报缺口，但 Codex、pi 本身没有跑过。首次使用请留意 agent 是否按简报写对了文件，检查点会兜底。

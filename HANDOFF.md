@@ -97,7 +97,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **charlie-munger**：按 v5 模板补齐 8 个章节，或重新蒸馏
 - **张居正 v6 过 strict**：缺 review.md（S2/S3），且 manifest 早于 S4、没有权利汇总（`STRICT_NO_RIGHTS_RECORD`）。要过 strict：补做 Stage 5 审查 → 写 `sources/zhang-juzheng-v6/rights.json` → 重跑 `mdf index` → 重新发布
 - **`--install`**：发布时同步装入 `~/.claude/skills`。曾在评审中被**刻意删除**（写仓库外，见 `test_publish_v6.py` 的 `test_install_paths_helper_removed`），恢复需重新拍板。现有替代：`mdf harness plan <slug> --target <harness>` 只打印命令
-- **文档分支** `claude/dreamy-hamilton-3fd992`（`e853e3d`：README/README.en/AGENTS 对齐 v6）未合并；`README.zh.md` 仍过时。**这件事现在更急**：Codex 和 pi 读 `AGENTS.md`，它仍是「双语合一 SKILL.md」的旧规则（`mdf harness` 报 ⚠️；编排 skill 已声明以 CLAUDE.md 为准，只是兜底）
+- ~~文档分支~~ **已合并（2026-10-18，用户批准）**：`claude/dreamy-hamilton-3fd992` 把 README/README.en/AGENTS 对齐 v6，`AGENTS.md` 另补「Running the Pipeline」一节（`mdf` 入口、`mdf run`、三拍叙述）；`mdf harness` 不再报 ⚠️。`README.zh.md` 仍过时
 - **采集联系方式与法域**：`config/acquisition_policy.json` 的 `contact` 为空（用环境变量 `MDF_CONTACT`，建议填项目主页 URL，**不要提交个人邮箱**）；`jurisdiction` 为 null，`public_domain_us` 因此一律待复核
 - **已有语料的权利声明**：所有本地文件默认 `unverified`，strict 发布会拦（S4）。每个人物要由人写 `rights.json`
 
@@ -116,7 +116,8 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - CI 尚未跑 `validate_output.py published` 全量 gallery；要加这一步，需先处理 charlie-munger
 
 ### P4：阶段 3 留下的缺口
-- **Codex / pi 端到端实测**：只验证了适配文件结构（`claude plugin validate` 通过、本机 `--help` 核对参数），没有在 Codex、pi 里真正跑完一个人物
+- **Codex / pi 端到端实测**：墨子试跑（`docs/harness-trial-mozi.md`，已合并）用 `claude -p` 新进程把简报路径跑到发布（9 次调用 $6.04，审查 PASS 4.04/5），修了 7 处简报/闸门缺口。Codex、pi 本身仍没跑过：用户 2026-10-18 选择暂不真跑（Codex 按量计费；pi 本机只有 9B 本地模型）。试跑报告「未修、需要决策」第 8–14 条（类目传递通道、发布后 next 仍指向包校验、raw 非递归 glob、reduce 简报未禁网、新进程再派子代理、CRLF、合并小语料步骤）尚未处理
+- `gallery/mozi` 已入库，但 3 篇出处篇名标错（维基文库页眉混入正文，`acquire.py` 已修），包里标了「篇次待核」；要更正需重采 → 重抽取 → 重跑后续阶段
 - ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比，数字与结论见 `docs/methodology.md`「OCR 校准」。真实扫描件已抽查七类页面（民国竖排、明刻本对开、透墨国图本、手稿、横排简体、英文），结论见同节「真实扫描件抽查」。遗留：样张只有 3 页 19 句、只用宋体；没被检测出来的行（透墨、淡印）不计入可疑行；刻本双行小注会与大字交错；CI 不装引擎，真实引擎路径只在本机验证过
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
 
@@ -172,8 +173,8 @@ claude plugin validate .
 
 ## 六、建议的下一动作顺序
 
-1. 人工决定项：合并文档分支（Codex/pi 读的 AGENTS.md 过时）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式
-2. 本分支开 PR 合入 main（CI 会在 ubuntu + windows 上重跑全部离线单测）
-3. 在 Codex 或 pi 里端到端跑一个公有领域人物（如用 `mdf acquire --wikisource` 取原典），验证简报 + 新进程路径
+1. 人工决定项：charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式
+2. PR #2、#4 已于 2026-10-17 合入 main；之后的提交（OCR 收尾、`mdf run`、墨子试跑与文档分支合并）走新 PR
+3. 处理墨子试跑报告第 8–14 条；用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
 4. P2 runtime `read_reference` + trace + judge schema
 5. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验
