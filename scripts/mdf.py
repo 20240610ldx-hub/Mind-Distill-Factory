@@ -17,7 +17,8 @@
 
 数据根目录默认是仓库根；init/status/next/doctor/validate 可用 --root 或环境变量
 MDF_DATA_ROOT 指向另一份数据（例如在 git worktree 里查看主仓库的私有语料）。
-转交给旧脚本的子命令（index/reduce/stats/publish/manifest）仍以仓库根为准。
+转交的子命令里，acquire/index/reduce/stats/clean 认 MDF_DATA_ROOT（acquire/clean 另有 --root），
+publish/manifest 仍以仓库根为准。
 """
 
 import argparse
@@ -242,6 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
 PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
     "acquire": ("acquire", [], "合规采集文献到 sources/{slug}/raw/acquired/"),
     "index": ("local_source_pipeline", ["index"], "抽取、清洗、分片 sources/{slug}/raw"),
+    "clean": ("clean_corpus", [], "查看清洗报告；clean check <文件> 预检单个文件"),
     "reduce": ("local_source_pipeline", ["reduce"], "合并分片抽取结果"),
     "stats": ("local_source_pipeline", ["stats"], "分片统计"),
     "publish": ("publish_skill", [], "事务化发布到 gallery"),

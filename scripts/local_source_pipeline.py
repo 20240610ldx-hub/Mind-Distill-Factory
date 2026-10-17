@@ -17,7 +17,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -58,6 +58,13 @@ except ImportError:  # pragma: no cover - supports package-style imports
     from scripts.source_registry import sha256_file  # type: ignore
 
 try:
+    from text_decoding import decode_bytes
+    import clean_corpus
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.text_decoding import decode_bytes  # type: ignore
+    from scripts import clean_corpus  # type: ignore
+
+try:
     from slug_rules import slug_arg
 except ImportError:  # pragma: no cover - supports package-style imports
     from scripts.slug_rules import slug_arg  # type: ignore
@@ -95,10 +102,12 @@ class Segment:
     ocr_required: bool = False
     unit_id: str = ""
     stratum_key: str = ""
+    quality_flags: list[str] = field(default_factory=list)
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    """数据根目录：环境变量 MDF_DATA_ROOT 优先（mdf 的 --root 与测试用），否则仓库根。"""
+    return Path(os.environ.get("MDF_DATA_ROOT") or Path(__file__).resolve().parents[1])
 
 
 def raw_dir(slug: str) -> Path:
@@ -151,12 +160,8 @@ def priority_for_name(name: str) -> int:
 
 
 def read_text_file(path: Path) -> str:
-    for encoding in ("utf-8", "utf-8-sig", "gb18030", "big5", "latin-1"):
-        try:
-            return path.read_text(encoding=encoding)
-        except UnicodeDecodeError:
-            continue
-    return path.read_text(encoding="utf-8", errors="replace")
+    # 与 verify_provenance（P2）共用同一解码顺序，保证抽取与溯源看到同一份文本。
+    return decode_bytes(path.read_bytes()).text
 
 
 def read_json_file(path: Path) -> Any:
@@ -367,6 +372,9 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
     registry = build_registry(source_dir, provenance=provenance)
     registry_map = registry_by_relative_path(registry)
     write_registry(processed_dir(slug) / "source_registry.json", registry)
+    path_by_id = {item.get("source_id"): rel for rel, item in registry_map.items()}
+    cleaning: dict[str, dict[str, Any]] = {}
+    cleaned_texts: dict[str, tuple[int, str]] = {}
 
     for path in files:
         ext = path.suffix.lower()
@@ -383,8 +391,25 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
             "status": "indexed",
         }
 
-        if ext in SUPPORTED_TEXT_EXTS:
-            text = read_text_file(path)
+        if registry_item.get("duplicate_of") and ext in SUPPORTED_TEXT_EXTS | SUPPORTED_PDF_EXTS:
+            original = path_by_id.get(registry_item["duplicate_of"], registry_item["duplicate_of"])
+            file_meta.update(status="duplicate", duplicate_of=original, chunk_count=0)
+            cleaning[relative_path] = {
+                "kind": "duplicate", "verdict": "duplicate", "reasons": [], "flags": [],
+                "duplicate": {"duplicate_of": original, "relation": "identical", "score": 1.0},
+            }
+        elif ext in SUPPORTED_TEXT_EXTS:
+            decoded = decode_bytes(path.read_bytes())
+            text, entry = clean_corpus.clean_text(
+                decoded.text, encoding=decoded.encoding, replacements=decoded.replacements
+            )
+            cleaning[relative_path] = entry
+            file_meta["cleaning_verdict"] = entry["verdict"]
+            if entry["verdict"] == "rejected":
+                file_meta.update(status="rejected_by_cleaning", reasons=entry["reasons"], chunk_count=0)
+                files_meta.append(file_meta)
+                continue
+            cleaned_texts[relative_path] = (priority, text)
             chunks = split_text(text)
             file_meta["chunk_count"] = len(chunks)
             file_meta["token_estimate"] = estimate_tokens(text)
@@ -399,7 +424,8 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                         text=chunk,
                         token_estimate=estimate_tokens(chunk),
                         source_id=registry_item.get("source_id", ""),
-                        extraction_quality_band="good",
+                        extraction_quality_band="review" if entry["verdict"] == "flagged" else "good",
+                        quality_flags=list(entry["flags"]),
                     )
                 )
         elif ext in SUPPORTED_PDF_EXTS:
@@ -421,10 +447,27 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                 }
                 for page in pages
             ]
+            ok_conf = [float((page.get("ocr") or {}).get("confidence") or 0) for page in pages
+                       if (page.get("ocr") or {}).get("status") == "ok"]
+            ocr_stats = {
+                "pages_total": len(pages),
+                "ocr_required": sum(1 for page in pages if page.get("quality", {}).get("ocr_required")),
+                "ocr_ok": len(ok_conf),
+                "mean_confidence": round(sum(ok_conf) / len(ok_conf), 3) if ok_conf else None,
+            }
+            # 侧车已按原始页文本写好（P2 用它比对）；分片用清洗后的页文本。
+            cleaned_pages, entry = clean_corpus.clean_pdf_pages([page.get("text", "") for page in pages], ocr_stats)
+            cleaning[relative_path] = entry
+            file_meta["cleaning_verdict"] = entry["verdict"]
+            for page, cleaned in zip(pages, cleaned_pages):
+                page["text"] = cleaned
             if not pages or not any(page.get("text") for page in pages):
                 file_meta["status"] = "no_extractable_text"
                 file_meta["chunk_count"] = 0
+            elif entry["verdict"] == "rejected":
+                file_meta.update(status="rejected_by_cleaning", reasons=entry["reasons"], chunk_count=0)
             else:
+                cleaned_texts[relative_path] = (priority, "\n\n".join(page["text"] for page in pages if page["text"]))
                 page_buffer: list[str] = []
                 page_start = pages[0]["page_number"]
                 page_end = pages[0]["page_number"]
@@ -451,10 +494,12 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                                 token_estimate=estimate_tokens(chunk),
                                 source_id=registry_item.get("source_id", ""),
                                 extraction_quality_band=(
-                                    "review" if any(page.get("quality_band") == "review" for page in pages)
+                                    "review" if entry["verdict"] == "flagged"
+                                    or any(page.get("quality_band") == "review" for page in pages)
                                     else "good"
                                 ),
                                 ocr_required=any(page.get("quality", {}).get("ocr_required") for page in pages),
+                                quality_flags=list(entry["flags"]),
                             )
                         )
                     page_buffer = []
@@ -491,6 +536,18 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
 
         files_meta.append(file_meta)
 
+    # 近重复：同一本书的 txt 与 pdf、选段文件被整本包含……只抽一份。
+    duplicates = clean_corpus.find_near_duplicates(
+        [(rel, prio, text) for rel, (prio, text) in cleaned_texts.items()]
+    )
+    if duplicates:
+        segments = [s for s in segments if s.source_file not in duplicates]
+        for meta in files_meta:
+            info = duplicates.get(meta["file"])
+            if info:
+                meta.update(status="duplicate", duplicate_of=info["duplicate_of"], chunk_count=0)
+                cleaning[meta["file"]].update(verdict="duplicate", duplicate=info)
+    clean_corpus.write_report(processed_dir(slug) / "cleaning_report.json", clean_corpus.build_report(cleaning))
     return segments, files_meta
 
 
@@ -517,6 +574,7 @@ def pack_shards(segments: list[Segment]) -> list[dict[str, Any]]:
                     "source_id": segment.source_id,
                     "extraction_quality_band": segment.extraction_quality_band,
                     "ocr_required": segment.ocr_required,
+                    "quality_flags": segment.quality_flags,
                     "token_estimate": segment.token_estimate,
                     "text": segment.text,
                 }
@@ -549,6 +607,7 @@ def pack_shards(segments: list[Segment]) -> list[dict[str, Any]]:
                     source_id=segment.source_id,
                     extraction_quality_band=segment.extraction_quality_band,
                     ocr_required=segment.ocr_required,
+                    quality_flags=list(segment.quality_flags),
                 )
                 if current and current_tokens + split_segment.token_estimate > HARD_LIMIT_TOKENS:
                     flush()

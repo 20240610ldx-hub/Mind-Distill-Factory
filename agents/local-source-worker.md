@@ -88,6 +88,11 @@ python scripts/task_status.py mark-failed sources/{slug}/processed/local_shards/
 
 - 不得凭记忆补充引用。
 - 不得把 `analysis` 当作一手引用。
+- 先看每个 passage 的 `quality_flags`（清洗闸门写入，见 `sources/{slug}/processed/cleaning_report.json`）：
+  - `modern_annotation`：来源里混有现代注释/译文/评析（如《帝鉴图说》唐暨礼注评）。只有能确认出自本人的原文才能标 `high`；注释者、译者的话不得记在本人名下，最多作为 `analysis`。
+  - `low_ocr_confidence` / `ocr_incomplete` / `ocr_mostly_missing`：OCR 文本可能有错字，引文 `confidence` 不高于 `medium`，并在 `worker_notes` 写明。
+  - `private_use_glyphs` / `replacement_chars`：含无法识别的字形，涉及这些字的句子不要作逐字引文。
+- 正文里的 `===== PDF_PAGE n =====`、`--- Page n ---`、`≦ n ≧` 是页码标记，写进 `source_detail` 作定位，不要当作原文摘录。
 - 必须保留 `source_detail` 中的文件名、页码/章节或 passage id。
 - 单 worker tool use 目标为 15-30 次；如果超过 40 次，说明 shard 过大或读取方式错误，应报告编排者。
 - 继续执行时先检查 `{shard_id}_extracts.json` 是否已存在；如果存在且 JSON 合法，不要重做该 shard，只补缺失或 failed 的 shard。

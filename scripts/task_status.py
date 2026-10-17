@@ -42,7 +42,8 @@ if sys.platform == "win32":
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    """数据根目录：环境变量 MDF_DATA_ROOT 优先（mdf 的 --root 与测试用），否则仓库根。"""
+    return Path(os.environ.get("MDF_DATA_ROOT") or Path(__file__).resolve().parents[1])
 
 
 def now_iso() -> str:

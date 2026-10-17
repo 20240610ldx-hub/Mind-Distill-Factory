@@ -62,10 +62,14 @@ class StageTreeTests(unittest.TestCase):
                     self.assertTrue(step.get("agent"), f"{step['id']} 由 agent 执行却没写 agent")
 
     def test_commands_go_through_the_unified_cli(self):
+        mdf = load_module("_mdf_for_tree", ROOT / "scripts" / "mdf.py")
+        parser = mdf.build_parser()
+        subcommands = set(next(a for a in parser._actions if a.dest == "command").choices)
         for phase in TREE["phases"]:
             for cmd in [s.get("command") for s in phase["steps"]] + [phase.get("checkpoint")]:
                 if cmd:
                     self.assertTrue(cmd.startswith("python scripts/mdf.py "), cmd)
+                    self.assertIn(cmd.split()[2], subcommands, f"阶段树引用了不存在的子命令：{cmd}")
 
 
 class StatusDetectionTests(unittest.TestCase):

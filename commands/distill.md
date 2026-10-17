@@ -150,10 +150,14 @@ python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy  
 - 调用脚本抽取 PDF/TXT/MD 文本：
 
 ```bash
-python scripts/local_source_pipeline.py index {slug}
+python scripts/mdf.py index {slug}    # 等同 local_source_pipeline.py index，含清洗闸门
+python scripts/mdf.py clean {slug}    # 查看清洗报告：被拒 / 待复核 / 重复来源及删除样例
 ```
 
+- 清洗闸门（`scripts/clean_corpus.py`）**只删不改**：删版权页、网站广告、页码、页眉页脚、索引与目录，保留下来的字符逐字不动，所以 P2 溯源不受影响。乱码、空文本、OCR 缺失过多的来源被拒，不进分片；与另一来源相同或高度重合的只抽一份。
+- `mdf clean` 有 ❌ 被拒时先处理（换版本、转 UTF-8、装 OCR 依赖），不要让 worker 去读被拒的原文件；⚠️ 待复核的来源照常分片，worker 会按 passage 的 `quality_flags` 降级处理。
 - 输出：
+  - `sources/{slug}/processed/cleaning_report.json`
   - `sources/{slug}/processed/local_shards/manifest.json`
   - `sources/{slug}/processed/local_shards/shard_001.json`
   - `sources/{slug}/processed/local_shards/shard_002.json`
