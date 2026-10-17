@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""mdf — Mind Distill Factory 的统一命令行入口。
+
+所有 harness（Claude Code / Codex / pi …）和人都通过同一套命令驱动流水线：
+编排逻辑写在 commands/ 与 AGENTS.md 里，确定性的活全部落在这里，输出既有
+给人看的 Markdown，也有给程序读的 JSON（--json）。
+
+    python scripts/mdf.py stages                 # 阶段逻辑树（含章节标签）
+    python scripts/mdf.py init <slug>            # 建目录
+    python scripts/mdf.py status <slug> [--check] [--json]
+    python scripts/mdf.py next <slug> [--json]   # 只看下一步
+    python scripts/mdf.py doctor [--json]        # 环境与可选依赖自检
+    python scripts/mdf.py index|reduce|stats <slug> ...
+    python scripts/mdf.py validate <stage> <slug> [--strict]
+    python scripts/mdf.py publish --slug <slug> [--dry-run] [--force]
+    python scripts/mdf.py manifest backfill <slug> [--corpus-root DIR]
+
+数据根目录默认是仓库根；init/status/next/doctor/validate 可用 --root 或环境变量
+MDF_DATA_ROOT 指向另一份数据（例如在 git worktree 里查看主仓库的私有语料）。
+转交给旧脚本的子命令（index/reduce/stats/publish/manifest）仍以仓库根为准。
+"""
+
+import argparse
+import functools
+import importlib.util
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+from typing import Any, Callable
+
+CODE_ROOT = Path(__file__).resolve().parent.parent
+
+
+@functools.lru_cache(maxsize=None)
+def _module(name: str) -> Any:
+    path = CODE_ROOT / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"_mdf_cli_{name}", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    # 先登记到 sys.modules：被转交的脚本里有 dataclass + `from __future__ import
+    # annotations`，dataclasses 要按 cls.__module__ 回查模块，查不到就崩。
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _delegate(module: str, argv: list[str], cwd: Path | None = None) -> int:
+    """以给定 argv 调用某个脚本的 main()，把 SystemExit 转成返回码。"""
+    old_argv, old_cwd = sys.argv, os.getcwd()
+    sys.argv = [f"scripts/{module}.py", *argv]
+    try:
+        if cwd is not None:
+            os.chdir(cwd)
+        result = _module(module).main()
+        return int(result or 0)
+    except SystemExit as e:
+        if e.code is None or isinstance(e.code, int):
+            return e.code or 0
+        # `raise SystemExit("说明")` 由解释器打印到 stderr；在进程内接住后要自己打印。
+        print(e.code, file=sys.stderr)
+        return 1
+    finally:
+        sys.argv = old_argv
+        os.chdir(old_cwd)
+
+
+def _data_root(arg: str | None) -> Path:
+    return Path(arg or os.environ.get("MDF_DATA_ROOT") or CODE_ROOT).resolve()
+
+
+def _print_json(data: Any) -> None:
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+# ── 子命令 ────────────────────────────────────────────────────────────
+
+
+def cmd_stages(args: argparse.Namespace) -> int:
+    ps = _module("pipeline_status")
+    tree = ps.load_stage_tree(CODE_ROOT)
+    if args.json:
+        _print_json(tree)
+    else:
+        print(ps.render_tree(tree), end="")
+    return 0
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    root = _data_root(args.root)
+    created = []
+    for rel in (f"sources/{args.slug}/raw", f"sources/{args.slug}/processed", f"output/{args.slug}"):
+        path = root / rel
+        if not path.exists():
+            path.mkdir(parents=True)
+            created.append(rel)
+    print(f"[OK] {args.slug}: " + ("新建 " + "、".join(created) if created else "目录均已存在"))
+    print(f"下一步：把原始资料放进 sources/{args.slug}/raw/，然后运行 python scripts/mdf.py status {args.slug}")
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    ps = _module("pipeline_status")
+    root = _data_root(args.root)
+    stages = ps.collect_status(args.slug, root, check=getattr(args, "check", False))
+    if args.json:
+        _print_json(ps.to_json(args.slug, stages))
+    else:
+        print(ps.to_markdown(args.slug, stages), end="")
+    return 0
+
+
+def cmd_next(args: argparse.Namespace) -> int:
+    ps = _module("pipeline_status")
+    stages = ps.collect_status(args.slug, _data_root(args.root))
+    nxt = ps.next_stage(stages)
+    if args.json:
+        _print_json({"slug": args.slug, "complete": nxt is None, "next": ps.to_json(args.slug, stages)["next"]})
+    elif nxt is None:
+        print("全部完成。")
+    else:
+        print(f"{nxt.chapter.get('title', '')} / {nxt.title}：{nxt.next_action or nxt.detail}")
+    return 0
+
+
+OPTIONAL_DEPS = [
+    ("fitz", "PyMuPDF", "pdf", "PDF 文本抽取（首选）"),
+    ("pypdf", "pypdf", "pdf", "PDF 文本抽取（回退）"),
+    ("PIL", "Pillow", "ocr", "OCR 图像处理"),
+    ("rapidocr_onnxruntime", "rapidocr_onnxruntime", "ocr", "OCR CPU 档"),
+    ("paddleocr", "PaddleOCR", "ocr-high-accuracy", "OCR 高精度档"),
+    ("opencc", "opencc-python-reimplemented", "provenance", "繁简异体折叠（P1/P2 比对）"),
+]
+
+
+def doctor_report(root: Path) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+
+    def add(name: str, ok: bool, detail: str, required: bool = True) -> None:
+        checks.append({"name": name, "ok": ok, "required": required, "detail": detail})
+
+    add("Python ≥ 3.11", sys.version_info >= (3, 11), sys.version.split()[0])
+    add("git", shutil.which("git") is not None, shutil.which("git") or "未找到", required=False)
+    for rel in ("config/taxonomy.json", "config/defaults.json", "config/pipeline_stages.json"):
+        path = CODE_ROOT / rel
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+            add(rel, True, "可解析")
+        except (OSError, ValueError) as e:
+            add(rel, False, f"{type(e).__name__}")
+    for rel in ("sources", "output", "gallery"):
+        add(f"数据目录 {rel}/", (root / rel).is_dir(), str(root / rel), required=False)
+    for module, package, extra, purpose in OPTIONAL_DEPS:
+        found = importlib.util.find_spec(module) is not None
+        add(f"可选依赖 {package}", found, purpose + ("" if found else f"；安装：pip install -e .[{extra}]"), required=False)
+    return {
+        "schema": "mdf-doctor-v1",
+        "data_root": str(root),
+        "ok": all(c["ok"] for c in checks if c["required"]),
+        "checks": checks,
+    }
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    report = doctor_report(_data_root(args.root))
+    if args.json:
+        _print_json(report)
+    else:
+        print(f"## 环境自检（数据根目录：{report['data_root']}）\n")
+        print("| 项目 | 结果 | 说明 |\n|---|---|---|")
+        for c in report["checks"]:
+            mark = "✅" if c["ok"] else ("❌" if c["required"] else "⚠️")
+            print(f"| {c['name']} | {mark} | {c['detail']} |")
+        print("\n" + ("必需项全部满足。" if report["ok"] else "有必需项未满足，先修复再运行流水线。"))
+    return 0 if report["ok"] else 1
+
+
+def _passthrough(module: str, prefix: list[str] | None = None) -> Callable[[argparse.Namespace], int]:
+    def run(args: argparse.Namespace) -> int:
+        return _delegate(module, [*(prefix or []), *args.rest], cwd=CODE_ROOT)
+    return run
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    # validate_output 的路径全部相对 cwd 解析（不读 config/），切到数据根目录即可。
+    argv = [args.stage, args.slug, *(["--strict"] if args.strict else [])]
+    return _delegate("validate_output", argv, cwd=_data_root(args.root))
+
+
+# ── 解析 ──────────────────────────────────────────────────────────────
+
+
+ROOT_HELP = "数据根目录（默认 MDF_DATA_ROOT，再默认仓库根）"
+
+
+def build_parser() -> argparse.ArgumentParser:
+    slug_arg = _module("slug_rules").slug_arg
+    parser = argparse.ArgumentParser(prog="mdf", description="Mind Distill Factory 统一入口")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("stages", help="打印流水线阶段树（含章节标签）")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_stages)
+
+    p = sub.add_parser("init", help="建立人物目录")
+    p.add_argument("slug", type=slug_arg)
+    p.add_argument("--root", help=ROOT_HELP)
+    p.set_defaults(func=cmd_init)
+
+    for name, func, help_text in (("status", cmd_status, "查看流水线状态"), ("next", cmd_next, "只看下一步")):
+        p = sub.add_parser(name, help=help_text)
+        p.add_argument("slug", type=slug_arg)
+        p.add_argument("--json", action="store_true")
+        p.add_argument("--root", help=ROOT_HELP)
+        if name == "status":
+            p.add_argument("--check", action="store_true", help="同时运行各阶段的确定性校验（较慢）")
+        p.set_defaults(func=func)
+
+    p = sub.add_parser("doctor", help="环境与可选依赖自检")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--root", help=ROOT_HELP)
+    p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("validate", help="运行某阶段的校验")
+    p.add_argument("stage")
+    p.add_argument("slug", type=slug_arg)
+    p.add_argument("--strict", action="store_true")
+    p.add_argument("--root", help=ROOT_HELP)
+    p.set_defaults(func=cmd_validate)
+
+    for name, (module, prefix, help_text) in PASSTHROUGH.items():
+        # 只为 `mdf --help` 列出；真正的参数在 main() 里原样转交，避免 argparse
+        # 吞掉 `--help`、`--slug` 这类以横线开头的参数。
+        p = sub.add_parser(name, help=help_text, add_help=False)
+        p.add_argument("rest", nargs=argparse.REMAINDER)
+        p.set_defaults(func=_passthrough(module, prefix))
+    return parser
+
+
+PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
+    "index": ("local_source_pipeline", ["index"], "抽取、清洗、分片 sources/{slug}/raw"),
+    "reduce": ("local_source_pipeline", ["reduce"], "合并分片抽取结果"),
+    "stats": ("local_source_pipeline", ["stats"], "分片统计"),
+    "publish": ("publish_skill", [], "事务化发布到 gallery"),
+    "manifest": ("package_manifest", [], "发布清单工具（backfill）"),
+}
+
+
+def main(argv: list[str] | None = None) -> int:
+    if sys.platform.startswith("win"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except AttributeError:
+            pass
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in PASSTHROUGH:
+        module, prefix, _ = PASSTHROUGH[argv[0]]
+        return _delegate(module, [*prefix, *argv[1:]], cwd=CODE_ROOT)
+    args = build_parser().parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

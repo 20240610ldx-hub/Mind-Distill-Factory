@@ -20,6 +20,34 @@ argument-hint: <人物名/charactor name>
 
 ---
 
+## 进度可见性：章节标签与状态面板
+
+阶段划分的唯一来源是 `config/pipeline_stages.json`（下文的 Stage 0–6 与其中的 phase 一一对应）。用户靠两样东西掌握进度：对话界面左侧的**章节**，和随时可调的**状态面板**。
+
+**章节标签（每个 phase 一次）**
+
+1. 进入一个 phase 的第一个动作之前，先打章节标签。标题和摘要不要自己编，从阶段树取：
+   ```bash
+   python scripts/mdf.py stages --json      # phases[].chapter.title / .summary
+   python scripts/mdf.py next {slug} --json # next.chapter = 当前该进入的 phase
+   ```
+2. harness 提供章节工具（如 Claude 桌面版的 `mark_chapter`、Codex 的同类功能）就调用它：`title` = `chapter.title`（如「阶段 1 · 素材采集」），`summary` = `chapter.summary`。
+3. 没有章节工具时，在回复里单独输出一行 H2：`## 阶段 1 · 素材采集`（即 `chapter_policy.fallback_heading`）。终端用户也能靠它在滚动记录里定位。
+4. 同一 phase 内的 step（如 1 里的「登记、抽取与分片」「分片抽取」）只更新任务清单，**不再开章节**；Stage 4.5、3A/3B/3C 这类子阶段同样归入所属 phase。
+5. 恢复执行时只为当前 phase 打一次标签，不为已完成的 phase 补打。
+6. 子代理不打章节标签——章节属于编排者的对话界面。
+
+**状态面板（每次进出 phase、以及用户问「到哪了」时）**
+
+```bash
+python scripts/mdf.py status {slug}            # Markdown 表格 + 下一步
+python scripts/mdf.py status {slug} --check    # 同时跑各阶段确定性校验
+```
+
+把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。
+
+---
+
 ## Stage 0：意图澄清与初始化
 
 **执行者：编排者（你）**
@@ -29,7 +57,7 @@ argument-hint: <人物名/charactor name>
 当用户表达“继续”“恢复”“接着跑”“resume”等意图时，编排者不接管子 agent 的实质工作，只做状态裁决和重派：
 
 1. 确认目标 `person_slug`。如果当前会话有唯一未完成任务，默认使用该 slug；如果有多个候选，列出候选让用户指定。
-2. 按优先级查找未完成状态：
+2. 先运行 `python scripts/mdf.py status {slug}`，把状态表贴给用户，并按「进度可见性」一节为 `next.chapter` 打章节标签。然后按优先级查找未完成状态：
    - `sources/{slug}/processed/local_shards/task_status.json`
    - `output/{slug}/stage3_status.json`
    - `sources/{slug}/processed/{primary_sources|secondary_sources|expression_dna}_status.json`
@@ -86,10 +114,8 @@ python scripts/task_status.py next <status-path>
 
 ### 0.4 确认后初始化目录
 
-```
-mkdir sources/{slug}/raw/       （如不存在）
-mkdir sources/{slug}/processed/
-mkdir output/{slug}/
+```bash
+python scripts/mdf.py init {slug}   # 建 sources/{slug}/raw、processed 与 output/{slug}（已存在则跳过）
 ```
 
 ---
