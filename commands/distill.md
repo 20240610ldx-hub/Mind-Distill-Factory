@@ -14,9 +14,47 @@ argument-hint: <人物名/charactor name>
 1. **你自己不做蒸馏工作** — 你只负责编排，将具体工作分派给子代理
 2. **每条原则必须有溯源** — 没有具体出处的原则不得进入最终 Skill
 3. **必须包含"已知盲区"章节** — 没有局限性描述的 Skill 不得通过质量审查
-4. **双语版本独立成篇** — 不是翻译，是在各自语言中重新构建认知框架
+4. **默认只出中文；英文版按需、独立成篇** — 中文包装好后才问是否要英文版（6.5）。英文版是单独的 `{slug}-wisdom-en` skill，在英文语境里重新构建认知框架，不是翻译
 5. **第一人称沉浸视角** — Skill 以该思想家的第一人称视角回应（"我认为……""我的经验是……"），让用户感受到与该思想家直接对话的沉浸感。不是表演性的角色扮演，而是深度内化其认知框架后的自然表达
 6. **建设性价值导向** — 回应应侧重积极建设、自我强化的方向。面对不公/困境等问题时，重心放在"如何强大自己、如何争取主动"，而非渲染问题本身的严重性
+
+---
+
+## 进度可见性：章节标签与状态面板
+
+阶段划分的唯一来源是 `config/pipeline_stages.json`（下文的 Stage 0–6 与其中的 phase 一一对应）。用户靠两样东西掌握进度：对话界面左侧的**章节**，和随时可调的**状态面板**。
+
+**章节标签（每个 phase 一次）**
+
+1. 进入一个 phase 的第一个动作之前，先打章节标签。标题和摘要不要自己编，从阶段树取：
+   ```bash
+   python scripts/mdf.py stages --json      # phases[].chapter.title / .summary
+   python scripts/mdf.py next {slug} --json # next.chapter = 当前该进入的 phase
+   ```
+2. harness 提供章节工具（如 Claude 桌面版的 `mark_chapter`；其他 harness 有同类工具同理）就调用它：`title` = `chapter.title`（如「阶段 1 · 素材采集」），`summary` = `chapter.summary`。
+3. 没有章节工具时，在回复里单独输出一行 H2：`## 阶段 1 · 素材采集`（即 `chapter_policy.fallback_heading`）。终端用户也能靠它在滚动记录里定位。
+4. 同一 phase 内的 step（如 1 里的「登记、抽取与分片」「分片抽取」）只更新任务清单，**不再开章节**；Stage 4.5、3A/3B/3C 这类子阶段同样归入所属 phase。
+5. 恢复执行时只为当前 phase 打一次标签，不为已完成的 phase 补打。
+6. 子代理不打章节标签——章节属于编排者的对话界面。
+
+**状态面板（每次进出 phase、以及用户问「到哪了」时）**
+
+```bash
+python scripts/mdf.py status {slug}            # Markdown 表格 + 下一步
+python scripts/mdf.py status {slug} --check    # 同时跑各阶段确定性校验
+```
+
+把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。
+
+**没有子代理的 harness（Codex、pi）**
+
+下文「分派给子代理」的每一步，都可以改用任务简报 + 新进程执行，交付物和检查点不变：
+
+```bash
+python scripts/mdf.py brief {slug} [step]   # 写 output/{slug}/briefs/<step>.md，并打印各 harness 的新进程命令
+```
+
+Stage 5 审查必须这样做（或用真正的子代理），绝不能在编排者自己的上下文里审。各 harness 的入口与限制见 `docs/harnesses.md`。
 
 ---
 
@@ -29,7 +67,7 @@ argument-hint: <人物名/charactor name>
 当用户表达“继续”“恢复”“接着跑”“resume”等意图时，编排者不接管子 agent 的实质工作，只做状态裁决和重派：
 
 1. 确认目标 `person_slug`。如果当前会话有唯一未完成任务，默认使用该 slug；如果有多个候选，列出候选让用户指定。
-2. 按优先级查找未完成状态：
+2. 先运行 `python scripts/mdf.py status {slug}`，把状态表贴给用户，并按「进度可见性」一节为 `next.chapter` 打章节标签。然后按优先级查找未完成状态：
    - `sources/{slug}/processed/local_shards/task_status.json`
    - `output/{slug}/stage3_status.json`
    - `sources/{slug}/processed/{primary_sources|secondary_sources|expression_dna}_status.json`
@@ -86,10 +124,8 @@ python scripts/task_status.py next <status-path>
 
 ### 0.4 确认后初始化目录
 
-```
-mkdir sources/{slug}/raw/       （如不存在）
-mkdir sources/{slug}/processed/
-mkdir output/{slug}/
+```bash
+python scripts/mdf.py init {slug}   # 建 sources/{slug}/raw、processed 与 output/{slug}（已存在则跳过）
 ```
 
 ---
@@ -97,6 +133,22 @@ mkdir output/{slug}/
 ## Stage 1：素材采集
 
 **执行者：local-source-indexer / local-source-worker / local-source-reducer + source-researcher 子代理（并行执行）**
+
+### 1.0 合规采集原典（可选，先于子代理 A）
+
+用户没有本地素材、或素材缺原典时，用确定性脚本从白名单来源取公有领域/自由许可文本，**不要让 agent 自己爬网页**：
+
+```bash
+python scripts/mdf.py acquire {slug} --wikisource zh:論語/學而第一 --dry-run   # 先跑离线闸门
+python scripts/mdf.py acquire {slug} --wikisource zh:論語/學而第一 --ia <identifier>
+python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy     # 导入用户自有副本
+```
+
+- 来源与闸门由 `config/acquisition_policy.json` 决定：主机白名单、User-Agent 联系方式（`MDF_CONTACT`）、robots.txt、TDMRep 挖掘保留、请求间隔与上限、权利状态。任何一道不过即拒绝，原因写入 `sources/{slug}/processed/acquisition_log.jsonl`。
+- 结果表里的 ⛔ 拒绝需要人处理（改策略或补授权），不要换个办法绕过；`RIGHTS_UNVERIFIED` 只有用户确认权利后才能加 `--allow-unverified-rights`。
+- 采集的文件落在 `sources/{slug}/raw/acquired/`，随后照常走子代理 A 的分片流水线；`sources/{slug}/processed/source_registry.json` 会带上每个文件的来源 URL 与权利状态。
+- 用户直接放进 `raw/` 的文件权利状态默认是 `unverified`。**请用户**（不是 agent 替他判断）在 `sources/{slug}/rights.json` 里逐文件声明权利状态和依据，再跑 `mdf index`；`--strict` 发布会拦下权利未放行的证据来源（S4）。格式与判定规则见 `docs/ethics-and-legal.md`。
+- 人物在世时，提醒用户：包里必须带「在世人物声明」（L2 闸门会查），并考虑是否适合公开发布。
 
 将以下任务分派给子代理，**并行执行**：
 
@@ -110,10 +162,14 @@ mkdir output/{slug}/
 - 调用脚本抽取 PDF/TXT/MD 文本：
 
 ```bash
-python scripts/local_source_pipeline.py index {slug}
+python scripts/mdf.py index {slug}    # 等同 local_source_pipeline.py index，含清洗闸门
+python scripts/mdf.py clean {slug}    # 查看清洗报告：被拒 / 待复核 / 重复来源及删除样例
 ```
 
+- 清洗闸门（`scripts/clean_corpus.py`）**只删不改**：删版权页、网站广告、页码、页眉页脚、索引与目录，保留下来的字符逐字不动，所以 P2 溯源不受影响。乱码、空文本、OCR 缺失过多的来源被拒，不进分片；与另一来源相同或高度重合的只抽一份。
+- `mdf clean` 有 ❌ 被拒时先处理（换版本、转 UTF-8、装 OCR 依赖），不要让 worker 去读被拒的原文件；⚠️ 待复核的来源照常分片，worker 会按 passage 的 `quality_flags` 降级处理。
 - 输出：
+  - `sources/{slug}/processed/cleaning_report.json`
   - `sources/{slug}/processed/local_shards/manifest.json`
   - `sources/{slug}/processed/local_shards/shard_001.json`
   - `sources/{slug}/processed/local_shards/shard_002.json`

@@ -8,12 +8,14 @@ Mind Distill Factory — 溯源校验器（确定性，不依赖 LLM 打分）
 
 from __future__ import annotations
 
+import functools
+import importlib.util
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 # Windows 控制台 UTF-8（沿用 validate_output.py:23-29 的模式）
 if sys.platform == "win32":
@@ -55,6 +57,21 @@ def normalize(text: str, fold_variants: bool = True) -> str:
     return stripped
 
 
+@functools.lru_cache(maxsize=None)
+def _text_decoding() -> Any:
+    # 本模块常被按路径加载（不在 sys.modules 里），兄弟模块也按路径取。
+    path = Path(__file__).resolve().parent / "text_decoding.py"
+    spec = importlib.util.spec_from_file_location("_provenance_text_decoding", path)
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+def read_raw_text(path: Path) -> str:
+    """与 index 同一解码顺序（UTF-8 → GB18030 → Big5），GBK 电子书不再整份溯源失败。"""
+    return _text_decoding().decode_bytes(path.read_bytes()).text
+
+
 def load_corpus(slug: str, root: Path) -> list[tuple[str, str]]:
     """Load raw text plus hash-bound PDF sidecars.
 
@@ -68,7 +85,7 @@ def load_corpus(slug: str, root: Path) -> list[tuple[str, str]]:
     for path in sorted(raw_base.rglob("*")) if raw_base.exists() else []:
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = read_raw_text(path)
         corpus.append((path.relative_to(raw_base).as_posix(), normalize(text)))
 
     registry_path = source_root / "processed" / "source_registry.json"

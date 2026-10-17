@@ -108,16 +108,26 @@ class CorpusTests(unittest.TestCase):
         corpus = [("a.txt", "毋得彼此推诿")]
         self.assertEqual(prov.longest_verbatim_prefix("完全不相干的句子", corpus), 0)
 
+    def test_load_corpus_decodes_gbk_like_the_indexer(self) -> None:
+        # 旧行为把 GBK 文本读成 U+FFFD：index 能抽取、P2 却永远溯源失败。现与 index 共用解码顺序。
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            raw = root / "sources" / "demo" / "raw"
+            raw.mkdir(parents=True)
+            (raw / "gbk.txt").write_bytes("张居正考成法".encode("gbk") + b"abc")
+            corpus = prov.load_corpus("demo", root)
+            self.assertEqual(len(corpus), 1)
+            self.assertIn("考成法", corpus[0][1])
+
     def test_load_corpus_preserves_undecodable_bytes_as_replacement_chars(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             raw = root / "sources" / "demo" / "raw"
             raw.mkdir(parents=True)
-            data = "张居正考成法".encode("gbk") + b"abc"
-            (raw / "bad.txt").write_bytes(data)
+            (raw / "bad.txt").write_bytes(b"abc\xff\xff")  # UTF-8、GB18030、Big5 都无法解码
             corpus = prov.load_corpus("demo", root)
             self.assertEqual(len(corpus), 1)
-            self.assertIn("�", corpus[0][1])
+            self.assertIn("\ufffd", corpus[0][1])
 
 
 class VariantFolderTests(unittest.TestCase):

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import re
@@ -81,14 +82,101 @@ def make_record(
     }
 
 
+def load_acquisition_provenance(log_path: Path) -> dict[str, dict[str, Any]]:
+    """Map raw-relative path -> latest `saved` record from acquisition_log.jsonl (see acquire.py)."""
+    provenance: dict[str, dict[str, Any]] = {}
+    if not log_path.exists():
+        return provenance
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and record.get("event") == "saved" and record.get("path"):
+            provenance[str(record["path"])] = record
+    return provenance
+
+
+def apply_provenance(record: dict[str, Any], acquired: dict[str, Any] | None) -> dict[str, Any]:
+    """Overlay acquisition metadata, but only when the file still has the hash that was logged."""
+    if not acquired or acquired.get("sha256") != record["sha256"]:
+        return record
+    record.update(
+        role="acquired",
+        origin=f"acquired:{acquired.get('connector') or 'unknown'}",
+        canonical_url=canonical_url(str(acquired.get("url") or "")),
+        rights_status=str(acquired.get("rights_status") or "unverified"),
+        rights_review_required=bool(acquired.get("rights_review_required")),
+        retrieved_at=str(acquired.get("retrieved_at") or record["retrieved_at"]),
+        acquisition_target=acquired.get("target_key"),
+    )
+    return record
+
+
+RIGHTS_DECLARATION_SCHEMA = "rights-declaration-v1"
+# 与 config/acquisition_policy.json 的 allowed_rights / review_rights 同一套词汇，外加两个否定态。
+KNOWN_RIGHTS = {
+    "public_domain", "public_domain_us", "cc0", "cc-by", "cc-by-sa",
+    "user_owned_copy", "permission_granted", "unknown", "unverified", "restricted",
+}
+
+
+def load_rights_declarations(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    """读 sources/{slug}/rights.json——人对本地自备文件的权利声明（权利判断是人的决定，不是脚本的）。
+
+    格式：{"schema": "rights-declaration-v1", "declarations": [
+        {"path": "传记/*.txt", "rights_status": "user_owned_copy", "basis": "自购纸书，本地研究"}]}
+    path 是相对 raw/ 的 POSIX glob，按顺序首个匹配生效；basis 必填。无效条目跳过并报告，不阻断 index。
+    """
+    if not path.exists():
+        return [], []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        return [], [f"RIGHTS_DECLARATION_UNREADABLE: {path}: {exc}"]
+    if not isinstance(data, dict) or data.get("schema") != RIGHTS_DECLARATION_SCHEMA:
+        return [], [f"RIGHTS_DECLARATION_BAD_SCHEMA: {path}: schema 应为 {RIGHTS_DECLARATION_SCHEMA}"]
+    declarations, errors = [], []
+    for i, item in enumerate(data.get("declarations") or [], 1):
+        if not isinstance(item, dict) or not item.get("path"):
+            errors.append(f"RIGHTS_DECLARATION_INVALID: {path} #{i}: 缺 path")
+        elif item.get("rights_status") not in KNOWN_RIGHTS:
+            errors.append(f"RIGHTS_DECLARATION_INVALID: {path} #{i}: 未知权利状态 {item.get('rights_status')!r}")
+        elif not str(item.get("basis") or "").strip():
+            errors.append(f"RIGHTS_DECLARATION_INVALID: {path} #{i}: 必须写明 basis（权利依据）")
+        else:
+            declarations.append(item)
+    return declarations, errors
+
+
+def apply_rights_declaration(record: dict[str, Any], declarations: list[dict[str, Any]]) -> dict[str, Any]:
+    """人工声明覆盖默认/采集得到的权利状态，并清掉待复核标记——声明本身就是那次复核。"""
+    for item in declarations:
+        if fnmatch.fnmatchcase(record["relative_path"], str(item["path"])):
+            record.update(
+                rights_status=item["rights_status"],
+                rights_basis=str(item["basis"]).strip(),
+                rights_declared=True,
+                rights_review_required=False,
+            )
+            break
+    return record
+
+
 def build_registry(
     raw_dir: Path,
     *,
     role: str = "user_provided",
     origin: str = "local",
     rights_status: str = "unverified",
+    provenance: dict[str, dict[str, Any]] | None = None,
+    declarations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build a deterministic registry, recursively including nested source files."""
+    """Build a deterministic registry, recursively including nested source files.
+
+    `provenance` (from load_acquisition_provenance) fills origin/url/rights for acquired files;
+    `declarations` (from load_rights_declarations) then applies the human rights decisions on top.
+    """
     raw_dir = raw_dir.resolve()
     files = sorted(
         (
@@ -98,10 +186,12 @@ def build_registry(
         ),
         key=lambda path: path.relative_to(raw_dir).as_posix().lower(),
     )
-    records = [
-        make_record(path, raw_dir, role=role, origin=origin, rights_status=rights_status)
-        for path in files
-    ]
+    provenance = provenance or {}
+    records = []
+    for path in files:
+        record = make_record(path, raw_dir, role=role, origin=origin, rights_status=rights_status)
+        record = apply_provenance(record, provenance.get(record["relative_path"]))
+        records.append(apply_rights_declaration(record, declarations or []))
     by_hash: dict[str, dict[str, Any]] = {}
     for record in records:
         previous = by_hash.get(record["sha256"])

@@ -16,6 +16,11 @@ argument-hint: <描述你面临的决策场景或困境>
 
 # {person_name_zh}的思维框架
 **{person_name_original}** · {birth_year}–{death_year}
+<!--
+  在世人物（卒年留空或写「至今」）必须紧接上一行加一行声明，validate_output 的
+  LIVING_PERSON_NOTICE_* 规则会检查；已故人物删掉这段注释即可。写法：
+  **在世人物声明：**本框架依据{person_name_zh}公开发表的著述与访谈做研究性重建，不代表本人观点，不得用于冒充本人发言；最新立场以本人公开表态为准。
+-->
 
 > 「{signature_quote_zh}」——{person_name_zh}
 

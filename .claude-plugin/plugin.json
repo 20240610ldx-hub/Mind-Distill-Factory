@@ -1,0 +1,11 @@
+{
+  "name": "mind-distill-factory",
+  "displayName": "Mind Distill Factory",
+  "version": "0.6.0",
+  "description": "把思想家的公开著述蒸馏成可安装的 v6 思维框架 Skill：合规采集、减法清洗、逐字溯源闸门、第一人称表达。在仓库根目录用 claude --plugin-dir . 加载。",
+  "author": {
+    "name": "Mind Distill Factory"
+  },
+  "license": "MIT",
+  "keywords": ["distillation", "skills", "provenance", "chinese"]
+}

@@ -122,6 +122,13 @@ PACKAGE_SCHEMA = {
     # 核心原则数下限，与 FRAMEWORK_SCHEMA_V6_PRINCIPLES["min_principles"] 保持
     # 同一个 v6 底线（8）；样板包实际有 9 条。
     "min_principles": 8,
+    # ── 伦理与法律（docs/ethics-and-legal.md）──
+    # 引文保持「引用」量级而非「复制」量级，按非空白字符计。样板包实测：核心层引文最长 58、
+    # 证据卡最长 291（中位 80.5）、语感样本最长 50、证据原文合计 3186；legacy 包核心层最长 216。
+    "quote_max_chars": {"core": 240, "evidence": 400, "voice": 200},
+    "evidence_total_max_chars": 15000,
+    # 在世人物的包必须带这一行声明（写法见 templates/skill-template.v6.zh.md）。
+    "living_notice_label": "在世人物声明",
 }
 
 SKILL_FRONTMATTER_PATTERN = re.compile(
@@ -907,6 +914,92 @@ def check_strict_review(review: dict | None, where: Path) -> list[str]:
     return []
 
 
+def _non_space_len(text: str) -> int:
+    return sum(1 for ch in text if not ch.isspace())
+
+
+def check_quote_lengths(skill_md: Path, evidence_md: Path, voice_md: Path) -> list[str]:
+    """伦理规则 L1：逐字引文不超过引用量级（核心层 / 证据卡 / 语感样本 / 证据合计）。"""
+    limits = PACKAGE_SCHEMA["quote_max_chars"]
+    prov = _load_provenance()
+    errors: list[str] = []
+    if skill_md.exists():
+        for where, quote in prov.extract_skill_quotes(skill_md.read_text(encoding="utf-8")):
+            n = _non_space_len(quote)
+            if n > limits["core"]:
+                errors.append(f"QUOTE_TOO_LONG_CORE: {skill_md} [{where}]: 引文 {n} 字，上限 {limits['core']}：{quote[:30]}…")
+    if evidence_md.exists():
+        total = 0
+        for card in prov.parse_evidence_cards(evidence_md.read_text(encoding="utf-8")):
+            n = _non_space_len(card["verbatim"])
+            total += n
+            if n > limits["evidence"]:
+                errors.append(f"QUOTE_TOO_LONG_EVIDENCE: {evidence_md} [{card['title']}]: 原文 {n} 字，上限 {limits['evidence']}")
+        if total > PACKAGE_SCHEMA["evidence_total_max_chars"]:
+            errors.append(
+                f"EVIDENCE_TOTAL_TOO_LONG: {evidence_md}: 证据原文合计 {total} 字，"
+                f"上限 {PACKAGE_SCHEMA['evidence_total_max_chars']}——摘录过多已接近复制原书"
+            )
+    if voice_md.exists():
+        text = voice_md.read_text(encoding="utf-8")
+        blocks = VOICE_SPLIT_RE.split(text)[1:]
+        for i, block in enumerate(blocks, 1):
+            quote = "\n".join(m.group(1) for m in re.finditer(r"^>\s?(.*)$", block, re.MULTILINE))
+            n = _non_space_len(quote)
+            if n > limits["voice"]:
+                errors.append(f"QUOTE_TOO_LONG_VOICE: {voice_md} [样本 {i}]: 原文 {n} 字，上限 {limits['voice']}")
+    return errors
+
+
+IDENTITY_YEARS_RE = re.compile(
+    # 只许行内空白（[ \t]）：\s 会吞掉换行，把卒年为空的下一行内容误读成卒年。
+    r"^\*\*[^*\n]+\*\*[ \t]*·[ \t]*(?:约|c\.[ \t]*)?(?:公元前|前)?(\d{1,4})[ \t]*年?[ \t]*[–—\-~～][ \t]*([^\n|·]*)",
+    re.MULTILINE,
+)
+LIVING_MARKERS = {"", "至今", "今", "现在", "在世", "present", "now", "?", "？"}
+
+
+def is_living_person(skill_text: str) -> bool:
+    """身份卡生卒年的卒年为空或写「至今 / present」即视为在世人物。没有生卒年行时返回 False。"""
+    match = IDENTITY_YEARS_RE.search(skill_text)
+    return bool(match) and match.group(2).strip().lower() in LIVING_MARKERS
+
+
+def check_living_person_notice(skill_md: Path) -> list[str]:
+    """伦理规则 L2：在世人物的包必须声明「依据公开著述的研究性重建、不代表本人、不得冒充」。"""
+    if not skill_md.exists():
+        return []
+    content = skill_md.read_text(encoding="utf-8")
+    if not is_living_person(content):
+        return []
+    label = PACKAGE_SCHEMA["living_notice_label"]
+    notice = re.search(rf"^\*\*{label}[：:]\*\*\s*(\S.*)$", content, re.MULTILINE)
+    if notice is None:
+        return [f"LIVING_PERSON_NOTICE_MISSING: {skill_md}: 在世人物须在身份卡写「**{label}：**……」"]
+    missing = [w for w in ("公开", "不代表") if w not in notice.group(1)]
+    if missing:
+        return [f"LIVING_PERSON_NOTICE_INCOMPLETE: {skill_md}: 声明须说明依据「公开」著述且「不代表」本人，缺：{'、'.join(missing)}"]
+    return []
+
+
+def check_strict_rights(rights: dict | None, where: Path) -> list[str]:
+    """S4：strict 下证据卡所在的每个语料文件都必须已登记、且权利状态在采集策略的 allowed_rights 里。"""
+    if not isinstance(rights, dict) or not isinstance(rights.get("sources"), dict):
+        return [f"STRICT_NO_RIGHTS_RECORD: {where}: 没有证据来源的权利记录（重跑 mdf index 生成 source_registry，再重新发布）"]
+    acquire = _load_sibling("acquire")
+    policy = acquire.load_policy()
+    errors = []
+    for rel, info in sorted(rights["sources"].items()):
+        info = info if isinstance(info, dict) else {}
+        status = info.get("rights_status") or "unregistered"
+        if acquire.rights_decision(policy, status) != "allow" or info.get("rights_review_required"):
+            errors.append(
+                f"STRICT_RIGHTS_UNVERIFIED: {where}: 证据来源 {rel} 的权利状态为 {status}，"
+                f"发布前须核实（在 sources/<slug>/rights.json 声明并重跑 mdf index）"
+            )
+    return errors
+
+
 def validate_package(slug: str, strict: bool = False) -> list[str]:
     """构建期 v6 包校验（output/{slug}/）：结构 + P1–P6，P2 现场比对语料。
 
@@ -943,8 +1036,11 @@ def validate_package(slug: str, strict: bool = False) -> list[str]:
     errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
     if strict:
         review_md = output_dir / "review.md"
-        errors.extend(check_strict_evidence(output_dir / PACKAGE_SCHEMA["reference_dir"] / "evidence.md"))
-        errors.extend(check_strict_review(_load_sibling("package_manifest").read_review_verdict(review_md), review_md))
+        evidence_md = output_dir / PACKAGE_SCHEMA["reference_dir"] / "evidence.md"
+        pm = _load_sibling("package_manifest")
+        errors.extend(check_strict_evidence(evidence_md))
+        errors.extend(check_strict_review(pm.read_review_verdict(review_md), review_md))
+        errors.extend(check_strict_rights(pm.evidence_rights(evidence_md, slug, root, _load_provenance()), evidence_md))
     return errors
 
 
@@ -999,6 +1095,9 @@ def check_published_package(
     if strict:
         if v6:
             errors.extend(check_strict_evidence(package_dir / PACKAGE_SCHEMA["reference_dir"] / "evidence.md"))
+            attestation = (manifest or {}).get("attestation") or {}
+            rights = (attestation.get("p2") or {}).get("rights") if isinstance(attestation, dict) else None
+            errors.extend(check_strict_rights(rights, package_dir / pm.MANIFEST_NAME))
         errors.extend(check_strict_review(manifest.get("review") if manifest else None, package_dir / pm.MANIFEST_NAME))
     return errors
 
@@ -1065,6 +1164,8 @@ def _check_v6_package(
     if voice_md.exists():
         errors.extend(check_voice_samples(voice_md))
 
+    errors.extend(check_quote_lengths(skill_md, evidence_md, voice_md))
+    errors.extend(check_living_person_notice(skill_md))
     errors.extend(check_template_residue([skill_md, cases_md, evidence_md, voice_md]))
     return errors
 

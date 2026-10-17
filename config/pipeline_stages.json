@@ -1,0 +1,86 @@
+{
+  "schema": "pipeline-stages-v1",
+  "_comment": "流水线阶段逻辑树：唯一来源。scripts/pipeline_status.py 的阶段标题、mdf status/stages 的输出、编排者的章节标签都从这里读。phase = 对话界面的一个章节（chapter）；step = 任务清单里的一项，不单独开章节。chapter.title 不超过 40 字。",
+  "chapter_policy": {
+    "granularity": "phase",
+    "title_format": "阶段 {order} · {title}",
+    "fallback_heading": "## 阶段 {order} · {title}",
+    "rule": "进入每个 phase 的第一个动作之前打一次章节标签：harness 提供章节工具就调用它（标题用 chapter.title，摘要用 chapter.summary）；没有章节工具就在回复里输出 fallback_heading 作为一行 H2。同一 phase 内的 step 只更新任务清单，不再开章节。恢复执行时若跳过了已完成的 phase，只为当前 phase 打一次标签。"
+  },
+  "phases": [
+    {
+      "id": "init",
+      "order": 0,
+      "title": "意图澄清与初始化",
+      "chapter": {"title": "阶段 0 · 意图澄清与初始化", "summary": "确认人物、类目与素材来源，建立目录"},
+      "steps": [
+        {"id": "init", "title": "目录初始化", "executor": "script", "command": "python scripts/mdf.py init {slug}"}
+      ]
+    },
+    {
+      "id": "stage1",
+      "order": 1,
+      "title": "素材采集",
+      "chapter": {"title": "阶段 1 · 素材采集", "summary": "合规获取、登记抽取、清洗、分片抽取与合并"},
+      "steps": [
+        {"id": "sources", "title": "素材入库", "executor": "human|script", "command": "python scripts/mdf.py acquire {slug}"},
+        {"id": "index", "title": "登记、抽取与分片", "executor": "script", "command": "python scripts/mdf.py index {slug}"},
+        {"id": "clean", "title": "清洗与质量闸门", "executor": "script", "command": "python scripts/mdf.py clean {slug}"},
+        {"id": "extract", "title": "分片抽取", "executor": "agent", "agent": "local-source-worker"},
+        {"id": "reduce", "title": "合并与网络补充", "executor": "script|agent", "command": "python scripts/mdf.py reduce {slug}", "agent": "source-researcher"}
+      ],
+      "checkpoint": "python scripts/mdf.py validate sources {slug}"
+    },
+    {
+      "id": "stage2",
+      "order": 2,
+      "title": "原则提取",
+      "chapter": {"title": "阶段 2 · 原则提取", "summary": "从素材提取有出处、过唯一性测试的原则"},
+      "steps": [
+        {"id": "principles", "title": "原则提取", "executor": "agent", "agent": "principle-extractor"}
+      ],
+      "checkpoint": "python scripts/mdf.py validate principles {slug}"
+    },
+    {
+      "id": "stage3",
+      "order": 3,
+      "title": "框架合成",
+      "chapter": {"title": "阶段 3 · 框架合成", "summary": "共同核心 → 中文框架 → 自检"},
+      "steps": [
+        {"id": "frameworks", "title": "框架合成与自检", "executor": "agent", "agent": "framework-core-synthesizer → framework-synthesizer-zh → framework-alignment-reviewer"}
+      ],
+      "checkpoint": "python scripts/mdf.py validate frameworks {slug}"
+    },
+    {
+      "id": "stage4",
+      "order": 4,
+      "title": "组装与附件",
+      "chapter": {"title": "阶段 4 · 组装与附件", "summary": "核心层 SKILL.md、三份附件与 P1–P6 包校验"},
+      "steps": [
+        {"id": "assemble", "title": "核心层组装", "executor": "agent", "agent": "skill-assembler"},
+        {"id": "attachments", "title": "附件生成", "executor": "agent", "agent": "case-builder / evidence-carder"},
+        {"id": "gates", "title": "P1–P6 包校验", "executor": "script", "command": "python scripts/mdf.py validate package {slug}"}
+      ],
+      "checkpoint": "python scripts/mdf.py validate package {slug}"
+    },
+    {
+      "id": "stage5",
+      "order": 5,
+      "title": "质量审查",
+      "chapter": {"title": "阶段 5 · 质量审查", "summary": "隔离子代理审查，不得自审"},
+      "steps": [
+        {"id": "review", "title": "质量审查", "executor": "agent", "agent": "quality-reviewer（隔离子代理）"}
+      ]
+    },
+    {
+      "id": "stage6",
+      "order": 6,
+      "title": "发布与安装",
+      "chapter": {"title": "阶段 6 · 发布与安装", "summary": "事务化发布到 gallery，可选生成英文版"},
+      "steps": [
+        {"id": "publish", "title": "发布", "executor": "script", "command": "python scripts/mdf.py publish --slug {slug}"}
+      ],
+      "checkpoint": "python scripts/mdf.py validate published {slug}"
+    }
+  ]
+}

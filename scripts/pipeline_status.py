@@ -1,0 +1,568 @@
+#!/usr/bin/env python3
+"""流水线状态：只读地检查一个人物 slug 走到了哪一步、下一步该做什么。
+
+这是用户掌控流水线的主视图，也是各 harness（Claude Code / Codex / pi）的
+编排者决定下一步的依据：人看 Markdown 表格，程序读 JSON（schema
+`pipeline-status-v1`）。默认只看文件是否存在、状态文件写了什么，毫秒级完成；
+`check=True` 时额外跑各阶段的确定性校验（P2 在大语料上需要数秒）。
+
+状态取值：done / in_progress / pending / failed / blocked / skipped。
+"""
+
+# 刻意不写 `from __future__ import annotations`：dataclass 遇到字符串注解时要查
+# sys.modules[cls.__module__]，而测试与 mdf 都按路径加载本模块（不注册进 sys.modules），会直接崩。
+import functools
+import importlib.util
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Callable
+
+SCHEMA = "pipeline-status-v1"
+STATE_LABELS = {
+    "done": "✅ 完成",
+    "in_progress": "⏳ 进行中",
+    "pending": "⬜ 待办",
+    "failed": "❌ 未通过",
+    "blocked": "⛔ 受阻",
+    "skipped": "➖ 跳过",
+}
+FINISHED = {"done", "skipped"}
+EXECUTOR_LABELS = {"script": "脚本", "agent": "agent", "human": "人工"}
+REQUIRED_REFS = ("cases.md", "evidence.md", "voice.md")
+RAW_SUFFIXES = {".pdf", ".txt", ".md"}
+
+
+@dataclass
+class StageStatus:
+    key: str
+    title: str
+    state: str
+    detail: str = ""
+    next_action: str = ""
+    artifacts: list[str] = field(default_factory=list)
+    phase: str = ""
+    chapter: dict[str, str] = field(default_factory=dict)
+
+
+def load_stage_tree(code_root: Path | None = None) -> dict[str, Any]:
+    """读 config/pipeline_stages.json（代码仓库里的唯一来源，与数据根目录无关）。"""
+    code_root = code_root or Path(__file__).resolve().parent.parent
+    return json.loads((code_root / "config" / "pipeline_stages.json").read_text(encoding="utf-8"))
+
+
+@functools.lru_cache(maxsize=None)
+def _sibling(name: str) -> Any:
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"_mdf_{name}", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _rel(root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+
+
+def _cmd(*parts: str) -> str:
+    return "`python scripts/mdf.py " + " ".join(parts) + "`"
+
+
+# ── 各阶段检查 ────────────────────────────────────────────────────────
+
+
+def _stage_init(ctx: "Ctx") -> StageStatus:
+    status = StageStatus("init", "目录初始化", "pending")
+    dirs = [ctx.root / "sources" / ctx.slug, ctx.root / "output" / ctx.slug, ctx.root / "gallery" / ctx.slug]
+    existing = [d for d in dirs if d.exists()]
+    if existing:
+        status.state = "done"
+        status.detail = "已建立 " + "、".join(_rel(ctx.root, d) for d in existing)
+    else:
+        status.detail = "尚未建立人物目录"
+        status.next_action = _cmd("init", ctx.slug)
+    return status
+
+
+def _stage_clean(ctx: "Ctx") -> StageStatus:
+    processed = ctx.root / "sources" / ctx.slug / "processed"
+    report_path = processed / "cleaning_report.json"
+    status = StageStatus("clean", "清洗与质量闸门", "pending")
+    if not ctx.has_raw:
+        status.state = "skipped"
+        status.detail = "没有本地素材"
+        return status
+    report = _read_json(report_path)
+    if not isinstance(report, dict):
+        if (processed / "local_shards" / "manifest.json").exists():
+            status.state = "skipped"
+            status.detail = "该语料用旧版流程分片，没有清洗报告（重跑 index 可补）"
+        else:
+            status.detail = "尚未清洗（由 index 一并完成）"
+            status.next_action = _cmd("index", ctx.slug)
+        return status
+    status.artifacts = [_rel(ctx.root, report_path)]
+    rejected = report.get("rejected_sources") or []
+    flagged = report.get("flagged_sources") or []
+    status.detail = f"{report.get('source_count', 0)} 个来源已清洗" + (
+        f"，{len(flagged)} 个需人工复核" if flagged else ""
+    ) + (f"，{len(rejected)} 个被拒" if rejected else "")
+    if rejected:
+        status.state = "blocked"
+        status.next_action = "查看 cleaning_report.json 的 rejected_sources：乱码/空文本来源需换版本或走 OCR"
+    else:
+        status.state = "done"
+    return status
+
+
+def _stage_sources(ctx: "Ctx") -> StageStatus:
+    raw = ctx.root / "sources" / ctx.slug / "raw"
+    files = [p for p in raw.rglob("*") if p.is_file()] if raw.exists() else []
+    usable = [p for p in files if p.suffix.lower() in RAW_SUFFIXES]
+    log = ctx.root / "sources" / ctx.slug / "processed" / "acquisition_log.jsonl"
+    status = StageStatus("sources", "素材入库", "pending")
+    if usable:
+        status.state = "done"
+        status.detail = f"{len(usable)} 个可处理文件" + (
+            f"（另有 {len(files) - len(usable)} 个不支持的格式）" if len(files) > len(usable) else ""
+        )
+        status.artifacts = [_rel(ctx.root, raw)] + ([_rel(ctx.root, log)] if log.exists() else [])
+    else:
+        status.detail = "sources/{0}/raw/ 里还没有 PDF/TXT/MD".format(ctx.slug)
+        status.next_action = f"把原始资料放进 `sources/{ctx.slug}/raw/`，或运行 {_cmd('acquire', ctx.slug, '--help')}"
+    ctx.has_raw = bool(usable)
+    return status
+
+
+def _stage_index(ctx: "Ctx") -> StageStatus:
+    processed = ctx.root / "sources" / ctx.slug / "processed"
+    manifest_path = processed / "local_shards" / "manifest.json"
+    status = StageStatus("index", "抽取与分片", "pending")
+    if not ctx.has_raw:
+        status.state = "skipped"
+        status.detail = "没有本地素材，只走网络补充"
+        return status
+    manifest = _read_json(manifest_path)
+    if not isinstance(manifest, dict):
+        status.next_action = _cmd("index", ctx.slug)
+        status.detail = "尚未生成分片清单"
+        return status
+    shards = manifest.get("shards") or []
+    mode = manifest.get("sampling_mode", "exhaustive")
+    status.state = "done"
+    status.detail = f"{len(shards)} 个分片，抽样模式 {mode}"
+    status.artifacts = [_rel(ctx.root, manifest_path)]
+    return status
+
+
+def _stage_extract(ctx: "Ctx") -> StageStatus:
+    status_path = ctx.root / "sources" / ctx.slug / "processed" / "local_shards" / "task_status.json"
+    status = StageStatus("extract", "分片抽取（agent）", "pending")
+    if not ctx.has_raw:
+        status.state = "skipped"
+        status.detail = "没有本地素材"
+        return status
+    if not status_path.exists():
+        status.detail = "尚未初始化任务状态"
+        status.next_action = _cmd("index", ctx.slug)
+        return status
+    ts = _sibling("task_status")
+    try:
+        data = ts.refresh_status(ts.load_status(status_path))
+    except Exception as e:  # 状态文件损坏也要如实报告，而不是让整个 status 崩掉
+        status.state = "failed"
+        status.detail = f"任务状态文件无法读取：{type(e).__name__}"
+        return status
+    units = data.get("input_units") or []
+    done = len(data.get("completed_units") or [])
+    failed = data.get("failed_units") or []
+    status.artifacts = [_rel(ctx.root, status_path)]
+    status.detail = f"{done}/{len(units)} 个分片已完成" + (f"，{len(failed)} 个失败" if failed else "")
+    state = data.get("status")
+    merged = (ctx.root / "sources" / ctx.slug / "processed" / "user_sources.json").exists()
+    if state == "completed":
+        status.state = "done"
+    elif merged and done:
+        # 旧流程按抽样派工，但 task_status 登记了全部分片；已合并说明抽取阶段已收尾。
+        status.state = "done"
+        status.detail += "（已合并；其余分片按抽样未处理）"
+    elif state == "blocked":
+        status.state = "blocked"
+        status.next_action = "有分片连续失败被标记 blocked：先拆分该分片或降低并发，再重试"
+    else:
+        status.state = "in_progress" if done or failed else "pending"
+        runnable = [u.get("unit_id") for u in ts.runnable_units(data)][:5]
+        if runnable:
+            status.next_action = "派发 local-source-worker 处理：" + "、".join(str(u) for u in runnable)
+    return status
+
+
+SOURCE_FILES = ("primary_sources.json", "secondary_sources.json", "expression_dna.json")
+
+
+def _stage_reduce(ctx: "Ctx") -> StageStatus:
+    processed = ctx.root / "sources" / ctx.slug / "processed"
+    status = StageStatus("reduce", "合并与网络补充", "pending")
+    expected = (["user_sources.json"] if ctx.has_raw else []) + list(SOURCE_FILES)
+    present = [name for name in expected if (processed / name).exists()]
+    missing = [name for name in expected if name not in present]
+    status.artifacts = [_rel(ctx.root, processed / name) for name in present]
+    if not missing:
+        status.state = "done"
+        status.detail = f"{len(present)} 个素材文件齐备"
+        if ctx.check:
+            errors = _hard(_validator().validate_sources, ctx)
+            if errors:
+                status.state = "failed"
+                status.detail = f"素材校验 {len(errors)} 个错误：{errors[0][:80]}"
+                status.next_action = _cmd("validate", "sources", ctx.slug)
+        return status
+    status.state = "in_progress" if present else "pending"
+    status.detail = "缺少 " + "、".join(missing)
+    if "user_sources.json" in missing:
+        status.next_action = _cmd("reduce", ctx.slug)
+    else:
+        status.next_action = "派发 source-researcher 补齐：" + "、".join(missing)
+    return status
+
+
+def _stage_principles(ctx: "Ctx") -> StageStatus:
+    out = ctx.root / "output" / ctx.slug
+    files = sorted(out.glob("principles_*.json")) if out.exists() else []
+    status = StageStatus("principles", "原则提取", "pending", artifacts=[_rel(ctx.root, p) for p in files])
+    if not files:
+        status.next_action = "派发 principle-extractor（Stage 2）"
+        status.detail = "output/{0}/ 下没有 principles_*.json".format(ctx.slug)
+        return status
+    status.state = "done"
+    status.detail = f"{len(files)} 个原则文件"
+    if ctx.check:
+        errors = _hard(_validator().validate_principles, ctx)
+        if errors:
+            status.state = "failed"
+            status.detail = f"原则校验 {len(errors)} 个错误：{errors[0][:80]}"
+            status.next_action = _cmd("validate", "principles", ctx.slug)
+    return status
+
+
+def _stage_frameworks(ctx: "Ctx") -> StageStatus:
+    out = ctx.root / "output" / ctx.slug
+    names = ("framework_core.json", "frameworks.zh.json", "framework_alignment_review.md")
+    present = [n for n in names if (out / n).exists()]
+    status = StageStatus("frameworks", "框架合成", "pending", artifacts=[_rel(ctx.root, out / n) for n in present])
+    if len(present) == len(names):
+        review = (out / "framework_alignment_review.md").read_text(encoding="utf-8", errors="replace")
+        if "[PASS]" in review:
+            status.state = "done"
+            status.detail = "共同核心 + 中文框架 + 自检 [PASS]"
+        else:
+            status.state = "failed"
+            status.detail = "框架自检结论不是 [PASS]"
+            status.next_action = "按 framework_alignment_review.md 重派对应 unit（Stage 3）"
+        return status
+    if (out / "framework_core.json").exists() and (out / "SKILL.md").exists():
+        # v6 早期包（如样板）只留下 framework_core.json，其余中间产物未归档。
+        status.state = "done"
+        status.detail = "只有 framework_core.json（其余中间产物未归档）"
+        return status
+    status.state = "in_progress" if present else "pending"
+    status.detail = "缺少 " + "、".join(n for n in names if n not in present)
+    status.next_action = "继续 Stage 3（framework-core-synthesizer → framework-synthesizer-zh → alignment-reviewer）"
+    return status
+
+
+def _stage_assemble(ctx: "Ctx") -> StageStatus:
+    skill = ctx.root / "output" / ctx.slug / "SKILL.md"
+    status = StageStatus("assemble", "核心层组装", "pending")
+    if not skill.exists():
+        status.next_action = "派发 skill-assembler（Stage 4）"
+        status.detail = "output/{0}/SKILL.md 尚未生成".format(ctx.slug)
+        return status
+    v6 = _validator().is_v6_skill(skill.read_text(encoding="utf-8", errors="replace"))
+    status.state = "done"
+    status.detail = "v6 中文核心" if v6 else "legacy 双语单文件"
+    status.artifacts = [_rel(ctx.root, skill)]
+    ctx.is_v6 = v6
+    return status
+
+
+def _stage_attachments(ctx: "Ctx") -> StageStatus:
+    refs = ctx.root / "output" / ctx.slug / "references"
+    status = StageStatus("attachments", "附件生成", "pending")
+    if not ctx.is_v6:
+        status.state = "skipped"
+        status.detail = "legacy 包没有附件层" if (ctx.root / "output" / ctx.slug / "SKILL.md").exists() else "等待核心层"
+        if status.detail == "等待核心层":
+            status.state = "pending"
+        return status
+    present = [n for n in REQUIRED_REFS if (refs / n).exists()]
+    status.artifacts = [_rel(ctx.root, refs / n) for n in present]
+    if len(present) == len(REQUIRED_REFS):
+        status.state = "done"
+        status.detail = "cases / evidence / voice 齐备"
+    else:
+        status.state = "in_progress" if present else "pending"
+        status.detail = "缺少 " + "、".join(n for n in REQUIRED_REFS if n not in present)
+        status.next_action = "派发 case-builder / evidence-carder（Stage 4.5）"
+    return status
+
+
+def _stage_gates(ctx: "Ctx") -> StageStatus:
+    status = StageStatus("gates", "P1–P6 包校验", "pending")
+    if not ctx.is_v6:
+        status.state = "skipped" if (ctx.root / "output" / ctx.slug / "SKILL.md").exists() else "pending"
+        status.detail = "legacy 包走 skill 阶段校验" if status.state == "skipped" else "等待核心层"
+        return status
+    if not ctx.check:
+        status.detail = "未检查（加 --check 运行确定性闸门）"
+        status.next_action = _cmd("validate", "package", ctx.slug)
+        return status
+    errors = _hard(_validator().validate_package, ctx)
+    if errors:
+        status.state = "failed"
+        status.detail = f"{len(errors)} 个错误：{errors[0][:80]}"
+        status.next_action = _cmd("validate", "package", ctx.slug)
+    else:
+        status.state = "done"
+        status.detail = "P1–P6 与 M4 加固规则全部通过"
+    return status
+
+
+def _stage_review(ctx: "Ctx") -> StageStatus:
+    review_md = ctx.root / "output" / ctx.slug / "review.md"
+    verdict = _sibling("package_manifest").read_review_verdict(review_md)
+    status = StageStatus("review", "质量审查", "pending")
+    v = verdict["verdict"]
+    if v == "MISSING":
+        status.detail = "没有 review.md"
+        status.next_action = "派发隔离的 quality-reviewer 子代理（Stage 5，不得自审）"
+    elif v == "PASS":
+        status.state = "done"
+        status.detail = "审查结论 PASS"
+        status.artifacts = [_rel(ctx.root, review_md)]
+    else:
+        status.state = "failed"
+        status.detail = f"审查结论 {v}" + (f"：{verdict['detail'][:60]}" if verdict.get("detail") else "")
+        status.next_action = "按 review.md 返回 Stage 4 / 4.5 修订" if v == "REVISE" else "检查 review.md 的「## 裁决」节"
+        status.artifacts = [_rel(ctx.root, review_md)]
+    return status
+
+
+def _stage_publish(ctx: "Ctx") -> StageStatus:
+    gallery = ctx.root / "gallery" / ctx.slug
+    pm = _sibling("package_manifest")
+    status = StageStatus("publish", "发布", "pending")
+    manifest, errors = pm.load_manifest(gallery / pm.MANIFEST_NAME)
+    if manifest is None:
+        status.next_action = _cmd("publish", "--slug", ctx.slug)
+        if not gallery.exists():
+            status.detail = "尚未发布"
+        elif errors and errors[0].startswith("MANIFEST_OUTDATED"):
+            status.state = "failed"
+            status.detail = "已发布但 manifest 是旧版 v1（无构建期证明）"
+            status.next_action = _cmd("manifest", "backfill", ctx.slug) + " 或重新发布"
+        else:
+            status.state = "failed"
+            status.detail = errors[0].split(":", 1)[0] if errors else "manifest 无法读取"
+        return status
+    status.artifacts = [_rel(ctx.root, gallery)]
+    review = (manifest.get("review") or {}).get("verdict", "无记录")
+    status.state = "done"
+    status.detail = f"已发布（manifest v{manifest.get('manifest_version')}，审查记录 {review}）"
+    if ctx.check:
+        hard = [e for e in _validator().validate_published(ctx.slug, ctx.root) if not e.startswith("WARNING:")]
+        if hard:
+            status.state = "failed"
+            status.detail = f"发布包校验 {len(hard)} 个错误：{hard[0][:80]}"
+            status.next_action = _cmd("validate", "published", ctx.slug)
+    return status
+
+
+CHECKS: dict[str, Callable[["Ctx"], StageStatus]] = {
+    "init": _stage_init,
+    "sources": _stage_sources,
+    "index": _stage_index,
+    "clean": _stage_clean,
+    "extract": _stage_extract,
+    "reduce": _stage_reduce,
+    "principles": _stage_principles,
+    "frameworks": _stage_frameworks,
+    "assemble": _stage_assemble,
+    "attachments": _stage_attachments,
+    "gates": _stage_gates,
+    "review": _stage_review,
+    "publish": _stage_publish,
+}
+
+
+@dataclass
+class Ctx:
+    slug: str
+    root: Path
+    check: bool
+    has_raw: bool = False
+    is_v6: bool = False
+
+
+def _validator() -> Any:
+    return _sibling("validate_output")
+
+
+def _hard(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
+    """validate_output 的阶段函数按 cwd 解析路径，这里临时切到数据根目录。"""
+    import os
+    cwd = os.getcwd()
+    try:
+        os.chdir(ctx.root)
+        errors = func(ctx.slug)
+    finally:
+        os.chdir(cwd)
+    return [e for e in errors if not e.startswith("WARNING:")]
+
+
+# ── 汇总与渲染 ────────────────────────────────────────────────────────
+
+
+def collect_status(slug: str, root: Path, check: bool = False, tree: dict | None = None) -> list[StageStatus]:
+    """按阶段树的顺序逐步检查。标题与章节取自阶段树，检查逻辑取自 CHECKS。"""
+    tree = tree or load_stage_tree()
+    ctx = Ctx(slug=slug, root=root, check=check)
+    stages: list[StageStatus] = []
+    for phase in tree["phases"]:
+        for step in phase["steps"]:
+            check_fn = CHECKS.get(step["id"])
+            if check_fn is None:
+                status = StageStatus(step["id"], step["title"], "pending", detail="（此步骤暂无自动检查）")
+            else:
+                status = check_fn(ctx)
+                status.title = step["title"]
+            status.phase = phase["id"]
+            status.chapter = dict(phase["chapter"])
+            stages.append(status)
+    return stages
+
+
+def next_stage(stages: list[StageStatus]) -> StageStatus | None:
+    """第一个未完成的阶段；全部完成返回 None。"""
+    return next((s for s in stages if s.state not in FINISHED), None)
+
+
+def phase_states(stages: list[StageStatus], tree: dict | None = None) -> list[dict[str, Any]]:
+    """把步骤状态汇总到 phase：全部完成=done，有失败=failed，有受阻=blocked，有进展=in_progress。"""
+    tree = tree or load_stage_tree()
+    result = []
+    for phase in tree["phases"]:
+        members = [s.state for s in stages if s.phase == phase["id"]]
+        if members and all(m in FINISHED for m in members):
+            state = "done"
+        elif "failed" in members:
+            state = "failed"
+        elif "blocked" in members:
+            state = "blocked"
+        elif any(m in {"done", "in_progress"} for m in members):
+            state = "in_progress"
+        else:
+            state = "pending"
+        result.append({"id": phase["id"], "order": phase["order"], "title": phase["title"],
+                       "chapter": phase["chapter"], "state": state})
+    return result
+
+
+def to_json(slug: str, stages: list[StageStatus], tree: dict | None = None) -> dict[str, Any]:
+    nxt = next_stage(stages)
+    return {
+        "schema": SCHEMA,
+        "slug": slug,
+        "complete": nxt is None,
+        "next": asdict(nxt) if nxt else None,
+        "phases": phase_states(stages, tree),
+        "stages": [asdict(s) for s in stages],
+    }
+
+
+def to_markdown(slug: str, stages: list[StageStatus], tree: dict | None = None) -> str:
+    phases = {p["id"]: p for p in phase_states(stages, tree)}
+    lines = [f"## 流水线状态：{slug}", "", "| 阶段 | 步骤 | 状态 | 说明 |", "|---|---|---|---|"]
+    last_phase = None
+    for s in stages:
+        label = ""
+        if s.phase != last_phase:
+            p = phases.get(s.phase, {})
+            label = f"{p.get('order', '')} · {p.get('title', s.phase)}"
+            last_phase = s.phase
+        detail = s.detail.replace("|", "\\|")
+        lines.append(f"| {label} | {s.title} | {STATE_LABELS.get(s.state, s.state)} | {detail} |")
+    nxt = next_stage(stages)
+    lines.append("")
+    if nxt is None:
+        lines.append("**全部完成。**")
+    else:
+        lines.append(f"**下一步（{nxt.chapter.get('title', '')} / {nxt.title}）：** {nxt.next_action or nxt.detail}")
+    return "\n".join(lines) + "\n"
+
+
+def render_tree(tree: dict | None = None) -> str:
+    """阶段逻辑树的 Markdown 视图（mdf stages）。"""
+    tree = tree or load_stage_tree()
+    lines = ["## 流水线阶段树", ""]
+    for phase in tree["phases"]:
+        lines.append(f"- **{phase['chapter']['title']}** — {phase['chapter']['summary']}")
+        for step in phase["steps"]:
+            who = "、".join(EXECUTOR_LABELS.get(e, e) for e in step["executor"].split("|"))
+            parts = [f"`{step['command']}`"] if step.get("command") else []
+            if step.get("agent"):
+                parts.append(f"agent：{step['agent']}")
+            lines.append(f"  - {step['title']}（{who}）" + ("：" + "；".join(parts) if parts else ""))
+        if phase.get("checkpoint"):
+            lines.append(f"  - ✓ 检查点：`{phase['checkpoint']}`")
+    lines += ["", f"章节规则：{tree['chapter_policy']['rule']}"]
+    return "\n".join(lines) + "\n"
+
+
+MERMAID_SHAPES = {"script": ('["', '"]'), "agent": ('(["', '"])'), "human": ('[/"', '"/]')}
+
+
+def render_mermaid(tree: dict | None = None) -> str:
+    """阶段逻辑树的 Mermaid 流程图（mdf stages --mermaid）。docs/architecture.md 内嵌的就是它的输出，
+    测试会比对两者，配置一改、图不跟着改就失败。形状：矩形=脚本、圆角=agent、平行四边形=人工。"""
+    tree = tree or load_stage_tree()
+    lines = ["flowchart TD"]
+    chain: list[str] = []
+    for phase in tree["phases"]:
+        lines.append(f'    subgraph {phase["id"]}["{phase["chapter"]["title"]}"]')
+        for step in phase["steps"]:
+            node = f'{phase["id"]}_{step["id"]}'
+            executors = step["executor"].split("|")
+            left, right = MERMAID_SHAPES.get(executors[0], MERMAID_SHAPES["script"])
+            who = "、".join(EXECUTOR_LABELS.get(e, e) for e in executors)
+            lines.append(f"        {node}{left}{step['title']}<br/><small>{who}</small>{right}")
+            chain.append(node)
+        if phase.get("checkpoint"):
+            node = f'{phase["id"]}_checkpoint'
+            target = phase["checkpoint"].split("mdf.py ", 1)[-1].replace(" {slug}", "")
+            lines.append(f'        {node}{{{{"✓ {target}"}}}}')
+            chain.append(node)
+        lines.append("    end")
+    lines += [f"    {a} --> {b}" for a, b in zip(chain, chain[1:])]
+    lines += [
+        "    classDef agent fill:#eef4ff,stroke:#4a6fd1",
+        "    classDef human fill:#fff6e5,stroke:#c98a12",
+    ]
+    for phase in tree["phases"]:
+        for step in phase["steps"]:
+            first = step["executor"].split("|")[0]
+            if first in ("agent", "human"):
+                lines.append(f'    class {phase["id"]}_{step["id"]} {first}')
+    return "\n".join(lines) + "\n"

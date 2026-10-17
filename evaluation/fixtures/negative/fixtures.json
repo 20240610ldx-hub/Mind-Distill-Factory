@@ -1,0 +1,99 @@
+{
+  "schema": "negative-fixtures-v1",
+  "_comment": "每个负例 = _base（全规则合规的 v6 包，阳性对照）+ 一处故意的缺陷。evaluation/scripts/check_negative_fixtures.py 逐个组装、跑 validate_output package，要求 expect 里的错误码全部出现；_base 本身在默认与 strict 下都必须零错误。patch 字段：file（相对夹具根）；find + replace（字面，只换第一处）或 regex + replace；append；replace_repeat / append_repeat = [文本, 次数]，把该文本重复后接在 replace / append 之后。",
+  "slug": "demo",
+  "fixtures": [
+    {
+      "id": "fabricated-quote",
+      "defect": "核心层引了一句证据卡里没有的「名言」",
+      "guards_against": "网络流传的伪托名言混进 SKILL.md（Rule 6、P1）",
+      "patches": [
+        {"file": "package/SKILL.md", "append": "\n**原文出处：**「天下无难事，只怕有心人。」\n"}
+      ],
+      "expect": ["P1_QUOTE_NOT_IN_EVIDENCE"]
+    },
+    {
+      "id": "altered-evidence",
+      "defect": "证据卡逐字原文被改了一个字",
+      "guards_against": "抽取或改写时悄悄改字（曾在 advisory M6「主动权」引文上发生）（P2）",
+      "patches": [
+        {"file": "package/references/evidence.md", "find": "> 月有考，岁有稽", "replace": "> 月有考，岁有计"}
+      ],
+      "expect": ["P2_NOT_IN_CORPUS"]
+    },
+    {
+      "id": "dispatcher-core",
+      "defect": "核心原则章节被换成一句指向附件的指针",
+      "guards_against": "SKILL.md 退化成调度器，删掉 references/ 就不能用（P6 核心自足）",
+      "patches": [
+        {"file": "package/SKILL.md", "regex": "(?s)## 核心原则\\n.*?(?=\\n## 决策框架)", "replace": "## 核心原则\n\n详见 references/cases.md。\n"}
+      ],
+      "expect": ["P6_TOO_FEW_PRINCIPLES"]
+    },
+    {
+      "id": "blind-spot-no-mitigation",
+      "defect": "一条已知盲区没有缓解建议",
+      "guards_against": "只列缺点不给出路（Rule 2）",
+      "patches": [
+        {"file": "package/SKILL.md", "find": "1. **盲区甲**：占位解释。*缓解：* 占位缓解建议。", "replace": "1. **盲区甲**：占位解释。"}
+      ],
+      "expect": ["P6_BLIND_SPOT_NO_MITIGATION"]
+    },
+    {
+      "id": "open-ended-gate",
+      "defect": "决策框架最后一步是开放式建议，不是是/否闸门",
+      "guards_against": "过滤链退化成开放式提问（Rule 3）",
+      "patches": [
+        {"file": "package/SKILL.md", "find": "第三关·丙：留了纠错的渠道吗？", "replace": "第三关·丙：综合考虑各方面因素。"}
+      ],
+      "expect": ["P6_DF_NOT_A_QUESTION"]
+    },
+    {
+      "id": "voice-without-counterexample",
+      "defect": "语感样本缺「误写成通用分析腔」反例",
+      "guards_against": "表达 DNA 无法和通用分析腔区分（v5 反套公式）",
+      "patches": [
+        {"file": "package/references/voice.md", "find": "**误写成通用分析腔会变成：** 我们需要定期复盘。\n", "replace": ""}
+      ],
+      "expect": ["VOICE_SAMPLE_INCOMPLETE"]
+    },
+    {
+      "id": "living-person-no-notice",
+      "defect": "在世人物的包没有「在世人物声明」",
+      "guards_against": "第一人称模拟被当作本人发言（民法典第 1014 条姓名权；L2）",
+      "patches": [
+        {"file": "package/SKILL.md", "find": "# 示例人物的思维框架\n", "replace": "# 示例人物的思维框架\n**示例人物** · 1950–至今\n"}
+      ],
+      "expect": ["LIVING_PERSON_NOTICE_MISSING"]
+    },
+    {
+      "id": "evidence-card-copies-a-page",
+      "defect": "一张证据卡整段照抄了两千字原文",
+      "guards_against": "摘录从「引用」滑向「复制」（著作权法第 24 条适当引用；L1）",
+      "patches": [
+        {"file": "corpus/corpus.txt", "append": "\n", "append_repeat": ["考成之法，月有稽，岁有考，事可责成。", 120]},
+        {"file": "package/references/evidence.md", "find": "> 月有考，岁有稽", "replace": "> ", "replace_repeat": ["考成之法，月有稽，岁有考，事可责成。", 120]}
+      ],
+      "expect": ["QUOTE_TOO_LONG_EVIDENCE"]
+    },
+    {
+      "id": "strict-low-confidence",
+      "defect": "strict 发布时仍有 confidence: low 的证据卡",
+      "guards_against": "未核实的引文进入正式发布（S1）",
+      "strict": true,
+      "patches": [
+        {"file": "package/references/evidence.md", "find": "confidence：high", "replace": "confidence：low"}
+      ],
+      "expect": ["STRICT_LOW_CONFIDENCE"]
+    },
+    {
+      "id": "strict-unverified-rights",
+      "defect": "strict 发布时证据来源的权利状态仍是 unverified",
+      "guards_against": "没人确认过能不能用的书进入正式发布（S4）",
+      "strict": true,
+      "rights": "unverified",
+      "patches": [],
+      "expect": ["STRICT_RIGHTS_UNVERIFIED"]
+    }
+  ]
+}

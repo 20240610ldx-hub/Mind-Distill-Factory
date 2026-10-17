@@ -107,11 +107,50 @@ def corpus_fingerprint(corpus: list[tuple[str, str]]) -> str:
     return digest.hexdigest()
 
 
+def evidence_rights(
+    evidence_md: Path, slug: str, root: Path, prov: Any, corpus: list[tuple[str, str]] | None = None
+) -> dict[str, Any] | None:
+    """证据卡所在语料文件的权利状态汇总（来自 source_registry.json）；没有登记表时返回 None。
+
+    发布出去的只是引文量级的摘录，但摘录来自哪本书、那本书能不能这样用，必须能回答——
+    这份汇总写进 P2 证明，strict 发布（S4）据此 fail-closed。
+    """
+    registry_path = root / "sources" / slug / "processed" / "source_registry.json"
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    by_path = {
+        str(item.get("relative_path")): item
+        for item in registry.get("sources", []) if isinstance(item, dict)
+    }
+    corpus = prov.load_corpus(slug, root) if corpus is None else corpus
+    cards = prov.parse_evidence_cards(evidence_md.read_text(encoding="utf-8")) if evidence_md.exists() else []
+    sources: dict[str, dict[str, Any]] = {}
+    unlocated = 0
+    for card in cards:
+        name = prov.find_verbatim(card["verbatim"], corpus) if card["verbatim"] else None
+        if name is None:
+            unlocated += 1
+            continue
+        rel = name.split("#", 1)[0]
+        item = by_path.get(rel)
+        entry = sources.setdefault(rel, {
+            "rights_status": (item or {}).get("rights_status") or "unregistered",
+            "rights_review_required": bool((item or {}).get("rights_review_required")),
+            "rights_basis": (item or {}).get("rights_basis"),
+            "origin": (item or {}).get("origin"),
+            "evidence_cards": 0,
+        })
+        entry["evidence_cards"] += 1
+    return {"sources": sources, "unlocated_cards": unlocated}
+
+
 def attest_p2(evidence_md: Path, slug: str, root: Path, prov: Any) -> dict[str, Any]:
     """在构建期运行 P2，返回可写入 manifest 的证明。
 
     prov 是 verify_provenance 模块（scripts/ 不是包，由调用方按路径加载）。
-    语料只读一次，同一份既用于 P2 比对又用于取指纹。
+    语料只读一次，同一份既用于 P2 比对、取指纹，又用于权利汇总。
     """
     corpus = prov.load_corpus(slug, root)
     errors = prov.check_p2_corpus_closure(evidence_md, slug, root, corpus=corpus)
@@ -124,6 +163,7 @@ def attest_p2(evidence_md: Path, slug: str, root: Path, prov: Any) -> dict[str, 
         "evidence_sha256": sha256_file(evidence_md) if evidence_md.exists() else None,
         "corpus_fingerprint": corpus_fingerprint(corpus) if corpus else None,
         "corpus_files": len(corpus),
+        "rights": evidence_rights(evidence_md, slug, root, prov, corpus=corpus),
     }
 
 
