@@ -114,7 +114,7 @@ class RollbackTests(unittest.TestCase):
     def test_post_commit_validation_failure_restores_old_package_and_index(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             ws, before, index_before = self._published_baseline(td)
-            (ws.out / "references" / "voice.md").write_text("### 新样本\n\n> 新\n", encoding="utf-8")
+            (ws.out / "references" / "voice.md").write_text(pkg_fixtures.build_voice_md(21), encoding="utf-8")
             with self.assertRaises(publisher.PublishError) as ctx:
                 ws.publish(skill_dir="gallery/elsewhere/")  # 提交后 index 校验必然失败
             self.assertTrue(any("INVALID_GALLERY_INDEX_ENTRY" in e for e in ctx.exception.errors))
@@ -125,7 +125,7 @@ class RollbackTests(unittest.TestCase):
     def test_crash_at_index_replace_restores_old_package(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             ws, before, index_before = self._published_baseline(td)
-            (ws.out / "references" / "voice.md").write_text("### 新样本\n\n> 新\n", encoding="utf-8")
+            (ws.out / "references" / "voice.md").write_text(pkg_fixtures.build_voice_md(21), encoding="utf-8")
             real_replace = publisher._replace_with_retry
 
             def failing_replace(src: Path, dst: Path, *a, **kw) -> None:

@@ -41,6 +41,37 @@ assert len(SECTION_FILLER) >= validator.PACKAGE_SCHEMA["min_section_chars"], (
 )
 
 
+def _items(prefix: str, n: int) -> str:
+    return "\n".join(f"- {prefix} {i}：占位条目。" for i in range(1, n + 1))
+
+
+# 各章节除占位正文外还要满足 check_p6_structure 的结构规则（M4）。
+SECTION_STRUCTURE = {
+    "响应策略": "\n\n".join(
+        f"### {title}\n\n{_items(title, n)}"
+        for title, n in [("边界规则", 5), ("按输入类型适配", 6),
+                         ("⚠️ 反套公式指令", 6), ("🎯 结构自然性指令", 5)]
+    ),
+    "决策框架": (
+        "```\n第一关·甲：这件事有可验证的目标吗？\n    ↓\n"
+        "第二关·乙：执行的人选定了吗？\n    ↓\n第三关·丙：留了纠错的渠道吗？\n```"
+    ),
+    "已知盲区": (
+        "1. **盲区甲**：占位解释。*缓解：* 占位缓解建议。\n"
+        "2. **盲区乙**：占位解释。*缓解：* 占位缓解建议。"
+    ),
+    "表达风格 DNA": (
+        "| 维度 | 特征 |\n|------|------|\n"
+        + "\n".join(f"| {dim} | 占位特征 |" for dim in validator.PACKAGE_SCHEMA["dna_dimensions"])
+        + "\n\n**语感校准：**\n- ✅ 贴近：「事必责实效。」\n- ❌ 偏离：「我们要勇敢追梦！」"
+    ),
+    "价值取向与反模式": (
+        f"### 坚定追求\n\n{_items('追求', 2)}\n\n### 坚决反对\n\n{_items('反对', 2)}\n\n"
+        f"### 内在张力（未解决的矛盾）\n\n{_items('张力', 1)}"
+    ),
+}
+
+
 def build_skill_md(sections=None, extra="") -> str:
     sections = CORE_SECTIONS if sections is None else sections
     parts = []
@@ -52,6 +83,8 @@ def build_skill_md(sections=None, extra="") -> str:
                 f"### 原则 {i}：占位标题 {i}\n\n{SECTION_FILLER}" for i in range(1, n + 1)
             )
             parts.append(f"## {name}\n\n{principles}")
+        elif name in SECTION_STRUCTURE:
+            parts.append(f"## {name}\n\n{SECTION_FILLER}\n\n{SECTION_STRUCTURE[name]}")
         else:
             parts.append(f"## {name}\n\n{SECTION_FILLER}")
     body = "\n\n".join(parts)
@@ -66,6 +99,30 @@ def build_skill_md(sections=None, extra="") -> str:
     )
 
 
+def evidence_card(n: int, quote: str = "月有考，岁有稽", confidence: str = "high", extra: str = "") -> str:
+    return (
+        f"### 原则 {n}：占位\n\n> {quote}\n\n- 出处：《示例奏疏》\n"
+        f"- 语料位置：`sources/demo/raw/corpus.txt`\n- confidence：{confidence}\n{extra}"
+    )
+
+
+def build_evidence_md(n: int | None = None) -> str:
+    n = validator.PACKAGE_SCHEMA["min_principles"] if n is None else n
+    return "\n".join(evidence_card(i) for i in range(1, n + 1))
+
+
+def voice_sample(i: int) -> str:
+    return (
+        f"### 样本 {i}（维度：句式）\n\n> 月有考，岁有稽。\n\n"
+        "**为什么像他：** 斩截作结。\n\n**误写成通用分析腔会变成：** 我们需要定期复盘。\n"
+    )
+
+
+def build_voice_md(n: int | None = None) -> str:
+    n = validator.PACKAGE_SCHEMA["min_voice_samples"] if n is None else n
+    return "# 语感样本库\n\n" + "\n".join(voice_sample(i) for i in range(1, n + 1))
+
+
 class PackageFixture:
     """在临时目录里搭一个最小 v6 包，供各闸门测试复用。"""
 
@@ -78,8 +135,8 @@ class PackageFixture:
         raw.mkdir(parents=True)
         (raw / "corpus.txt").write_text("月有考，岁有稽，事可责成。", encoding="utf-8")
         self.write_skill(build_skill_md())
-        self.write_ref("evidence.md", "### 原则 1：甲\n\n> 月有考，岁有稽\n\n- confidence：high\n")
-        self.write_ref("voice.md", "### 样本 1（维度：句式）\n\n> 示例\n")
+        self.write_ref("evidence.md", build_evidence_md())
+        self.write_ref("voice.md", build_voice_md())
         self.write_cases(clusters=1, counter=True)
         self.write_framework_core(["cluster_001"])
 

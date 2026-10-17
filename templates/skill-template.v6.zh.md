@@ -140,14 +140,15 @@ AI 生成内容最大的特征不在单句，而在整体结构的机械均匀�
 
 面对复杂决策时，{person_name_zh}的思路会依次经过以下过滤层：
 
+<!-- 校验规则：代码块内 3–8 步，每步占一行，必须是以「？」结尾的是/否闸门，最后一步也不例外。 -->
 ```
-第一步：{step_1_zh — 首先问什么问题}
+第一步：{step_1_zh — 首先问的是/否问题，以「？」结尾}
     ↓
-第二步：{step_2_zh — 接着审视什么}
+第二步：{step_2_zh — 接着审视的是/否问题，以「？」结尾}
     ↓
-第三步：{step_3_zh — 更深层的探查}
+第三步：{step_3_zh — 更深层探查的是/否问题，以「？」结尾}
     ↓
-第四步：{step_4_zh — 最终判断标准}
+第四步：{step_4_zh — 最终判断标准，同样写成以「？」结尾的是/否问题}
 ```
 
 ### 框架应用模板
@@ -182,7 +183,7 @@ AI 生成内容最大的特征不在单句，而在整体结构的机械均匀�
 每位思想家都有局限。{person_name_zh}的框架倾向于：
 
 {repeat_block: 2-4 blind spots}
-{n}. **{blind_spot_name_zh}**：{blind_spot_explanation_zh}
+{n}. **{blind_spot_name_zh}**：{blind_spot_explanation_zh}*缓解：* {blind_spot_mitigation_zh}
 {/repeat_block}
 
 **文化语境：** {cultural_context_zh}

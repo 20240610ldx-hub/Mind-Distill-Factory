@@ -16,6 +16,7 @@ Stages:
   gallery   — alias of published
 """
 
+import functools
 import json
 import sys
 import re
@@ -108,6 +109,16 @@ PACKAGE_SCHEMA = {
     # 字符。150 介于二者之间、离真实内容有约 2 倍余量，足以拦住「指针替身」而
     # 不会误伤真实的薄章节。
     "min_section_chars": 150,
+    # ── M4 加固 ──
+    "min_voice_samples": 20,
+    "decision_steps": (3, 8),
+    "dna_dimensions": ["句式偏好", "标志性修辞", "语气基调", "确定性表达",
+                       "幽默风格", "禁忌表达", "段落节奏", "口语化标记"],
+    # 「价值取向与反模式」各子节最少条目数（CLAUDE.md 质量门：≥2 追求、≥2 反对、≥1 张力）
+    "values_min_items": {"坚定追求": 2, "坚决反对": 2, "内在张力": 1},
+    "min_blind_spots": 2,
+    # 「响应策略」各子节最少规则数，按子标题关键词匹配
+    "response_min_rules": {"反套公式": 6, "结构自然性": 5, "边界规则": 5, "输入类型": 6},
     # 核心原则数下限，与 FRAMEWORK_SCHEMA_V6_PRINCIPLES["min_principles"] 保持
     # 同一个 v6 底线（8）；样板包实际有 9 条。
     "min_principles": 8,
@@ -516,6 +527,8 @@ def validate_skill(slug: str) -> list[str]:
 
 BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:md|json|py|txt))`")
 CASE_ID_RE = re.compile(r"case_id:\s*([A-Za-z0-9_-]+)")
+# P5 解析索引表格时只认这种形状；case_id 本身也必须是这种形状，否则写进表格也会被判「未索引」。
+CASE_ID_FORMAT_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)+")
 CASE_CLUSTER_RE = re.compile(r"^\*\*对应原则簇：\*\*\s*(\S+)\s*$", re.MULTILINE)
 CASE_HEADING_RE = re.compile(r"^###\s+.*$", re.MULTILINE)
 CASE_COUNTER_FIELD_RE = re.compile(r"^\*\*反例[:：]\*\*", re.MULTILINE)
@@ -553,14 +566,34 @@ def _parse_cases(cases_md: Path) -> list[dict]:
 
 
 def check_p4_cases(cases_md: Path, cluster_ids: list[str]) -> list[str]:
-    """P4：每个 principle cluster ≥2 例；全库 ≥1 反例。"""
+    """P4：每个 principle cluster ≥2 例；全库 ≥1 反例；case_id 唯一且形状合规；
+    每个案例的原则簇必须存在于簇列表。"""
     if not cases_md.exists():
         return [f"MISSING: {cases_md}"]
     cases = _parse_cases(cases_md)
     errors = []
+    known = set(cluster_ids)
+    seen: set[str] = set()
     for case in cases:
-        if not case["case_id"]:
+        case_id = case["case_id"]
+        if not case_id:
             errors.append(f"P4_MISSING_CASE_ID: {cases_md}: 存在无 case_id 的案例")
+            continue
+        if case_id in seen:
+            errors.append(f"P4_DUPLICATE_CASE_ID: {cases_md}: case_id '{case_id}' 重复出现")
+        seen.add(case_id)
+        if not CASE_ID_FORMAT_RE.fullmatch(case_id):
+            errors.append(
+                f"P4_BAD_CASE_ID: {cases_md}: case_id '{case_id}' 须为小写-连字符形式"
+                f"（如 demo-c1-1），否则 P5 的索引表格认不出它"
+            )
+        if not case["cluster"]:
+            errors.append(f"P4_MISSING_CLUSTER: {cases_md}: 案例 '{case_id}' 缺少「对应原则簇」")
+        elif known and case["cluster"] not in known:
+            # 簇列表为空时由 P4_EMPTY_CLUSTERS / MANIFEST_NO_CLUSTERS 报，这里不重复刷屏。
+            errors.append(
+                f"P4_UNKNOWN_CLUSTER: {cases_md}: 案例 '{case_id}' 指向不存在的原则簇 '{case['cluster']}'"
+            )
     for cluster_id in cluster_ids:
         count = sum(1 for c in cases if c["cluster"] == cluster_id)
         if count < PACKAGE_SCHEMA["min_cases_per_cluster"]:
@@ -594,7 +627,7 @@ def check_p5_index(skill_md: Path, cases_md: Path) -> list[str]:
             if line.strip().startswith("|"):
                 for cell in line.split("|"):
                     token = cell.strip()
-                    if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)+", token):
+                    if CASE_ID_FORMAT_RE.fullmatch(token):
                         indexed.add(token)
     actual = {c["case_id"] for c in _parse_cases(cases_md) if c["case_id"]}
     errors = []
@@ -658,8 +691,227 @@ def check_p6_core(skill_md: Path) -> list[str]:
     return errors
 
 
-def validate_package(slug: str) -> list[str]:
-    """构建期 v6 包校验（output/{slug}/）：结构 + P1–P6，P2 现场比对语料。"""
+# ── M4 加固：附件内容、核心结构、模板残留、strict ─────────────────────
+
+H2_RE = re.compile(r"^##(?!#)\s*(.+?)\s*$", re.MULTILINE)
+H3_RE = re.compile(r"^###(?!#)\s*(.+?)\s*$", re.MULTILINE)
+LIST_ITEM_RE = re.compile(r"^(?:\d+\.|[-*])\s+\S", re.MULTILINE)
+CONFIDENCE_VALUE_RE = re.compile(r"(high|medium|low)(?![A-Za-z])")
+EVIDENCE_PRINCIPLE_RE = re.compile(r"^原则\s*(\d+)(?!\d)")
+SKILL_PRINCIPLE_RE = re.compile(r"^###(?!#)\s*原则\s*(\d+)(?!\d)", re.MULTILINE)
+VOICE_SPLIT_RE = re.compile(r"^###\s*样本", re.MULTILINE)
+VOICE_QUOTE_RE = re.compile(r"^>\s?\S", re.MULTILINE)
+# 性别中立：女性思想家的样本写「为什么像她」。
+VOICE_WHY_RE = re.compile(r"为什么像[他她]")
+VOICE_ANTI_MARKER = "误写成通用分析腔"
+UNRESOLVED_NOTE_RE = re.compile(
+    r"^(?:待定|待裁决|待核实?|未定|TODO|TBD|N/?A|无|[?？]+|[.。…]+)$", re.IGNORECASE
+)
+TEMPLATE_RESIDUE_RE = re.compile(r"\{/?repeat_block[^}\n]*\}|\{[^{}\n]{1,60}\}")
+FENCE_RE = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+DECISION_ARROW_LINE_RE = re.compile(r"^[\s↓⬇↘→|vV]*$")
+
+
+def _h2_body(content: str, name: str) -> str | None:
+    """标题以 name 开头的 H2 章节正文（到下一个 H2 为止）；不存在返回 None。"""
+    headings = list(H2_RE.finditer(content))
+    for i, match in enumerate(headings):
+        if match.group(1).startswith(name):
+            end = headings[i + 1].start() if i + 1 < len(headings) else len(content)
+            return content[match.end():end]
+    return None
+
+
+def _h3_bodies(body: str) -> list[tuple[str, str]]:
+    headings = list(H3_RE.finditer(body))
+    return [
+        (m.group(1), body[m.end():headings[i + 1].start() if i + 1 < len(headings) else len(body)])
+        for i, m in enumerate(headings)
+    ]
+
+
+def check_evidence_cards(evidence_md: Path, skill_md: Path) -> list[str]:
+    """证据卡结构（规则 1–4、11）：非空、字段齐全、覆盖每条原则、high 有语料位置、裁决不是空话。"""
+    if not evidence_md.exists():
+        return [f"MISSING: {evidence_md}"]
+    cards = _load_provenance().parse_evidence_cards(evidence_md.read_text(encoding="utf-8"))
+    if not cards:
+        return [f"EVIDENCE_EMPTY: {evidence_md}: 没有任何证据卡（### 标题 + > 逐字原文）"]
+
+    errors: list[str] = []
+    covered: set[str] = set()
+    for card in cards:
+        where = f"{evidence_md} [{card['title']}]"
+        fields = card["fields"]
+        if not card["verbatim"]:
+            errors.append(f"EVIDENCE_NO_QUOTE: {where}: 卡内没有 > 逐字原文")
+        if not fields.get("出处"):
+            errors.append(f"EVIDENCE_MISSING_FIELD: {where}: 缺少「- 出处：」")
+        confidence = fields.get("confidence")
+        level = CONFIDENCE_VALUE_RE.match(confidence) if confidence else None
+        if confidence is None:
+            errors.append(f"EVIDENCE_MISSING_FIELD: {where}: 缺少「- confidence：」")
+        elif level is None:
+            errors.append(f"EVIDENCE_BAD_CONFIDENCE: {where}: confidence={confidence!r}，须为 high/medium/low")
+        elif level.group(1) == "high" and not fields.get("语料位置"):
+            # Rule 6：只有一手来源可标 high。语料是否真的在本地由 P2 逐字比对证明，
+            # 这里只要求 high 卡写明出自语料哪里。
+            errors.append(f"EVIDENCE_HIGH_WITHOUT_CORPUS: {where}: confidence 为 high 却没有「- 语料位置：」")
+        note = fields.get("textual_note")
+        if note is not None and UNRESOLVED_NOTE_RE.match(note.strip()):
+            errors.append(
+                f"EVIDENCE_UNRESOLVED_ADJUDICATION: {where}: textual_note={note!r} 是占位而非裁决依据"
+                f"——P2 会因这个字段把逐字不符降级为 WARNING"
+            )
+        principle = EVIDENCE_PRINCIPLE_RE.match(card["title"])
+        if principle:
+            covered.add(principle.group(1))
+
+    if skill_md.exists():
+        core = _h2_body(skill_md.read_text(encoding="utf-8"), "核心原则") or ""
+        for number in SKILL_PRINCIPLE_RE.findall(core):
+            if number not in covered:
+                errors.append(
+                    f"EVIDENCE_PRINCIPLE_UNCOVERED: {evidence_md}: 核心原则 {number} 没有对应的证据卡"
+                    f"（标题以「原则 {number}」开头）"
+                )
+    return errors
+
+
+def check_voice_samples(voice_md: Path) -> list[str]:
+    """语感样本（规则 5–6）：≥20 条，每条有原文、正向标注、反例改写。"""
+    if not voice_md.exists():
+        return [f"MISSING: {voice_md}"]
+    blocks = VOICE_SPLIT_RE.split(voice_md.read_text(encoding="utf-8"))[1:]
+    errors: list[str] = []
+    minimum = PACKAGE_SCHEMA["min_voice_samples"]
+    if len(blocks) < minimum:
+        errors.append(f"VOICE_TOO_FEW: {voice_md}: 仅 {len(blocks)} 条样本 < {minimum}")
+    for i, block in enumerate(blocks, 1):
+        missing = []
+        if not VOICE_QUOTE_RE.search(block):
+            missing.append("> 原文片段")
+        if not VOICE_WHY_RE.search(block):
+            missing.append("「为什么像他/她」")
+        if VOICE_ANTI_MARKER not in block:
+            missing.append(f"「{VOICE_ANTI_MARKER}」反例")
+        if missing:
+            errors.append(f"VOICE_SAMPLE_INCOMPLETE: {voice_md}: 第 {i} 条样本缺少 {'、'.join(missing)}")
+    return errors
+
+
+def check_p6_structure(skill_md: Path) -> list[str]:
+    """核心层结构（规则 7、12、14–16）：表达 DNA 八维、决策框架是非题、价值取向、
+    盲区缓解、响应策略规则数。章节缺失本身由 check_p6_core 报，这里不重复。"""
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+    content = skill_md.read_text(encoding="utf-8")
+    errors: list[str] = []
+
+    dna = _h2_body(content, "表达风格 DNA")
+    if dna is not None:
+        rows = {k.strip(): v.strip() for k, v in re.findall(r"^\|\s*([^|\n]+?)\s*\|\s*([^|\n]*?)\s*\|", dna, re.M)}
+        for dim in PACKAGE_SCHEMA["dna_dimensions"]:
+            if dim not in rows:
+                errors.append(f"P6_DNA_MISSING_DIMENSION: {skill_md}: 表达风格 DNA 缺少维度「{dim}」")
+            elif not rows[dim] or TEMPLATE_RESIDUE_RE.search(rows[dim]):
+                errors.append(f"P6_DNA_EMPTY_DIMENSION: {skill_md}: 表达风格 DNA 维度「{dim}」为空或仍是占位")
+        if not re.search(r"✅.*「[^」]+」", dna) or not re.search(r"❌.*「[^」]+」", dna):
+            errors.append(f"P6_DNA_NO_CALIBRATION: {skill_md}: 语感校准须各有一条 ✅ 与 ❌ 示例")
+
+    decision = _h2_body(content, "决策框架")
+    if decision is not None:
+        fence = FENCE_RE.search(decision)
+        if fence is None:
+            errors.append(f"P6_DF_NO_CODE_BLOCK: {skill_md}: 决策框架缺少 ``` 代码块形式的过滤链")
+        else:
+            steps = [ln.strip() for ln in fence.group(1).splitlines() if not DECISION_ARROW_LINE_RE.match(ln)]
+            low, high = PACKAGE_SCHEMA["decision_steps"]
+            if not low <= len(steps) <= high:
+                errors.append(f"P6_DF_STEP_COUNT: {skill_md}: 决策框架 {len(steps)} 步，须在 {low}–{high} 步之间")
+            for step in steps:
+                if not step.endswith(("？", "?")):
+                    errors.append(
+                        f"P6_DF_NOT_A_QUESTION: {skill_md}: 决策框架步骤须是以「？」结尾的是/否闸门：{step[:40]}"
+                    )
+
+    values = _h2_body(content, "价值取向")
+    if values is not None:
+        subsections = _h3_bodies(values)
+        for keyword, minimum in PACKAGE_SCHEMA["values_min_items"].items():
+            body = next((b for title, b in subsections if keyword in title), "")
+            count = len(LIST_ITEM_RE.findall(body))
+            if count < minimum:
+                errors.append(f"P6_VALUES_TOO_FEW: {skill_md}: 价值取向「{keyword}」仅 {count} 条 < {minimum}")
+
+    blind = _h2_body(content, "已知盲区")
+    if blind is not None:
+        items = list(re.finditer(r"^\d+\.\s", blind, re.MULTILINE))
+        minimum = PACKAGE_SCHEMA["min_blind_spots"]
+        if len(items) < minimum:
+            errors.append(f"P6_BLIND_SPOTS_TOO_FEW: {skill_md}: 已知盲区仅 {len(items)} 条 < {minimum}")
+        for i, item in enumerate(items):
+            end = items[i + 1].start() if i + 1 < len(items) else len(blind)
+            block = blind[item.start():end]
+            # 最后一条的条目体止于章末的「**文化语境：**」「**不宜使用…**」，避免把后文字眼算进来。
+            trailer = re.search(r"^\*\*(?:文化语境|不宜使用)", block, re.MULTILINE)
+            if trailer:
+                block = block[: trailer.start()]
+            if not re.search(r"缓解|应对", block):
+                errors.append(f"P6_BLIND_SPOT_NO_MITIGATION: {skill_md}: 第 {i + 1} 条盲区缺少缓解/应对建议")
+
+    strategy = _h2_body(content, "响应策略")
+    if strategy is not None:
+        subsections = _h3_bodies(strategy)
+        for keyword, minimum in PACKAGE_SCHEMA["response_min_rules"].items():
+            body = next((b for title, b in subsections if keyword in title), None)
+            count = len(LIST_ITEM_RE.findall(body)) if body is not None else 0
+            if count < minimum:
+                errors.append(
+                    f"P6_RESPONSE_RULES_TOO_FEW: {skill_md}: 响应策略「{keyword}」仅 {count} 条 < {minimum}"
+                )
+    return errors
+
+
+def check_template_residue(paths: list[Path]) -> list[str]:
+    """规则 13：模板占位（{xxx}、{repeat_block}）不得残留在发布内容里。"""
+    errors = []
+    for path in paths:
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            match = TEMPLATE_RESIDUE_RE.search(line)
+            if match:
+                errors.append(f"TEMPLATE_RESIDUE: {path}:{lineno}: 残留模板占位 {match.group(0)[:40]}")
+    return errors
+
+
+def check_strict_evidence(evidence_md: Path) -> list[str]:
+    """S1：strict 下任何 confidence: low 的证据卡都不允许进入发布包。"""
+    if not evidence_md.exists():
+        return []
+    errors = []
+    for card in _load_provenance().parse_evidence_cards(evidence_md.read_text(encoding="utf-8")):
+        level = CONFIDENCE_VALUE_RE.match(card["fields"].get("confidence", ""))
+        if level and level.group(1) == "low":
+            errors.append(f"STRICT_LOW_CONFIDENCE: {evidence_md} [{card['title']}]: confidence 为 low")
+    return errors
+
+
+def check_strict_review(review: dict | None, where: Path) -> list[str]:
+    """S2/S3：strict 下审查结论必须是真审过的 PASS。"""
+    if review is None:
+        return [f"STRICT_NO_REVIEW: {where}: 没有审查记录"]
+    if review.get("verdict") != "PASS":
+        return [f"STRICT_REVIEW_NOT_PASS: {where}: 审查结论为 {review.get('verdict')!r}"]
+    return []
+
+
+def validate_package(slug: str, strict: bool = False) -> list[str]:
+    """构建期 v6 包校验（output/{slug}/）：结构 + P1–P6，P2 现场比对语料。
+
+    strict 额外要求：无 confidence: low 的证据卡（S1），output/{slug}/review.md 结论为 PASS（S2）。
+    """
     root = Path(".")
     output_dir = root / "output" / slug
     skill_md = output_dir / "SKILL.md"
@@ -689,17 +941,21 @@ def validate_package(slug: str) -> list[str]:
                 )
 
     errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
+    if strict:
+        review_md = output_dir / "review.md"
+        errors.extend(check_strict_evidence(output_dir / PACKAGE_SCHEMA["reference_dir"] / "evidence.md"))
+        errors.extend(check_strict_review(_load_sibling("package_manifest").read_review_verdict(review_md), review_md))
     return errors
 
 
-def validate_published(slug: str, root: Path = Path(".")) -> list[str]:
+def validate_published(slug: str, root: Path = Path("."), strict: bool = False) -> list[str]:
     """发布后校验（gallery/{slug}/）：只依赖包内文件 + manifest，不读 output/ 与 sources/。
 
     legacy 与 v6 一视同仁：都必须有 v2 manifest 且文件 hash 全部吻合。v6 额外重跑
     P1/P3–P6；P4 的簇列表取自 manifest，P2 不重跑（语料不随包发布），改由
     manifest 里的构建期证明担保——evidence.md 的 hash 与证明一致，证明才算数。
     """
-    errors = check_published_package(root / "gallery" / slug, slug, root)
+    errors = check_published_package(root / "gallery" / slug, slug, root, strict=strict)
     errors.extend(_check_gallery_index_entry(slug, root))
     return errors
 
@@ -708,8 +964,14 @@ def validate_published(slug: str, root: Path = Path(".")) -> list[str]:
 validate_gallery = validate_published
 
 
-def check_published_package(package_dir: Path, slug: str, root: Path = Path(".")) -> list[str]:
-    """对任意目录做发布包校验（不查 index）。publish_skill.py 用它校验暂存目录。"""
+def check_published_package(
+    package_dir: Path, slug: str, root: Path = Path("."), strict: bool = False
+) -> list[str]:
+    """对任意目录做发布包校验（不查 index）。publish_skill.py 用它校验暂存目录。
+
+    strict 额外要求：无 confidence: low 的证据卡（S1），manifest 有审查记录（S3）且为 PASS（S2）。
+    legacy 包同样适用 S2/S3。
+    """
     skill_md = package_dir / "SKILL.md"
     if not skill_md.exists():
         return [f"MISSING: {skill_md}"]
@@ -733,6 +995,11 @@ def check_published_package(package_dir: Path, slug: str, root: Path = Path(".")
         errors.extend(_check_v6_package(package_dir, slug, root, clusters, run_p2=False))
     else:
         errors.extend(_validate_merged_skill(skill_md, slug))
+
+    if strict:
+        if v6:
+            errors.extend(check_strict_evidence(package_dir / PACKAGE_SCHEMA["reference_dir"] / "evidence.md"))
+        errors.extend(check_strict_review(manifest.get("review") if manifest else None, package_dir / pm.MANIFEST_NAME))
     return errors
 
 
@@ -778,9 +1045,11 @@ def _check_v6_package(
 
     errors.extend(check_p3_paths(skill_md))
     errors.extend(check_p6_core(skill_md))
+    errors.extend(check_p6_structure(skill_md))
 
     cases_md = refs_dir / "cases.md"
     evidence_md = refs_dir / "evidence.md"
+    voice_md = refs_dir / "voice.md"
 
     if cases_md.exists():
         errors.extend(check_p4_cases(cases_md, cluster_ids))
@@ -788,15 +1057,25 @@ def _check_v6_package(
 
     if evidence_md.exists():
         prov = _load_provenance()
+        errors.extend(check_evidence_cards(evidence_md, skill_md))
         errors.extend(prov.check_p1_quote_closure(skill_md, evidence_md))
         if run_p2:
             errors.extend(prov.check_p2_corpus_closure(evidence_md, slug, root))
 
+    if voice_md.exists():
+        errors.extend(check_voice_samples(voice_md))
+
+    errors.extend(check_template_residue([skill_md, cases_md, evidence_md, voice_md]))
     return errors
 
 
+@functools.lru_cache(maxsize=None)
 def _load_sibling(name: str):
-    """按路径加载同目录的模块（scripts/ 不是包）。"""
+    """按路径加载同目录的模块（scripts/ 不是包）。
+
+    缓存：verify_provenance 在模块加载时构造 OpenCC 转换器，开销不小；一次校验会
+    多处调用，每次重新执行模块会让整套校验慢上一倍。
+    """
     import importlib.util
     path = Path(__file__).resolve().parent / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
@@ -992,15 +1271,20 @@ STAGES = {
     "gallery": validate_published,
 }
 
+STRICT_STAGES = {"package", "published", "gallery"}
+
+
 def main():
-    if len(sys.argv) < 3:
-        print(f"Usage: python {sys.argv[0]} <stage> <person-slug>")
+    args = [a for a in sys.argv[1:] if a != "--strict"]
+    strict = len(args) != len(sys.argv) - 1
+    if len(args) < 2:
+        print(f"Usage: python {sys.argv[0]} <stage> <person-slug> [--strict]")
         print(f"Stages: {', '.join(STAGES.keys())}")
         sys.exit(1)
 
-    stage = sys.argv[1]
+    stage = args[0]
     try:
-        slug = _load_sibling("slug_rules").validate_slug(sys.argv[2])
+        slug = _load_sibling("slug_rules").validate_slug(args[1])
     except ValueError as e:  # InvalidSlug 是 ValueError 子类
         print(f"Invalid slug: {e}")
         sys.exit(1)
@@ -1008,9 +1292,12 @@ def main():
     if stage not in STAGES:
         print(f"Unknown stage: {stage}. Available: {', '.join(STAGES.keys())}")
         sys.exit(1)
+    if strict and stage not in STRICT_STAGES:
+        print(f"--strict 仅适用于 {', '.join(sorted(STRICT_STAGES))} 阶段")
+        sys.exit(1)
 
-    print(f"Validating stage '{stage}' for '{slug}'...")
-    errors = STAGES[stage](slug)
+    print(f"Validating stage '{stage}' for '{slug}'{' (strict)' if strict else ''}...")
+    errors = STAGES[stage](slug, strict=True) if strict else STAGES[stage](slug)
 
     warnings = [e for e in errors if e.startswith("WARNING:")]
     hard_errors = [e for e in errors if not e.startswith("WARNING:")]
