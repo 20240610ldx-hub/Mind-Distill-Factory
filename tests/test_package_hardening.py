@@ -1,4 +1,4 @@
-"""M4：P1–P6 加固规则 1–16 与 --strict S1–S3。
+"""M4：P1–P6 加固规则 1–16 与 --strict S1–S4。
 
 每条规则都从一个完全合规的夹具出发，只改一处，断言报出对应错误码；
 同时断言合规夹具与真实样板包（gallery/zhang-juzheng-v6）不报错——
@@ -33,12 +33,20 @@ fx_mod = load_module("_package_v6_fixtures_hard", ROOT / "tests" / "test_package
 validator = fx_mod.validator
 pm = load_module("_pm_hard", ROOT / "scripts" / "package_manifest.py")
 prov = load_module("_prov_hard", ROOT / "scripts" / "verify_provenance.py")
+registry_mod = load_module("_registry_hard", ROOT / "scripts" / "source_registry.py")
 
 CASE_INDEX = "## 案例索引\n\n| demo-c1-1 | demo-c1-2 | demo-counter-1 |\n"
 
 
 def codes(errors: list[str]) -> list[str]:
     return [e.split(":", 1)[0] for e in errors]
+
+
+def register_sources(root: Path, rights: str = "public_domain") -> None:
+    """给夹具语料写 source_registry.json——strict S4 要求证据来源已登记且权利放行。"""
+    raw = root / "sources" / "demo" / "raw"
+    registry = registry_mod.build_registry(raw, rights_status=rights)
+    registry_mod.write_registry(root / "sources" / "demo" / "processed" / "source_registry.json", registry)
 
 
 class TempFile:
@@ -300,7 +308,7 @@ class WiringTests(unittest.TestCase):
             self.assertEqual(codes(errors), ["VOICE_TOO_FEW"])
 
 
-# ── strict S1–S3 ─────────────────────────────────────────────────────
+# ── strict S1–S4 ─────────────────────────────────────────────────────
 
 
 class StrictBuildTests(unittest.TestCase):
@@ -317,6 +325,7 @@ class StrictBuildTests(unittest.TestCase):
         fx.write_skill(fx_mod.build_skill_md(extra=CASE_INDEX))
         if review is not None:
             (fx.out / "review.md").write_text(review, encoding="utf-8")
+        register_sources(fx.root)
         return fx
 
     def test_clean_with_pass_review(self) -> None:
@@ -346,6 +355,7 @@ class StrictPublishedTests(unittest.TestCase):
         gallery = fx.root / "gallery" / "demo"
         import shutil
         shutil.copytree(fx.out, gallery, ignore=shutil.ignore_patterns("framework_core.json"))
+        register_sources(fx.root)
         p2 = pm.attest_p2(gallery / pm.EVIDENCE_REL, "demo", fx.root, prov)
         manifest = pm.build_manifest(
             gallery, "demo", format_version=6, clusters=["cluster_001"], p2_attestation=p2, review=review
@@ -383,11 +393,12 @@ class StrictCliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("--strict", proc.stdout)
 
-    def test_pilot_fails_strict_only_on_missing_review(self) -> None:
+    def test_pilot_fails_strict_only_on_review_and_rights(self) -> None:
+        # 样板包早于 S4 发布：manifest 里没有权利汇总，也没有 review.md——两条都是真缺口，别的都应干净。
         proc = self._run("published", "zhang-juzheng-v6", "--strict")
         self.assertEqual(proc.returncode, 1)
-        hard = [l.strip() for l in proc.stdout.splitlines() if l.strip().startswith(("STRICT_", "P", "MANIFEST", "EVIDENCE", "VOICE"))]
-        self.assertEqual([h.split(":", 1)[0] for h in hard], ["STRICT_REVIEW_NOT_PASS"])
+        hard = [l.strip() for l in proc.stdout.splitlines() if l.strip().startswith(("STRICT_", "P", "MANIFEST", "EVIDENCE", "VOICE", "QUOTE", "LIVING"))]
+        self.assertEqual([h.split(":", 1)[0] for h in hard], ["STRICT_NO_RIGHTS_RECORD", "STRICT_REVIEW_NOT_PASS"])
 
 
 if __name__ == "__main__":

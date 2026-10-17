@@ -35,11 +35,13 @@ except ImportError:  # pragma: no cover - supports package-style imports
 
 try:
     from source_registry import (
-        build_registry, load_acquisition_provenance, registry_by_relative_path, registry_fingerprint, write_registry,
+        build_registry, load_acquisition_provenance, load_rights_declarations, registry_by_relative_path,
+        registry_fingerprint, write_registry,
     )
 except ImportError:  # pragma: no cover - supports package-style imports
     from scripts.source_registry import (  # type: ignore
-        build_registry, load_acquisition_provenance, registry_by_relative_path, registry_fingerprint, write_registry,
+        build_registry, load_acquisition_provenance, load_rights_declarations, registry_by_relative_path,
+        registry_fingerprint, write_registry,
     )
 
 try:
@@ -369,7 +371,10 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
         key=lambda p: (priority_for_name(p.name), p.relative_to(source_dir).as_posix().lower()),
     )
     provenance = load_acquisition_provenance(processed_dir(slug) / "acquisition_log.jsonl")
-    registry = build_registry(source_dir, provenance=provenance)
+    declarations, declaration_errors = load_rights_declarations(source_dir.parent / "rights.json")
+    for message in declaration_errors:
+        print(f"WARNING: {message}", file=sys.stderr)
+    registry = build_registry(source_dir, provenance=provenance, declarations=declarations)
     registry_map = registry_by_relative_path(registry)
     write_registry(processed_dir(slug) / "source_registry.json", registry)
     path_by_id = {item.get("source_id"): rel for rel, item in registry_map.items()}
