@@ -15,7 +15,7 @@ flowchart TB
     CX["Codex<br/><small>skill $mdf-distill</small>"]
     PI["pi<br/><small>skill /skill:mdf-distill</small>"]
     P["<b>编排协议</b>（Markdown，harness 无关）<br/><small>commands/distill.md · agents/*.md（14 个角色）· config/pipeline_stages.json</small>"]
-    K["<b>确定性内核</b>：python scripts/mdf.py<br/><small>status · next · stages · brief<br/>acquire · index · clean · reduce<br/>validate：P1–P6 · L1–L2 · S1–S4<br/>publish · manifest · metrics · harness</small>"]
+    K["<b>确定性内核</b>：python scripts/mdf.py<br/><small>status · next · stages · brief<br/>acquire · index · clean · reduce<br/>validate：P1–P6 · L1–L2 · S1–S4<br/>publish · manifest · metrics · harness · ocr</small>"]
     S["sources/{slug}/<br/><small>原典与中间结果（不入库）</small>"]
     O["output/{slug}/<br/><small>框架、草稿包、简报、审查（不入库）</small>"]
     G["gallery/{slug}/<br/><small>已发布包 + manifest（入库）</small>"]

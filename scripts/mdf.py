@@ -259,7 +259,8 @@ PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
     "metrics": ("persona_metrics", [], "主张账本、来源集中度、文体指纹、对话漂移（代理指标）"),
     "publish": ("publish_skill", [], "事务化发布到 gallery"),
     "manifest": ("package_manifest", [], "发布清单工具（backfill）"),
-    "harness": ("harness", [], "harness 适配：检测与核对（list）、安装命令（plan，只打印）"),
+    "ocr": ("ocr_calibrate", [], "OCR 校准（合成扫描件对真值：CER、逐字存活率）与扫描件逐页诊断"),
+    "harness": ("harness", [],"harness 适配：检测与核对（list）、安装命令（plan，只打印）"),
     "brief": ("harness", ["brief"], "为 agent 步骤生成自足任务简报，供子代理或新进程执行"),
 }
 

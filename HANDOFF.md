@@ -7,7 +7,7 @@
 - 阶段 3（流水线自动化，分支 `claude/pipeline-automation`，**未推送、未开 PR**）：`effcb3f` → `e8c7d28` → `050a2b4` → `e91c7c6` → `0069e53` → `8b12577` → 本次文档收敛提交
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 484 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
+结果：`Ran 496 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
 
 ---
 
@@ -112,7 +112,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 
 ### P4：阶段 3 留下的缺口
 - **Codex / pi 端到端实测**：只验证了适配文件结构（`claude plugin validate` 通过、本机 `--help` 核对参数），没有在 Codex、pi 里真正跑完一个人物
-- **OCR 路径**：清洗闸门对 OCR 质量只打标（`quality_flags`），没有在真实扫描件上做过端到端校准
+- **OCR 真实引擎校准**：校准工具已就绪（`mdf ocr calibrate`：合成扫描件 → index 同一路径 → CER 与逐字存活率；`mdf ocr scan` 诊断真实扫描件），并修掉了「每页重新加载一次 OCR 模型」的性能缺陷。但本机未装 OCR 引擎（`pip install -e .[ocr]`），真实数字尚未跑出；`clean_corpus` 的 `ocr_low_confidence=0.6` 仍是经验值
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
 
 ---

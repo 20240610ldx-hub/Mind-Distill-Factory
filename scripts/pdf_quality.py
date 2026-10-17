@@ -233,11 +233,42 @@ def _paddleocr_runner() -> Callable[[bytes], tuple[str, float]]:
     return run
 
 
+RUNNER_FACTORIES: dict[str, Callable[[], Callable[[bytes], tuple[str, float]]]] = {
+    "rapidocr": _rapidocr_runner,
+    "paddleocr": _paddleocr_runner,
+}
+# 引擎加载很慢（ONNX / Paddle 模型），每个进程每个引擎只建一次——过去每页都新建一次，
+# 600 页的扫描件要加载 600 次模型。缺依赖（ImportError）不缓存，装上后同一进程可重试。
+_RUNNERS: dict[str, Callable[[bytes], tuple[str, float]]] = {}
+_INJECTED: list[str] = []
+
+
+def get_runner(name: str) -> Callable[[bytes], tuple[str, float]]:
+    if name not in _RUNNERS:
+        if name not in RUNNER_FACTORIES:
+            raise ImportError(f"unknown OCR backend {name!r}")
+        _RUNNERS[name] = RUNNER_FACTORIES[name]()
+    return _RUNNERS[name]
+
+
+def register_runner(name: str, runner: Callable[[bytes], tuple[str, float]]) -> None:
+    """注入一个引擎并让 auto 优先用它（OCR 校准与测试用）。"""
+    _RUNNERS[name] = runner
+    if name not in _INJECTED:
+        _INJECTED.insert(0, name)
+
+
+def clear_injected_runners() -> None:
+    for name in _INJECTED:
+        _RUNNERS.pop(name, None)
+    _INJECTED.clear()
+
+
 def run_ocr(page: Any, backend: str = "auto", *, dpi: int = 150) -> dict[str, Any]:
     """OCR one page, returning an explicit unavailable/error status."""
     if backend == "off":
         return {"status": "disabled", "backend": None, "text": "", "confidence": 0.0}
-    candidates = ["rapidocr", "paddleocr"] if backend == "auto" else [backend]
+    candidates = [*_INJECTED, *RUNNER_FACTORIES] if backend == "auto" else [backend]
     errors: list[str] = []
     try:
         image = _to_image_bytes(page, dpi=dpi)
@@ -245,7 +276,7 @@ def run_ocr(page: Any, backend: str = "auto", *, dpi: int = 150) -> dict[str, An
         return {"status": "render_error", "backend": None, "text": "", "confidence": 0.0, "error": str(exc)}
     for candidate in candidates:
         try:
-            runner = _rapidocr_runner() if candidate == "rapidocr" else _paddleocr_runner()
+            runner = get_runner(candidate)
             text, confidence = runner(image)
             if text:
                 return {
