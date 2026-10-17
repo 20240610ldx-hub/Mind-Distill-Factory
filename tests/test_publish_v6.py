@@ -228,11 +228,12 @@ class ExtractV6MetadataTests(unittest.TestCase):
             meta = publisher.extract_v6_metadata(self._write(td))
             self.assertEqual(meta["secondary_categories"], ["enterprise", "strategy"])
 
-    def test_missing_identity_card_yields_safe_defaults(self) -> None:
+    def test_missing_identity_card_yields_none_not_defaults(self) -> None:
+        # 回落到 "Unknown"/"philosophy" 会把残缺的包悄悄登记成哲学类人物。
         with tempfile.TemporaryDirectory() as td:
             meta = publisher.extract_v6_metadata(self._write(td, BARE_V6_SKILL))
-            self.assertEqual(meta["era"], "Unknown")
-            self.assertEqual(meta["primary_category"], "philosophy")
+            self.assertIsNone(meta["era"])
+            self.assertIsNone(meta["primary_category"])
             self.assertEqual(meta["secondary_categories"], [])
 
 
@@ -248,6 +249,31 @@ class ResolveMetadataTests(unittest.TestCase):
             self.assertEqual(meta["name_zh"], "张居正")
             self.assertEqual(meta["primary_cat"], "governance")
             self.assertEqual(meta["secondary_cats"], ["enterprise", "strategy"])
+
+    def test_v6_without_identity_card_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output" / "demo"
+            out.mkdir(parents=True)
+            (out / "SKILL.md").write_text(BARE_V6_SKILL, encoding="utf-8")
+            with self.assertRaises(publisher.MetadataError):
+                publisher.resolve_metadata(out, "demo")
+
+    def test_v6_unknown_or_excess_categories_are_refused(self) -> None:
+        cases = {
+            "unknown primary": V6_SKILL.replace("治理 (governance)", "治理 (statecraft)"),
+            "unknown secondary": V6_SKILL.replace("谋略 (strategy)", "谋略 (warfare)"),
+            "three secondaries": V6_SKILL.replace(
+                "谋略 (strategy)", "谋略 (strategy)、修身 (conduct)"
+            ),
+        }
+        for label, text in cases.items():
+            with self.subTest(label):
+                with tempfile.TemporaryDirectory() as td:
+                    out = Path(td) / "output" / "demo"
+                    out.mkdir(parents=True)
+                    (out / "SKILL.md").write_text(text, encoding="utf-8")
+                    with self.assertRaises(publisher.MetadataError):
+                        publisher.resolve_metadata(out, "demo")
 
     def test_legacy_package_still_reads_frameworks_json(self) -> None:
         with tempfile.TemporaryDirectory() as td:

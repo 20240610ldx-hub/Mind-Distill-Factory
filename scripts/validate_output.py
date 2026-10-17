@@ -692,40 +692,15 @@ def validate_package(slug: str) -> list[str]:
     return errors
 
 
-def validate_published(slug: str) -> list[str]:
+def validate_published(slug: str, root: Path = Path(".")) -> list[str]:
     """发布后校验（gallery/{slug}/）：只依赖包内文件 + manifest，不读 output/ 与 sources/。
 
     legacy 与 v6 一视同仁：都必须有 v2 manifest 且文件 hash 全部吻合。v6 额外重跑
     P1/P3–P6；P4 的簇列表取自 manifest，P2 不重跑（语料不随包发布），改由
     manifest 里的构建期证明担保——evidence.md 的 hash 与证明一致，证明才算数。
     """
-    root = Path(".")
-    gallery_dir = root / "gallery" / slug
-    skill_md = gallery_dir / "SKILL.md"
-    if not skill_md.exists():
-        return [f"MISSING: {skill_md}"]
-
-    pm = _load_sibling("package_manifest")
-    v6 = is_v6_skill(skill_md.read_text(encoding="utf-8"))
-    manifest, errors = pm.load_manifest(gallery_dir / pm.MANIFEST_NAME)
-    clusters: list[str] = []
-    if manifest is not None:
-        errors.extend(pm.verify_manifest(gallery_dir, manifest, slug))
-        expected = PACKAGE_SCHEMA["format_version"] if v6 else 1
-        if manifest.get("format_version") != expected:
-            errors.append(
-                f"MANIFEST_FORMAT_MISMATCH: {gallery_dir / pm.MANIFEST_NAME}: "
-                f"format_version={manifest.get('format_version')!r}，SKILL.md 实际为 {expected}"
-            )
-        if isinstance(manifest.get("clusters"), list):
-            clusters = [c for c in manifest["clusters"] if isinstance(c, str) and c]
-
-    if v6:
-        errors.extend(_check_v6_package(gallery_dir, slug, root, clusters, run_p2=False))
-    else:
-        errors.extend(_validate_merged_skill(skill_md, slug))
-
-    errors.extend(_check_gallery_index_entry(slug))
+    errors = check_published_package(root / "gallery" / slug, slug, root)
+    errors.extend(_check_gallery_index_entry(slug, root))
     return errors
 
 
@@ -733,8 +708,36 @@ def validate_published(slug: str) -> list[str]:
 validate_gallery = validate_published
 
 
-def _check_gallery_index_entry(slug: str) -> list[str]:
-    index_file = Path("gallery/index.json")
+def check_published_package(package_dir: Path, slug: str, root: Path = Path(".")) -> list[str]:
+    """对任意目录做发布包校验（不查 index）。publish_skill.py 用它校验暂存目录。"""
+    skill_md = package_dir / "SKILL.md"
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+
+    pm = _load_sibling("package_manifest")
+    v6 = is_v6_skill(skill_md.read_text(encoding="utf-8"))
+    manifest, errors = pm.load_manifest(package_dir / pm.MANIFEST_NAME)
+    clusters: list[str] = []
+    if manifest is not None:
+        errors.extend(pm.verify_manifest(package_dir, manifest, slug))
+        expected = PACKAGE_SCHEMA["format_version"] if v6 else 1
+        if manifest.get("format_version") != expected:
+            errors.append(
+                f"MANIFEST_FORMAT_MISMATCH: {package_dir / pm.MANIFEST_NAME}: "
+                f"format_version={manifest.get('format_version')!r}，SKILL.md 实际为 {expected}"
+            )
+        if isinstance(manifest.get("clusters"), list):
+            clusters = [c for c in manifest["clusters"] if isinstance(c, str) and c]
+
+    if v6:
+        errors.extend(_check_v6_package(package_dir, slug, root, clusters, run_p2=False))
+    else:
+        errors.extend(_validate_merged_skill(skill_md, slug))
+    return errors
+
+
+def _check_gallery_index_entry(slug: str, root: Path = Path(".")) -> list[str]:
+    index_file = root / "gallery" / "index.json"
     if not index_file.exists():
         return [f"MISSING: {index_file}"]
     try:

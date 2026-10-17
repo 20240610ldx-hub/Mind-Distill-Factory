@@ -195,7 +195,10 @@ def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
     """原子写：同目录临时文件 + os.replace，中途失败不留半截 manifest。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # newline="\n"：Windows 默认会把 \n 写成 \r\n，同一 manifest 跨平台就不再逐字节相同。
+    temporary.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
     os.replace(temporary, path)
 
 
