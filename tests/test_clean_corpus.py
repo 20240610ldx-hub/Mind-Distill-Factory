@@ -215,6 +215,19 @@ class CleanPdfTests(unittest.TestCase):
         for raw, kept in zip(self.pages(), cleaned):
             assert_subtractive(self, raw, kept)
 
+    def test_ocr_misread_folios_count_as_one_running_head(self):
+        # 《熱風》整本 OCR：页码认成「-28一」「13-」「一81一」，逐字比较时每种都凑不够 30% 的页
+        folios = ["-28一", "13-", "一81一", "-35-", "4", "46一", "30-", "-57一", "--9-", "12"]
+        # 页边比较时阿拉伯数字归一，所以各页正文用天干区分
+        pages = [f"三十{num}\n{PROSE}{stem}\n{folio}" for num, stem, folio in zip("一二三四五六七八九十", "甲乙丙丁戊己庚辛壬癸", folios)]
+        cleaned, entry = cc.clean_pdf_pages(pages)
+        for page, stem, folio in zip(cleaned, "甲乙丙丁戊己庚辛壬癸", folios):
+            self.assertFalse(page.endswith(folio), folio)
+            self.assertIn(f"{PROSE}{stem}", page)
+        self.assertEqual(entry["actions"]["pdf_running_head_lines"], 10)
+        # 章节号「三十一」之类的汉字数字不算页码
+        self.assertTrue(all(page.startswith("三十") for page in cleaned))
+
     def test_index_page_dropped(self):
         index_page = "\n".join(f"Virtue{i}, {i}, {i + 40}" for i in range(15))
         cleaned, entry = cc.clean_pdf_pages([*self.pages(3), index_page])

@@ -259,6 +259,27 @@ class LineLayoutTests(unittest.TestCase):
         self.assertEqual(self.texts(ordered),
                          ["第三編", "閱讀魯迅(中)", "98", "全是黑沈沈的", "妹子是被大哥喫了", "在還教人傷心", "77"])
 
+    def test_spaced_running_head_split_into_single_chars_stays_at_page_top(self):
+        # 《熱風》1947 年版 p41：页眉「熱　風」字距拉开，拆成两个单字框，按 x 插进了正文列之间
+        lines = [column(300, 100, "的奴才的脚底下學得"), (box(215, 20, 40, 40), "熱", 0.99),
+                 column(240, 100, "自然完全不在話下了"), column(190, 100, "但最奇怪的是七年"),
+                 (box(60, 20, 40, 40), "風", 0.99), column(100, 140, "說了這話"),
+                 (box(100, 100, 40, 40), "我", 0.99),  # 列首单字框：没有整个高过列顶，留在列里
+                 column(50, 100, "也未曾經驗開口不得"), (box(100, 900, 80, 30), "-35-", 0.9)]
+        ordered, layout = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(layout, "vertical")
+        self.assertEqual(self.texts(ordered),
+                         ["風", "熱", "的奴才的脚底下學得", "自然完全不在話下了", "但最奇怪的是七年",
+                          "我", "說了這話", "也未曾經驗開口不得", "-35-"])
+
+    def test_running_head_glued_to_a_column_does_not_lift_the_column_top(self):
+        # 《熱風》p37：「風」和最左一列粘成一个框，从页眉高度起；「熱」仍要归到页首
+        lines = [column(300, 100, "這藥原來也已發明"), column(240, 100, "就是科學一味"),
+                 (box(200, 20, 40, 40), "熱", 0.99), column(150, 100, "祇希望那班精神上"),
+                 column(50, 20, "風們成了祖先的時候")]
+        ordered, _ = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(self.texts(ordered)[0], "熱")
+
     def test_horizontal_page_keeps_engine_order(self):
         lines = [(box(0, 0, 600, 30), "Photons: Particles of Light", 0.99),
                  (box(0, 40, 600, 30), "the second line of the page", 0.99),

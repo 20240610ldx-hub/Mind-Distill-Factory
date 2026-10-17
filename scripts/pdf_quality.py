@@ -232,6 +232,15 @@ def order_lines(lines: list[OcrLine]) -> tuple[list[OcrLine], str]:
     # 横排的页眉、页码、馆藏水印不并进竖列：并进去会插在正文中间，清洗闸门按页首页尾删页眉也就删不掉了。
     # 中心高于正文列顶（中位数）的放页首，其余放页尾，各自按从上到下、从左到右。
     body_top = sorted(ext[i][1] for i in tall)[len(tall) // 2]
+    # 字距拉开的横排页眉会拆成单字框（《熱風》1947 年版每页顶上的「熱　風」），既不算竖也不算横。
+    # 整个框落在正文列的起始线之上或结束线之下，同样是页眉页脚。起止线取四分位而不取极值：
+    # 页眉字常和下面那一列粘成一个框（p37「風們成了祖先……」），极值会被这个框拉到页眉的高度。
+    tops, bottoms = sorted(ext[i][1] for i in tall), sorted(ext[i][3] for i in tall)
+    col_top, col_bottom = tops[len(tops) // 4], bottoms[(3 * len(bottoms)) // 4]
+    tall_set = set(tall)
+    margin = {i for i, (x0, y0, x1, y1) in enumerate(ext)
+              if i not in tall_set and x1 > x0 and (y1 <= col_top or y0 >= col_bottom)}
+    wide |= margin
     by_position = sorted(wide, key=lambda k: (ext[k][1], ext[k][0]))
     header = [i for i in by_position if (ext[i][1] + ext[i][3]) / 2 < body_top]
     footer = [i for i in by_position if i not in header]
@@ -274,8 +283,9 @@ def _rapidocr_runner() -> OcrRunner:
         from rapidocr import RapidOCR as RapidOCRv3  # type: ignore
     except ImportError:
         return _rapidocr_legacy_runner()
-    # text_score=0：让引擎把所有检测到的行都交回来，由 summarize_lines 按 KEEP_SCORE 过滤并计数
-    engine_v3 = RapidOCRv3(params={"Global.log_level": "warning", "Global.text_score": 0.0})
+    # text_score=0：让引擎把所有检测到的行都交回来，由 summarize_lines 按 KEEP_SCORE 过滤并计数。
+    # log_level=error：空白页的「检测结果为空」警告刷屏；空页已经算进 summarize_ocr 的 ocr_ok 与清洗闸门
+    engine_v3 = RapidOCRv3(params={"Global.log_level": "error", "Global.text_score": 0.0})
 
     def run_v3(image: bytes) -> tuple[str, float, dict[str, Any]]:
         out = engine_v3(image)
