@@ -1,0 +1,81 @@
+{
+  "schema": "harness-profiles-v1",
+  "_comment": "各 harness 怎样加载编排入口、跑子任务、显示进度。scripts/harness.py 与 docs/harnesses.md 读这里；事实以 sources 为准，verified_at 之后的版本变化需重新核对。",
+  "verified_at": "2026-10-17",
+  "orchestrator_skill": ".agents/skills/mdf-distill/SKILL.md",
+  "harnesses": {
+    "claude-code": {
+      "label": "Claude Code（CLI / 桌面 / IDE）",
+      "executables": ["claude"],
+      "instruction_files": ["CLAUDE.md"],
+      "orchestrator": {
+        "kind": "plugin-command",
+        "file": "commands/distill.md",
+        "load": "claude --plugin-dir .",
+        "invoke": "/mind-distill-factory:distill <人物>"
+      },
+      "skill_dirs": {"project": ".claude/skills", "user": "~/.claude/skills"},
+      "subagents": {
+        "native": true,
+        "how": "Task 工具调用 agents/*.md；以插件加载时名为 mind-distill-factory:<agent>"
+      },
+      "isolated_run": "claude -p --permission-mode acceptEdits \"{prompt}\"",
+      "chapters": {
+        "native": true,
+        "how": "桌面版提供章节工具，按 config/pipeline_stages.json 每阶段调用一次；终端里没有该工具时输出 H2 兜底标题"
+      },
+      "sources": [
+        "https://code.claude.com/docs/en/plugins-reference.md"
+      ]
+    },
+    "codex": {
+      "label": "OpenAI Codex（CLI / IDE / App）",
+      "executables": ["codex"],
+      "instruction_files": ["AGENTS.md"],
+      "orchestrator": {
+        "kind": "skill",
+        "file": ".agents/skills/mdf-distill/SKILL.md",
+        "load": "在仓库根目录启动 codex（自动扫描 .agents/skills）",
+        "invoke": "$mdf-distill <人物>"
+      },
+      "skill_dirs": {"project": ".agents/skills", "user": "~/.agents/skills"},
+      "subagents": {
+        "native": null,
+        "how": "官方文档未核实到稳定的子代理接口，流水线不依赖它；需要隔离上下文的步骤用 codex exec 子进程"
+      },
+      "isolated_run": "codex exec --sandbox workspace-write \"{prompt}\"",
+      "chapters": {
+        "native": false,
+        "how": "没有可由 agent 调用的章节 API（App 的长线程导航按轮次）；每阶段输出一行 H2 兜底标题"
+      },
+      "sources": [
+        "https://learn.chatgpt.com/docs/build-skills.md",
+        "https://learn.chatgpt.com/docs/non-interactive-mode"
+      ]
+    },
+    "pi": {
+      "label": "pi（pi-mono 终端 coding agent）",
+      "executables": ["pi"],
+      "instruction_files": ["AGENTS.md", "CLAUDE.md"],
+      "orchestrator": {
+        "kind": "skill",
+        "file": ".agents/skills/mdf-distill/SKILL.md",
+        "load": "在仓库根目录启动 pi（自动扫描 .agents/skills）",
+        "invoke": "/skill:mdf-distill <人物>"
+      },
+      "skill_dirs": {"project": ".agents/skills", "user": "~/.agents/skills"},
+      "subagents": {
+        "native": false,
+        "how": "README 明确不内置子代理；需要隔离上下文的步骤用 pi -p 子进程"
+      },
+      "isolated_run": "pi -p \"{prompt}\"",
+      "chapters": {
+        "native": false,
+        "how": "无章节功能；每阶段输出一行 H2 兜底标题"
+      },
+      "sources": [
+        "https://app.unpkg.com/@mariozechner/pi-coding-agent@0.68.0/files/README.md"
+      ]
+    }
+  }
+}

@@ -46,6 +46,16 @@ python scripts/mdf.py status {slug} --check    # 同时跑各阶段确定性校�
 
 把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。
 
+**没有子代理的 harness（Codex、pi）**
+
+下文「分派给子代理」的每一步，都可以改用任务简报 + 新进程执行，交付物和检查点不变：
+
+```bash
+python scripts/mdf.py brief {slug} [step]   # 写 output/{slug}/briefs/<step>.md，并打印各 harness 的新进程命令
+```
+
+Stage 5 审查必须这样做（或用真正的子代理），绝不能在编排者自己的上下文里审。各 harness 的入口与限制见 `docs/harnesses.md`。
+
 ---
 
 ## Stage 0：意图澄清与初始化

@@ -529,3 +529,40 @@ def render_tree(tree: dict | None = None) -> str:
             lines.append(f"  - ✓ 检查点：`{phase['checkpoint']}`")
     lines += ["", f"章节规则：{tree['chapter_policy']['rule']}"]
     return "\n".join(lines) + "\n"
+
+
+MERMAID_SHAPES = {"script": ('["', '"]'), "agent": ('(["', '"])'), "human": ('[/"', '"/]')}
+
+
+def render_mermaid(tree: dict | None = None) -> str:
+    """阶段逻辑树的 Mermaid 流程图（mdf stages --mermaid）。docs/architecture.md 内嵌的就是它的输出，
+    测试会比对两者，配置一改、图不跟着改就失败。形状：矩形=脚本、圆角=agent、平行四边形=人工。"""
+    tree = tree or load_stage_tree()
+    lines = ["flowchart TD"]
+    chain: list[str] = []
+    for phase in tree["phases"]:
+        lines.append(f'    subgraph {phase["id"]}["{phase["chapter"]["title"]}"]')
+        for step in phase["steps"]:
+            node = f'{phase["id"]}_{step["id"]}'
+            executors = step["executor"].split("|")
+            left, right = MERMAID_SHAPES.get(executors[0], MERMAID_SHAPES["script"])
+            who = "、".join(EXECUTOR_LABELS.get(e, e) for e in executors)
+            lines.append(f"        {node}{left}{step['title']}<br/><small>{who}</small>{right}")
+            chain.append(node)
+        if phase.get("checkpoint"):
+            node = f'{phase["id"]}_checkpoint'
+            target = phase["checkpoint"].split("mdf.py ", 1)[-1].replace(" {slug}", "")
+            lines.append(f'        {node}{{{{"✓ {target}"}}}}')
+            chain.append(node)
+        lines.append("    end")
+    lines += [f"    {a} --> {b}" for a, b in zip(chain, chain[1:])]
+    lines += [
+        "    classDef agent fill:#eef4ff,stroke:#4a6fd1",
+        "    classDef human fill:#fff6e5,stroke:#c98a12",
+    ]
+    for phase in tree["phases"]:
+        for step in phase["steps"]:
+            first = step["executor"].split("|")[0]
+            if first in ("agent", "human"):
+                lines.append(f'    class {phase["id"]}_{step["id"]} {first}')
+    return "\n".join(lines) + "\n"

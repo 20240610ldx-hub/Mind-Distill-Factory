@@ -14,6 +14,8 @@
     python scripts/mdf.py validate <stage> <slug> [--strict]
     python scripts/mdf.py publish --slug <slug> [--dry-run] [--force]
     python scripts/mdf.py manifest backfill <slug> [--corpus-root DIR]
+    python scripts/mdf.py harness [list|plan <slug> --target codex]
+    python scripts/mdf.py brief <slug> [step] [--harness pi]
 
 数据根目录默认是仓库根；init/status/next/doctor/validate 可用 --root 或环境变量
 MDF_DATA_ROOT 指向另一份数据（例如在 git worktree 里查看主仓库的私有语料）。
@@ -84,6 +86,8 @@ def cmd_stages(args: argparse.Namespace) -> int:
     tree = ps.load_stage_tree(CODE_ROOT)
     if args.json:
         _print_json(tree)
+    elif args.mermaid:
+        print(ps.render_mermaid(tree), end="")
     else:
         print(ps.render_tree(tree), end="")
     return 0
@@ -156,6 +160,11 @@ def doctor_report(root: Path) -> dict[str, Any]:
     for module, package, extra, purpose in OPTIONAL_DEPS:
         found = importlib.util.find_spec(module) is not None
         add(f"可选依赖 {package}", found, purpose + ("" if found else f"；安装：pip install -e .[{extra}]"), required=False)
+    harness = _module("harness")
+    profiles = harness.load_profiles(CODE_ROOT)
+    for name, path in harness.detect(profiles).items():
+        add(f"harness {profiles['harnesses'][name]['label']}", path is not None,
+            path or "未安装（可选；详情 mdf harness）", required=False)
     return {
         "schema": "mdf-doctor-v1",
         "data_root": str(root),
@@ -203,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("stages", help="打印流水线阶段树（含章节标签）")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--mermaid", action="store_true", help="输出 Mermaid 流程图")
     p.set_defaults(func=cmd_stages)
 
     p = sub.add_parser("init", help="建立人物目录")
@@ -249,6 +259,8 @@ PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
     "metrics": ("persona_metrics", [], "主张账本、来源集中度、文体指纹、对话漂移（代理指标）"),
     "publish": ("publish_skill", [], "事务化发布到 gallery"),
     "manifest": ("package_manifest", [], "发布清单工具（backfill）"),
+    "harness": ("harness", [], "harness 适配：检测与核对（list）、安装命令（plan，只打印）"),
+    "brief": ("harness", ["brief"], "为 agent 步骤生成自足任务简报，供子代理或新进程执行"),
 }
 
 
