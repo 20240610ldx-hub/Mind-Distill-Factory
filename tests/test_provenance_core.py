@@ -51,6 +51,47 @@ class CorpusTests(unittest.TestCase):
             self.assertEqual(corpus[0][0], "a.txt")
             self.assertEqual(corpus[0][1], "如此月有考岁有稽")
 
+    def test_load_corpus_accepts_hash_bound_pdf_sidecar(self) -> None:
+        import json
+        from scripts import source_registry
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            raw = root / "sources" / "demo" / "raw"
+            processed = root / "sources" / "demo" / "processed"
+            extracted = processed / "extracted"
+            raw.mkdir(parents=True)
+            extracted.mkdir(parents=True)
+            pdf = raw / "scan.pdf"
+            pdf.write_bytes(b"pdf-bytes")
+            digest = source_registry.sha256_file(pdf)
+            record = source_registry.make_record(pdf, raw)
+            (processed / "source_registry.json").write_text(
+                json.dumps({"sources": [record]}), encoding="utf-8"
+            )
+            source_id = record["source_id"]
+            (extracted / f"{source_id}.txt").write_text(
+                "--- Page 1 ---\n月有考岁有稽", encoding="utf-8"
+            )
+            (extracted / f"{source_id}.json").write_text(
+                json.dumps({"source_id": source_id, "parent_sha256": digest}), encoding="utf-8"
+            )
+            corpus = prov.load_corpus("demo", root)
+            self.assertEqual(len(corpus), 1)
+            self.assertIn("月有考岁有稽", corpus[0][1])
+
+    def test_load_corpus_rejects_unbound_pdf_sidecar(self) -> None:
+        import json
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            extracted = root / "sources" / "demo" / "processed" / "extracted"
+            extracted.mkdir(parents=True)
+            (extracted / "fake.txt").write_text("不应自证", encoding="utf-8")
+            (extracted / "fake.json").write_text(
+                json.dumps({"source_id": "fake", "parent_sha256": "wrong"}), encoding="utf-8"
+            )
+            self.assertEqual(prov.load_corpus("demo", root), [])
+
     def test_find_verbatim_returns_filename_on_hit(self) -> None:
         corpus = [("a.txt", "如此月有考岁有稽不惟使声必中实事可责成")]
         self.assertEqual(prov.find_verbatim("月有考岁有稽", corpus), "a.txt")

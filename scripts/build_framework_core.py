@@ -20,6 +20,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+try:
+    from slug_rules import InvalidSlug, validate_slug
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.slug_rules import InvalidSlug, validate_slug  # type: ignore
+
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -330,7 +335,11 @@ def main() -> None:
     if len(sys.argv) != 2:
         print(f"Usage: python {Path(sys.argv[0]).name} <person-slug>")
         sys.exit(1)
-    slug = sys.argv[1]
+    try:
+        slug = validate_slug(sys.argv[1])
+    except InvalidSlug as e:
+        print(f"Invalid slug: {e}")
+        sys.exit(1)
     output_dir = repo_root() / "output" / slug
     output_dir.mkdir(parents=True, exist_ok=True)
     core = build_core(slug)

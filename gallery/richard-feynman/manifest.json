@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "slug": "richard-feynman",
+  "format_version": 1,
+  "files": {
+    "SKILL.md": "058e400cdd02a510dffd8e95fc8a5bc0039553bba1ae733b7380eb99986ddcba",
+    "draft.en.md": "c8cf8a6b794472592666b5a7d658f029a97ed17037587b47bc0db60bf09ee585",
+    "draft.zh.md": "20d55c335684fb367afc2ce9ab98f41818a2e43d5362861e66bd47a7853df2a9"
+  }
+}

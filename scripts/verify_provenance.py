@@ -8,6 +8,7 @@ Mind Distill Factory — 溯源校验器（确定性，不依赖 LLM 打分）
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -29,6 +30,7 @@ PUNCT_RE = re.compile(
 )
 
 TEXT_SUFFIXES = (".txt", ".md")
+PDF_SIDECAR_DIR = "extracted"
 
 
 def get_variant_folder() -> Callable[[str], str] | None:
@@ -54,17 +56,48 @@ def normalize(text: str, fold_variants: bool = True) -> str:
 
 
 def load_corpus(slug: str, root: Path) -> list[tuple[str, str]]:
-    """读取 sources/{slug}/raw/ 与 processed/ 下的文本文件，返回归一化后的语料。"""
+    """Load raw text plus hash-bound PDF sidecars.
+
+    Processed JSON and arbitrary processed text are deliberately excluded: a
+    derived artifact cannot prove its own provenance. PDF sidecars are accepted
+    only when their parent SHA-256 matches the registered raw source.
+    """
     corpus: list[tuple[str, str]] = []
-    for sub in ("raw", "processed"):
-        base = root / "sources" / slug / sub
-        if not base.exists():
+    source_root = root / "sources" / slug
+    raw_base = source_root / "raw"
+    for path in sorted(raw_base.rglob("*")) if raw_base.exists() else []:
+        if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
             continue
-        for path in sorted(base.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
-                continue
-            text = path.read_text(encoding="utf-8", errors="replace")
-            corpus.append((path.name, normalize(text)))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        corpus.append((path.relative_to(raw_base).as_posix(), normalize(text)))
+
+    registry_path = source_root / "processed" / "source_registry.json"
+    sidecar_base = source_root / "processed" / PDF_SIDECAR_DIR
+    if not registry_path.exists() or not sidecar_base.exists():
+        return corpus
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return corpus
+    for item in registry.get("sources", []):
+        if not isinstance(item, dict) or item.get("extension", "").lower() != ".pdf":
+            continue
+        source_id = item.get("source_id")
+        digest = item.get("sha256")
+        if not source_id or not digest:
+            continue
+        sidecar_meta = sidecar_base / f"{source_id}.json"
+        sidecar_text = sidecar_base / f"{source_id}.txt"
+        if not sidecar_meta.exists() or not sidecar_text.exists():
+            continue
+        try:
+            metadata = json.loads(sidecar_meta.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if metadata.get("parent_sha256") != digest or metadata.get("source_id") != source_id:
+            continue
+        text = sidecar_text.read_text(encoding="utf-8", errors="replace")
+        corpus.append((f"{item.get('relative_path', source_id)}#{source_id}", normalize(text)))
     return corpus
 
 
@@ -208,11 +241,21 @@ def check_p1_quote_closure(skill_md: Path, evidence_md: Path) -> list[str]:
     return errors
 
 
-def check_p2_corpus_closure(evidence_md: Path, slug: str, root: Path) -> list[str]:
-    """P2：evidence.md 中每条逐字原文必须逐字出现在语料中。"""
+def check_p2_corpus_closure(
+    evidence_md: Path,
+    slug: str,
+    root: Path,
+    corpus: list[tuple[str, str]] | None = None,
+) -> list[str]:
+    """P2：evidence.md 中每条逐字原文必须逐字出现在语料中。
+
+    传入 corpus 时直接用它，不再重读磁盘——发布证明需要对「P2 实际比对的那份
+    语料」取指纹，两次分别读盘之间语料若被改动，指纹就会证明一份没被检查过的语料。
+    """
     if not evidence_md.exists():
         return [f"MISSING: {evidence_md}"]
-    corpus = load_corpus(slug, root)
+    if corpus is None:
+        corpus = load_corpus(slug, root)
     if not corpus:
         return [f"EMPTY_CORPUS: sources/{slug}/ 下没有可读的 .txt/.md 语料"]
     errors: list[str] = []

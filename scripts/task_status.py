@@ -16,9 +16,17 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    from slug_rules import slug_arg
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.slug_rules import slug_arg  # type: ignore
+
+STATUS_SCHEMA_VERSION = "task-status-v2"
 
 
 BLOCK_AFTER_FAILURES = 3
@@ -47,7 +55,19 @@ def read_json(path: Path) -> Any:
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Atomic replacement prevents concurrent worker updates from leaving a
+    # truncated status file. The orchestrator remains the owner of merge order.
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
 
 
 def stage1a_status_path(slug: str) -> Path:
@@ -61,6 +81,7 @@ def stage3_status_path(slug: str) -> Path:
 def base_status(task_id: str, stage: str, agent_role: str, input_units: list[dict[str, Any]]) -> dict[str, Any]:
     unit_ids = [unit["unit_id"] for unit in input_units]
     return {
+        "schema_version": STATUS_SCHEMA_VERSION,
         "task_id": task_id,
         "stage": stage,
         "agent_role": agent_role,
@@ -128,6 +149,8 @@ def init_stage1a(slug: str) -> Path:
                 "input_path": str(repo_root() / "sources" / slug / "processed" / shard.get("path", "")),
                 "expected_output": str(repo_root() / "sources" / slug / "processed" / "local_shards" / f"{shard_id}_extracts.json"),
                 "token_estimate": shard.get("token_estimate", 0),
+                "input_fingerprint": manifest.get("input_fingerprint"),
+                "shard_fingerprint": shard.get("shard_fingerprint"),
                 "agent_role": "local-source-worker",
             }
         )
@@ -142,6 +165,7 @@ def init_stage1a(slug: str) -> Path:
 def init_stage3(slug: str) -> Path:
     root = repo_root()
     output_dir = root / "output" / slug
+    english_requested = (output_dir / "en_requested.flag").exists()
     units = [
         {
             "unit_id": "framework_core",
@@ -158,21 +182,21 @@ def init_stage3(slug: str) -> Path:
             "agent_role": "framework-synthesizer-zh",
             "depends_on": ["framework_core"],
         },
-        {
+        *([{
             "unit_id": "framework_en",
             "unit_type": "language_framework",
             "input_path": str(output_dir / "framework_core.json"),
             "expected_output": str(output_dir / "frameworks.en.json"),
             "agent_role": "framework-synthesizer-en",
             "depends_on": ["framework_core"],
-        },
+        }] if english_requested else []),
         {
             "unit_id": "alignment_review",
-            "unit_type": "alignment_review",
+            "unit_type": "alignment_review" if english_requested else "zh_self_check",
             "input_path": str(output_dir),
             "expected_output": str(output_dir / "framework_alignment_review.md"),
             "agent_role": "framework-alignment-reviewer",
-            "depends_on": ["framework_zh", "framework_en"],
+            "depends_on": ["framework_zh", "framework_en"] if english_requested else ["framework_zh"],
         },
     ]
     status = base_status(f"{slug}:stage3", "stage3", "framework-stage", units)
@@ -182,11 +206,53 @@ def init_stage3(slug: str) -> Path:
     return path
 
 
+def _output_matches_unit(unit: dict[str, Any]) -> bool:
+    expected = unit.get("expected_output")
+    if not expected or not Path(expected).is_file():
+        return False
+    output_path = Path(expected)
+    unit_type = unit.get("unit_type")
+    if unit_type != "local_source_shard":
+        if output_path.suffix.lower() == ".json":
+            try:
+                output = read_json(output_path)
+            except (OSError, json.JSONDecodeError):
+                return False
+            if not isinstance(output, dict):
+                return False
+            person_slug = output.get("person_slug")
+            if person_slug:
+                expected_slug = unit.get("input_path", "").split("output/")[-1].split("/")[0]
+                if expected_slug and person_slug != expected_slug:
+                    return False
+        else:
+            try:
+                return bool(output_path.read_text(encoding="utf-8").strip())
+            except OSError:
+                return False
+        return True
+
+    if output_path.suffix.lower() != ".json":
+        return False
+    try:
+        output = read_json(output_path)
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(output, dict):
+        return False
+    expected_fingerprint = unit.get("input_fingerprint")
+    if expected_fingerprint and output.get("input_fingerprint") != expected_fingerprint:
+        return False
+    if output.get("shard_id") != unit.get("unit_id"):
+        return False
+    return True
+
+
 def sync_outputs(status: dict[str, Any]) -> dict[str, Any]:
     for unit in status.get("input_units", []):
         unit_id = unit["unit_id"]
         expected = unit.get("expected_output")
-        if expected and Path(expected).exists() and unit_id not in status.get("completed_units", []):
+        if _output_matches_unit(unit) and unit_id not in status.get("completed_units", []):
             status.setdefault("completed_units", []).append(unit_id)
             status.setdefault("output_paths", {})[unit_id] = expected
     return refresh_status(status)
@@ -295,7 +361,7 @@ def main() -> None:
 
     init = sub.add_parser("init")
     init.add_argument("stage", choices=["stage1a", "stage3"])
-    init.add_argument("slug")
+    init.add_argument("slug", type=slug_arg)
 
     completed = sub.add_parser("mark-completed")
     completed.add_argument("status_path")

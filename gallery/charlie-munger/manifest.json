@@ -1,0 +1,8 @@
+{
+  "manifest_version": 2,
+  "slug": "charlie-munger",
+  "format_version": 1,
+  "files": {
+    "SKILL.md": "44e3466f8fef0a4c63edd7fd8f06eb86681c991c5cf1dff942b62c7fe5223ab1"
+  }
+}

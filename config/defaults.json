@@ -36,8 +36,28 @@
     "priority": "user-provided-first",
     "user_source_path": "./sources/{person-slug}/raw/",
     "processed_path": "./sources/{person-slug}/processed/",
-    "supported_formats": ["pdf", "txt", "md", "epub"],
-    "fallback": "web-search"
+    "supported_formats": ["pdf", "txt", "md"],
+    "fallback": "web-search",
+    "registry": {
+      "schema_version": "source-registry-v2",
+      "require_sha256": true,
+      "allow_nested_raw_paths": true,
+      "rights_status_default": "unverified"
+    },
+    "pdf": {
+      "document_classes": ["pure_image_pdf", "mixed_text_image_pdf", "pure_text_pdf"],
+      "native_backends": ["fitz", "pypdf"],
+      "ocr_trigger": "substantive_image_or_low_quality_text",
+      "ocr_default_backend": "rapidocr",
+      "ocr_escalation_backend": "paddleocr",
+      "ocr_page_quality_floor": 0.45
+    },
+    "sampling": {
+      "seed_policy": "stable_sha256",
+      "large_corpus_threshold_tokens": 150000,
+      "budget_gate": true,
+      "modes": ["exhaustive", "stratified"]
+    }
   },
   "quality": {
     "require_source_attribution": true,

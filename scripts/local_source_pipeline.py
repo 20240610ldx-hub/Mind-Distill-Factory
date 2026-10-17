@@ -23,6 +23,41 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+try:
+    from pdf_quality import classify_document, classify_page, quality_band, run_ocr
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.pdf_quality import classify_document, classify_page, quality_band, run_ocr  # type: ignore
+
+try:
+    from sampling import SamplingConfig, build_sampling_plan, write_plan
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.sampling import SamplingConfig, build_sampling_plan, write_plan  # type: ignore
+
+try:
+    from source_registry import build_registry, registry_by_relative_path, registry_fingerprint, write_registry
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.source_registry import build_registry, registry_by_relative_path, registry_fingerprint, write_registry  # type: ignore
+
+try:
+    from worker_dispatch import build_dispatch_plan
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.worker_dispatch import build_dispatch_plan  # type: ignore
+
+try:
+    from cost_estimator import estimate_cost, write_estimate
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.cost_estimator import estimate_cost, write_estimate  # type: ignore
+
+try:
+    from source_registry import sha256_file
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.source_registry import sha256_file  # type: ignore
+
+try:
+    from slug_rules import slug_arg
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.slug_rules import slug_arg  # type: ignore
+
 
 TARGET_TOKENS = 30_000
 SOFT_LIMIT_TOKENS = 50_000
@@ -51,6 +86,11 @@ class Segment:
     language: str
     text: str
     token_estimate: int
+    source_id: str = ""
+    extraction_quality_band: str = "unknown"
+    ocr_required: bool = False
+    unit_id: str = ""
+    stratum_key: str = ""
 
 
 def repo_root() -> Path:
@@ -128,9 +168,9 @@ def init_stage1a_status(slug: str) -> None:
         print(f"WARNING: could not initialize Stage 1A task_status.json: {e}")
 
 
-def extract_pdf_pages(path: Path) -> tuple[list[tuple[int, str]], dict[str, Any]]:
-    """Return one text segment per PDF page plus lightweight metadata."""
-    pages: list[tuple[int, str]] = []
+def extract_pdf_pages(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Return every PDF page with text/image diagnostics and OCR eligibility."""
+    pages: list[dict[str, Any]] = []
     metadata: dict[str, Any] = {}
 
     try:
@@ -141,30 +181,122 @@ def extract_pdf_pages(path: Path) -> tuple[list[tuple[int, str]], dict[str, Any]
             "page_count": len(doc),
             "title": doc.metadata.get("title") or path.stem,
             "producer": doc.metadata.get("producer") or "",
+            "backend": "fitz",
         }
+        page_quality_records: list[Any] = []
         for idx in range(len(doc)):
-            text = doc[idx].get_text("text") or ""
-            if text.strip():
-                pages.append((idx + 1, text.strip()))
+            page = doc[idx]
+            text = page.get_text("text") or ""
+            image_infos: list[dict[str, Any]] = []
+            try:
+                page_rect = page.rect
+                page_area = float(page_rect.width * page_rect.height)
+                for image in page.get_images(full=True):
+                    rects = page.get_image_rects(image)
+                    rect = rects[0] if rects else None
+                    image_infos.append({
+                        "xref": image[0],
+                        "width": image[2],
+                        "height": image[3],
+                        "bbox": [rect.x0, rect.y0, rect.x1, rect.y1] if rect else None,
+                    })
+            except Exception as image_error:
+                page_area = 0.0
+                metadata.setdefault("image_diagnostics_warnings", []).append(
+                    f"page {idx + 1}: {image_error}"
+                )
+            quality = classify_page(idx + 1, text, image_infos, page_area)
+            page_quality_records.append(quality)
+            ocr = None
+            if quality.ocr_required:
+                ocr = run_ocr(page, backend="auto")
+                if ocr.get("status") == "ok" and ocr.get("text"):
+                    # Preserve both layers. The OCR text is only a fallback for
+                    # indexing and remains explicitly marked in the page record.
+                    text = (text.strip() + "\n\n" + ocr["text"].strip()).strip()
+            pages.append({
+                "page_number": idx + 1,
+                "text": text.strip(),
+                "native_text": (page.get_text("text") or "").strip(),
+                "quality": quality.as_dict(),
+                "quality_band": quality_band(quality.quality_score),
+                "ocr": ocr,
+            })
         doc.close()
+        metadata["document_type"] = classify_document(page_quality_records)
+        metadata["ocr_page_count"] = sum(1 for quality in page_quality_records if quality.ocr_required)
+        metadata["ocr_success_count"] = sum(
+            1 for page in pages if page.get("ocr", {}).get("status") == "ok"
+        )
         return pages, metadata
     except Exception as fitz_error:
+        # Do not merge a partially extracted fitz result with pypdf output.
+        # A fallback starts from a clean page list and records the backend error.
+        pages = []
         metadata["fitz_error"] = str(fitz_error)
 
     try:
         from pypdf import PdfReader  # type: ignore
 
         reader = PdfReader(str(path))
-        metadata["page_count"] = len(reader.pages)
-        metadata["title"] = path.stem
+        metadata.update({"page_count": len(reader.pages), "title": path.stem, "backend": "pypdf"})
         for idx, page in enumerate(reader.pages):
             text = page.extract_text() or ""
-            if text.strip():
-                pages.append((idx + 1, text.strip()))
+            quality = classify_page(idx + 1, text)
+            pages.append({
+                "page_number": idx + 1,
+                "text": text.strip(),
+                "native_text": text.strip(),
+                "quality": quality.as_dict(),
+                "quality_band": quality_band(quality.quality_score),
+                "ocr": {"status": "requires_fitz_for_images", "backend": None, "text": "", "confidence": 0.0},
+            })
+        metadata["document_type"] = classify_document([
+            classify_page(page["page_number"], page["native_text"], [], 0.0)
+            for page in pages
+        ])
+        metadata["ocr_page_count"] = 0
+        metadata["ocr_success_count"] = 0
         return pages, metadata
     except Exception as pypdf_error:
         metadata["pypdf_error"] = str(pypdf_error)
         return pages, metadata
+
+
+def write_pdf_sidecar(slug: str, path: Path, source_id: str, source_sha256: str, pages: list[dict[str, Any]]) -> None:
+    """Persist page-addressable extracted text tied to the raw PDF hash."""
+    if not pages or not source_id:
+        return
+    extracted_dir = processed_dir(slug) / "extracted"
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+    text_path = extracted_dir / f"{source_id}.txt"
+    metadata_path = extracted_dir / f"{source_id}.json"
+    text_parts: list[str] = []
+    page_records: list[dict[str, Any]] = []
+    for page in pages:
+        page_number = page["page_number"]
+        page_text = page.get("text", "")
+        text_parts.append(f"--- Page {page_number} ---\n{page_text}")
+        ocr = page.get("ocr") or {}
+        page_records.append({
+            "page_number": page_number,
+            "text_sha256": hashlib.sha256(page_text.encode("utf-8")).hexdigest(),
+            "extraction_method": "ocr" if ocr.get("status") == "ok" else "fitz",
+            "quality": page.get("quality", {}),
+            "quality_band": page.get("quality_band", "unknown"),
+            "ocr": ocr,
+        })
+    text_path.write_text("\n\n".join(text_parts).strip() + "\n", encoding="utf-8")
+    metadata_path.write_text(
+        json.dumps({
+            "schema_version": "extracted-pdf-sidecar-v1",
+            "source_id": source_id,
+            "parent_sha256": source_sha256,
+            "source_file": path.name,
+            "pages": page_records,
+        }, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def split_text(text: str, max_tokens: int = HARD_LIMIT_TOKENS) -> list[str]:
@@ -223,14 +355,24 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
 
     segments: list[Segment] = []
     files_meta: list[dict[str, Any]] = []
-    files = sorted([p for p in source_dir.iterdir() if p.is_file()], key=lambda p: (priority_for_name(p.name), p.name.lower()))
+    files = sorted(
+        [p for p in source_dir.rglob("*") if p.is_file()],
+        key=lambda p: (priority_for_name(p.name), p.relative_to(source_dir).as_posix().lower()),
+    )
+    registry = build_registry(source_dir)
+    registry_map = registry_by_relative_path(registry)
+    write_registry(processed_dir(slug) / "source_registry.json", registry)
 
     for path in files:
         ext = path.suffix.lower()
         priority = priority_for_name(path.name)
+        relative_path = path.relative_to(source_dir).as_posix()
+        registry_item = registry_map.get(relative_path, {})
         file_meta: dict[str, Any] = {
-            "file": path.name,
+            "file": relative_path,
             "bytes": path.stat().st_size,
+            "sha256": registry_item.get("sha256") or sha256_file(path),
+            "source_id": registry_item.get("source_id"),
             "priority": priority,
             "extension": ext,
             "status": "indexed",
@@ -244,25 +386,43 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
             for idx, chunk in enumerate(chunks, start=1):
                 segments.append(
                     Segment(
-                        source_file=path.name,
+                        source_file=relative_path,
                         source_title=path.stem,
-                        source_detail=f"{path.name}, text chunk {idx}/{len(chunks)}",
+                        source_detail=f"{relative_path}, text chunk {idx}/{len(chunks)}",
                         source_priority=priority,
                         language=detect_language(chunk),
                         text=chunk,
                         token_estimate=estimate_tokens(chunk),
+                        source_id=registry_item.get("source_id", ""),
+                        extraction_quality_band="good",
                     )
                 )
         elif ext in SUPPORTED_PDF_EXTS:
             pages, metadata = extract_pdf_pages(path)
             file_meta.update(metadata)
-            if not pages:
+            write_pdf_sidecar(
+                slug,
+                path,
+                registry_item.get("source_id", ""),
+                registry_item.get("sha256", ""),
+                pages,
+            )
+            file_meta["pages"] = [
+                {
+                    "page_number": page["page_number"],
+                    "quality": page["quality"],
+                    "quality_band": page["quality_band"],
+                    "ocr": page.get("ocr"),
+                }
+                for page in pages
+            ]
+            if not pages or not any(page.get("text") for page in pages):
                 file_meta["status"] = "no_extractable_text"
                 file_meta["chunk_count"] = 0
             else:
                 page_buffer: list[str] = []
-                page_start = pages[0][0]
-                page_end = pages[0][0]
+                page_start = pages[0]["page_number"]
+                page_end = pages[0]["page_number"]
                 chunk_count = 0
 
                 def flush_pdf_buffer() -> None:
@@ -272,24 +432,34 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                         return
                     for sub_idx, chunk in enumerate(split_text(text), start=1):
                         chunk_count += 1
-                        detail = f"{path.name}, pages {page_start}-{page_end}, chunk {chunk_count}"
+                        detail = f"{relative_path}, pages {page_start}-{page_end}, chunk {chunk_count}"
                         if sub_idx > 1:
                             detail += f".{sub_idx}"
                         segments.append(
                             Segment(
-                                source_file=path.name,
+                                source_file=relative_path,
                                 source_title=metadata.get("title") or path.stem,
                                 source_detail=detail,
                                 source_priority=priority,
                                 language=detect_language(chunk),
                                 text=chunk,
                                 token_estimate=estimate_tokens(chunk),
+                                source_id=registry_item.get("source_id", ""),
+                                extraction_quality_band=(
+                                    "review" if any(page.get("quality_band") == "review" for page in pages)
+                                    else "good"
+                                ),
+                                ocr_required=any(page.get("quality", {}).get("ocr_required") for page in pages),
                             )
                         )
                     page_buffer = []
 
                 current_tokens = 0
-                for page_number, page_text in pages:
+                for page in pages:
+                    page_number = page["page_number"]
+                    page_text = page.get("text", "")
+                    if not page_text:
+                        continue
                     page_tokens = estimate_tokens(page_text)
                     if page_buffer and current_tokens + page_tokens > TARGET_TOKENS:
                         flush_pdf_buffer()
@@ -302,9 +472,16 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                     current_tokens += page_tokens
                 flush_pdf_buffer()
                 file_meta["chunk_count"] = chunk_count
-                file_meta["token_estimate"] = sum(estimate_tokens(text) for _, text in pages)
+                file_meta["token_estimate"] = sum(estimate_tokens(page.get("text", "")) for page in pages)
+                file_meta["ocr_required_pages"] = sum(
+                    1 for page in pages if page.get("quality", {}).get("ocr_required")
+                )
+                file_meta["ocr_success_pages"] = sum(
+                    1 for page in pages if page.get("ocr", {}).get("status") == "ok"
+                )
         else:
             file_meta["status"] = "unsupported_extension"
+            file_meta["reason"] = "extension is not supported by the source indexer"
             file_meta["chunk_count"] = 0
 
         files_meta.append(file_meta)
@@ -332,6 +509,9 @@ def pack_shards(segments: list[Segment]) -> list[dict[str, Any]]:
                     "source_detail": segment.source_detail,
                     "source_priority": segment.source_priority,
                     "language": segment.language,
+                    "source_id": segment.source_id,
+                    "extraction_quality_band": segment.extraction_quality_band,
+                    "ocr_required": segment.ocr_required,
                     "token_estimate": segment.token_estimate,
                     "text": segment.text,
                 }
@@ -361,6 +541,9 @@ def pack_shards(segments: list[Segment]) -> list[dict[str, Any]]:
                     language=detect_language(chunk),
                     text=chunk,
                     token_estimate=estimate_tokens(chunk),
+                    source_id=segment.source_id,
+                    extraction_quality_band=segment.extraction_quality_band,
+                    ocr_required=segment.ocr_required,
                 )
                 if current and current_tokens + split_segment.token_estimate > HARD_LIMIT_TOKENS:
                     flush()
@@ -395,27 +578,91 @@ def write_index(slug: str) -> None:
     out_dir = shard_dir(slug)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # A re-index is a new source snapshot. Remove generated shard/worker files
+    # first so the reducer cannot accidentally consume an older run.
+    for stale in out_dir.glob("shard_*.json"):
+        stale.unlink()
+    worker_dir = out_dir / "worker_outputs"
+    if worker_dir.exists():
+        for stale in worker_dir.glob("*.json"):
+            stale.unlink()
+
     segments, files_meta = collect_segments(slug)
     shards = pack_shards(segments)
     total_tokens = sum(s["token_estimate"] for s in shards)
     over_limit = [s["shard_id"] for s in shards if s["token_estimate"] > HARD_LIMIT_TOKENS]
+    registry = json.loads((processed_dir(slug) / "source_registry.json").read_text(encoding="utf-8"))
+    input_fingerprint = registry_fingerprint(registry)
 
+    for shard in shards:
+        shard["input_fingerprint"] = input_fingerprint
+        shard["source_ids"] = sorted({p.get("source_id") for p in shard["passages"] if p.get("source_id")})
+
+    sampling_units = [
+        {
+            "unit_id": shard["shard_id"],
+            "shard_id": shard["shard_id"],
+            "token_estimate": shard["token_estimate"],
+            "source_ids": shard.get("source_ids", []),
+            "source_file": ",".join(sorted({p.get("source_file", "") for p in shard["passages"] if p.get("source_file")})),
+            "language": "mixed",
+            "extraction_quality_band": "review" if any(
+                p.get("extraction_quality_band") in {"review", "poor", "unreadable"}
+                for p in shard["passages"]
+            ) else "good",
+            "ocr_required": any(p.get("ocr_required") for p in shard["passages"]),
+            "input_fingerprint": input_fingerprint,
+        }
+        for shard in shards
+    ]
+    # For large corpora, select shard units before dispatch. Small corpora stay
+    # exhaustive, but still emit the same auditable plan and coverage report.
+    sample_config = SamplingConfig(mode="auto")
+    sampling_plan = build_sampling_plan(sampling_units, config=sample_config)
+    write_plan(out_dir / "sampling_plan.json", sampling_plan)
+    selected_ids = {
+        item.get("unit_id") for item in sampling_plan.get("selected_units", [])
+    }
+    if sampling_plan.get("mode") == "stratified":
+        shards = [shard for shard in shards if shard.get("shard_id") in selected_ids]
+        total_tokens = sum(s["token_estimate"] for s in shards)
+        over_limit = [s["shard_id"] for s in shards if s["token_estimate"] > HARD_LIMIT_TOKENS]
     for shard in shards:
         (out_dir / f"{shard['shard_id']}.json").write_text(
             json.dumps(shard, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+    dispatch_plan = build_dispatch_plan(sampling_plan["selected_units"])
+    (out_dir / "dispatch_plan.json").write_text(
+        json.dumps(dispatch_plan, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    ocr_pages = sum(int(item.get("ocr_required_pages") or 0) for item in files_meta)
+    cost_estimate = estimate_cost(
+        selected_tokens=total_tokens,
+        total_tokens=sum(int(item.get("token_estimate") or 0) for item in files_meta),
+        shard_count=len(shards),
+        ocr_pages=ocr_pages,
+    )
+    write_estimate(out_dir / "cost_estimate.json", cost_estimate)
 
     manifest = {
+        "schema_version": "local-source-manifest-v2",
         "person_slug": slug,
         "created_at": date.today().isoformat(),
+        "input_fingerprint": input_fingerprint,
         "raw_dir": str(raw_dir(slug)),
         "shard_dir": str(out_dir),
+        "source_registry": "../source_registry.json",
+        "sampling_plan": "local_shards/sampling_plan.json",
+        "dispatch_plan": "local_shards/dispatch_plan.json",
+        "cost_estimate": "local_shards/cost_estimate.json",
         "target_tokens": TARGET_TOKENS,
         "soft_limit_tokens": SOFT_LIMIT_TOKENS,
         "hard_limit_tokens": HARD_LIMIT_TOKENS,
         "total_token_estimate": total_tokens,
         "recommended_worker_count": recommended_workers(total_tokens),
+        "recommended_max_concurrency": dispatch_plan.get("recommended_max_concurrency"),
+        "sampling_mode": sampling_plan.get("mode"),
         "shard_count": len(shards),
         "over_limit_shards": over_limit,
         "files": files_meta,
@@ -426,6 +673,8 @@ def write_index(slug: str) -> None:
                 "token_estimate": shard["token_estimate"],
                 "passage_count": len(shard["passages"]),
                 "source_files": sorted({p["source_file"] for p in shard["passages"]}),
+                "input_fingerprint": shard.get("input_fingerprint"),
+                "source_ids": shard.get("source_ids", []),
             }
             for shard in shards
         ],
@@ -464,21 +713,44 @@ def extract_sort_key(ext: dict[str, Any]) -> tuple[int, int, int]:
 
 def load_worker_outputs(slug: str) -> list[dict[str, Any]]:
     out_dir = shard_dir(slug)
-    candidates = sorted(out_dir.glob("*_extracts.json"))
+    manifest_path = out_dir / "manifest.json"
+    manifest = read_json_file(manifest_path) if manifest_path.exists() else {}
+    expected_ids = {item.get("shard_id") for item in manifest.get("shards", [])}
+    expected_fingerprint = manifest.get("input_fingerprint")
+    candidates = [
+        out_dir / f"{shard_id}_extracts.json"
+        for shard_id in sorted(expected_ids)
+        if shard_id
+    ]
     worker_dir = out_dir / "worker_outputs"
     if worker_dir.exists():
         candidates.extend(sorted(worker_dir.glob("*.json")))
 
     extracts: list[dict[str, Any]] = []
     for path in candidates:
-        data = read_json_file(path)
+        try:
+            data = read_json_file(path)
+        except (OSError, json.JSONDecodeError):
+            continue
         if isinstance(data, list):
             items = data
-        else:
+            metadata: dict[str, Any] = {}
+        elif isinstance(data, dict):
             items = data.get("extracts", [])
+            metadata = data
+        else:
+            continue
+        fingerprint = metadata.get("input_fingerprint")
+        if expected_fingerprint and fingerprint != expected_fingerprint:
+            continue
+        shard_id = metadata.get("shard_id")
+        if expected_ids and (not shard_id or shard_id not in expected_ids):
+            continue
         for item in items:
             if isinstance(item, dict):
                 item.setdefault("_worker_output", path.name)
+                item.setdefault("input_fingerprint", fingerprint)
+                item.setdefault("shard_id", shard_id)
                 extracts.append(item)
     return extracts
 
@@ -602,15 +874,15 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     index_parser = subparsers.add_parser("index", help="extract and shard sources/{slug}/raw")
-    index_parser.add_argument("slug")
+    index_parser.add_argument("slug", type=slug_arg)
 
     reduce_parser = subparsers.add_parser("reduce", help="merge shard worker outputs into user_sources.json")
-    reduce_parser.add_argument("slug")
+    reduce_parser.add_argument("slug", type=slug_arg)
     reduce_parser.add_argument("--person-name", default=None)
     reduce_parser.add_argument("--max-extracts", type=int, default=DEFAULT_MAX_EXTRACTS)
 
     stats_parser = subparsers.add_parser("stats", help="show shard manifest stats")
-    stats_parser.add_argument("slug")
+    stats_parser.add_argument("slug", type=slug_arg)
 
     args = parser.parse_args()
     if args.command == "index":

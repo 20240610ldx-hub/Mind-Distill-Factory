@@ -32,6 +32,9 @@ def build_v6_output(root: Path) -> Path:
     for name in ("cases.md", "evidence.md", "voice.md"):
         (refs / name).write_text(f"# {name}\n", encoding="utf-8")
     (out / "人物档案.md").write_text("# 档案\n", encoding="utf-8")
+    (out / "framework_core.json").write_text(
+        json.dumps({"principle_clusters": [{"cluster_id": "cluster_001"}]}), encoding="utf-8"
+    )
     return out
 
 
@@ -122,7 +125,7 @@ class ManifestTests(unittest.TestCase):
             out = build_v6_output(root)
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=True)
-            manifest_path = publisher.write_manifest(gallery, copied, is_v6=True)
+            manifest_path = publisher.write_manifest(gallery, "demo", True, out, root)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(sorted(manifest["files"].keys()), sorted(copied))
             for digest in manifest["files"].values():
@@ -135,11 +138,11 @@ class ManifestTests(unittest.TestCase):
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=True)
             first = json.loads(
-                publisher.write_manifest(gallery, copied, is_v6=True).read_text(encoding="utf-8")
+                publisher.write_manifest(gallery, "demo", True, out, root).read_text(encoding="utf-8")
             )
             (gallery / "references" / "cases.md").write_text("# changed\n", encoding="utf-8")
             second = json.loads(
-                publisher.write_manifest(gallery, copied, is_v6=True).read_text(encoding="utf-8")
+                publisher.write_manifest(gallery, "demo", True, out, root).read_text(encoding="utf-8")
             )
             self.assertNotEqual(
                 first["files"]["references/cases.md"], second["files"]["references/cases.md"]
@@ -157,9 +160,11 @@ class ManifestTests(unittest.TestCase):
             (out / "SKILL.md").write_text("---\nname: demo-wisdom\n---\n", encoding="utf-8")
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=False)
-            manifest_path = publisher.write_manifest(gallery, copied, is_v6=False)
+            manifest_path = publisher.write_manifest(gallery, "demo", False, out, root)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["format_version"], 1)
+            self.assertEqual(manifest["manifest_version"], 2)
+            self.assertNotIn("attestation", manifest)
 
 
 V6_SKILL = """---
@@ -223,11 +228,12 @@ class ExtractV6MetadataTests(unittest.TestCase):
             meta = publisher.extract_v6_metadata(self._write(td))
             self.assertEqual(meta["secondary_categories"], ["enterprise", "strategy"])
 
-    def test_missing_identity_card_yields_safe_defaults(self) -> None:
+    def test_missing_identity_card_yields_none_not_defaults(self) -> None:
+        # 回落到 "Unknown"/"philosophy" 会把残缺的包悄悄登记成哲学类人物。
         with tempfile.TemporaryDirectory() as td:
             meta = publisher.extract_v6_metadata(self._write(td, BARE_V6_SKILL))
-            self.assertEqual(meta["era"], "Unknown")
-            self.assertEqual(meta["primary_category"], "philosophy")
+            self.assertIsNone(meta["era"])
+            self.assertIsNone(meta["primary_category"])
             self.assertEqual(meta["secondary_categories"], [])
 
 
@@ -243,6 +249,31 @@ class ResolveMetadataTests(unittest.TestCase):
             self.assertEqual(meta["name_zh"], "张居正")
             self.assertEqual(meta["primary_cat"], "governance")
             self.assertEqual(meta["secondary_cats"], ["enterprise", "strategy"])
+
+    def test_v6_without_identity_card_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "output" / "demo"
+            out.mkdir(parents=True)
+            (out / "SKILL.md").write_text(BARE_V6_SKILL, encoding="utf-8")
+            with self.assertRaises(publisher.MetadataError):
+                publisher.resolve_metadata(out, "demo")
+
+    def test_v6_unknown_or_excess_categories_are_refused(self) -> None:
+        cases = {
+            "unknown primary": V6_SKILL.replace("治理 (governance)", "治理 (statecraft)"),
+            "unknown secondary": V6_SKILL.replace("谋略 (strategy)", "谋略 (warfare)"),
+            "three secondaries": V6_SKILL.replace(
+                "谋略 (strategy)", "谋略 (strategy)、修身 (conduct)"
+            ),
+        }
+        for label, text in cases.items():
+            with self.subTest(label):
+                with tempfile.TemporaryDirectory() as td:
+                    out = Path(td) / "output" / "demo"
+                    out.mkdir(parents=True)
+                    (out / "SKILL.md").write_text(text, encoding="utf-8")
+                    with self.assertRaises(publisher.MetadataError):
+                        publisher.resolve_metadata(out, "demo")
 
     def test_legacy_package_still_reads_frameworks_json(self) -> None:
         with tempfile.TemporaryDirectory() as td:
