@@ -155,7 +155,7 @@ class HelperTests(unittest.TestCase):
         self.assertIn("吾必謂之學已矣。", text, "隐藏的校勘注不得拼进原文")
         for noise in ("var a", "导航", "[编辑]", "[1]", "上一篇", "取自", "版本信息", "序說", "◄", "一無"):
             self.assertNotIn(noise, text)
-        self.assertNotIn(" ", text)
+        self.assertNotIn("\u00a0", text)
 
     def test_html_to_text_falls_back_without_root(self):
         text = acq.html_to_text("<body><p>甲</p><br><p>乙</p></body>", "mw-parser-output")
@@ -163,7 +163,7 @@ class HelperTests(unittest.TestCase):
 
     def test_decode_text(self):
         self.assertEqual(acq.decode_text("中文".encode("gb18030"), "text/plain; charset=gbk")[:2], ("中文", "gbk"))
-        self.assertEqual(acq.decode_text("﻿中文".encode("utf-8"), "")[0], "中文")
+        self.assertEqual(acq.decode_text("\ufeff中文".encode("utf-8"), "")[0], "中文")
 
     def test_rights_decision(self):
         self.assertEqual(acq.rights_decision(POLICY, "public_domain"), "allow")

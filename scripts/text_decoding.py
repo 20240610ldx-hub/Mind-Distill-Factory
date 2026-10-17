@@ -36,4 +36,4 @@ def decode_bytes(data: bytes) -> Decoded:
         except UnicodeDecodeError:
             continue
     text = data.decode("utf-8", errors="replace")
-    return Decoded(text, "utf-8-replace", text.count("�"))
+    return Decoded(text, "utf-8-replace", text.count("\ufffd"))

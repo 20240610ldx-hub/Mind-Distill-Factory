@@ -52,10 +52,10 @@ THRESHOLDS = {
 }
 
 CJK_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
-PUA_RE = re.compile(r"[-]")
+PUA_RE = re.compile(r"[\ue000-\uf8ff]")
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f]")
 # UTF-8 被当成 cp1252/latin-1 读出的典型片段：Ã© â€™ Â
-LATIN_MOJIBAKE_RE = re.compile(r"Ã[\u0080-¿]|â€[\u0080-¿‐-›™]|Â[ -¿]")
+LATIN_MOJIBAKE_RE = re.compile(r"Ã[\u0080-¿]|â€[\u0080-¿‐-›™]|Â[\u00a0-¿]")
 # UTF-8 中文被当成 GBK 读出的典型字：，→锛 。→銆 “→鈥 的→鐨 是→鏄
 GBK_MOJIBAKE_CHARS = "锛銆鈥鐨鏄"
 
@@ -107,7 +107,7 @@ def text_metrics(text: str) -> dict[str, Any]:
     return {
         "chars": chars,
         "cjk_chars": cjk,
-        "fffd": text.count("�"),
+        "fffd": text.count("\ufffd"),
         "pua": len(PUA_RE.findall(text)),
         "control": len(CONTROL_RE.findall(text)),
         "latin_mojibake": len(LATIN_MOJIBAKE_RE.findall(text)),

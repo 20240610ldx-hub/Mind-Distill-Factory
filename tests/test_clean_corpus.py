@@ -48,7 +48,7 @@ class DecodingTests(unittest.TestCase):
 
     def test_utf8_bom_is_kept_like_before(self):
         # 旧版 P2 按 utf-8 读、保留 BOM 字符；指纹兼容要求这点不变。
-        self.assertEqual(decoding.decode_bytes(b"\xef\xbb\xbfabc").text, "﻿abc")
+        self.assertEqual(decoding.decode_bytes(b"\xef\xbb\xbfabc").text, "\ufeffabc")
 
     def test_never_silently_falls_back_to_latin1(self):
         decoded = decoding.decode_bytes(b"\xff\xff\xff\xfe\x00\x81")
@@ -192,8 +192,8 @@ class CleanTextTests(unittest.TestCase):
         self.assertIn("mojibake_utf8_as_gbk", cc.clean_text(utf8_as_gbk)[1]["reasons"])
         latin = ("Thoughts on the café and naïve résumé — “quoted” " * 40).encode("utf-8").decode("cp1252", errors="replace")
         self.assertIn("mojibake_utf8_as_latin", cc.clean_text(latin)[1]["reasons"])
-        self.assertIn("private_use_glyphs", cc.clean_text("正文" * 50 + "" * 20)[1]["reasons"])
-        self.assertIn("replacement_chars", cc.clean_text("正文" * 50 + "�" * 10)[1]["reasons"])
+        self.assertIn("private_use_glyphs", cc.clean_text("正文" * 50 + "\ue001" * 20)[1]["reasons"])
+        self.assertIn("replacement_chars", cc.clean_text("正文" * 50 + "\ufffd" * 10)[1]["reasons"])
         self.assertEqual(cc.clean_text("12\n13\n14")[1]["reasons"], ["empty_after_cleaning"])
         for entry in (cc.clean_text(utf8_as_gbk)[1],):
             self.assertEqual(entry["verdict"], "rejected")

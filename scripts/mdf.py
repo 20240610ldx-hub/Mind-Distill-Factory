@@ -246,6 +246,7 @@ PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
     "clean": ("clean_corpus", [], "查看清洗报告；clean check <文件> 预检单个文件"),
     "reduce": ("local_source_pipeline", ["reduce"], "合并分片抽取结果"),
     "stats": ("local_source_pipeline", ["stats"], "分片统计"),
+    "metrics": ("persona_metrics", [], "主张账本、来源集中度、文体指纹、对话漂移（代理指标）"),
     "publish": ("publish_skill", [], "事务化发布到 gallery"),
     "manifest": ("package_manifest", [], "发布清单工具（backfill）"),
 }

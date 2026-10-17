@@ -127,7 +127,7 @@ class CorpusTests(unittest.TestCase):
             (raw / "bad.txt").write_bytes(b"abc\xff\xff")  # UTF-8、GB18030、Big5 都无法解码
             corpus = prov.load_corpus("demo", root)
             self.assertEqual(len(corpus), 1)
-            self.assertIn("�", corpus[0][1])
+            self.assertIn("\ufffd", corpus[0][1])
 
 
 class VariantFolderTests(unittest.TestCase):
