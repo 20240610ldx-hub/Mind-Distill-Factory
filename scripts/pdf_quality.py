@@ -7,9 +7,16 @@ indexer when available; OCR engines are imported only for pages that need OCR.
 
 from __future__ import annotations
 
+import atexit
+import base64
 import hashlib
+import json
+import os
 import re
+import subprocess
+import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
 
 
@@ -174,8 +181,28 @@ def _to_image_bytes(page: Any, dpi: int = 150) -> bytes:
     return matrix.tobytes("png")
 
 
+def _mean(scores: list[float]) -> float:
+    return sum(scores) / len(scores) if scores else 0.0
+
+
 def _rapidocr_runner() -> Callable[[bytes], tuple[str, float]]:
-    from rapidocr_onnxruntime import RapidOCR  # type: ignore
+    try:  # rapidocr ≥3（支持 Python 3.13）：返回 RapidOCROutput，文本与分数在 txts / scores
+        from rapidocr import RapidOCR as RapidOCRv3  # type: ignore
+    except ImportError:
+        return _rapidocr_legacy_runner()
+    engine_v3 = RapidOCRv3(params={"Global.log_level": "warning"})
+
+    def run_v3(image: bytes) -> tuple[str, float]:
+        out = engine_v3(image)
+        texts = [str(t) for t in (getattr(out, "txts", None) or ())]
+        scores = [float(s) for s in (getattr(out, "scores", None) or ())]
+        return "\n".join(texts).strip(), _mean(scores)
+
+    return run_v3
+
+
+def _rapidocr_legacy_runner() -> Callable[[bytes], tuple[str, float]]:
+    from rapidocr_onnxruntime import RapidOCR  # type: ignore  # 旧包，只支持 Python <3.13
 
     engine = RapidOCR()
 
@@ -192,9 +219,96 @@ def _rapidocr_runner() -> Callable[[bytes], tuple[str, float]]:
                     scores.append(float(item[2]))
                 except (TypeError, ValueError):
                     pass
-        return "\n".join(lines).strip(), sum(scores) / len(scores) if scores else 0.0
+        return "\n".join(lines).strip(), _mean(scores)
 
     return run
+
+
+PADDLEOCR_JSON_ENV = "MDF_PADDLEOCR_JSON"
+PADDLEOCR_JSON_ARGS_ENV = "MDF_PADDLEOCR_JSON_ARGS"
+PADDLEOCR_JSON_NAMES = ("PaddleOCR-json.exe", "PaddleOCR-json", "run.sh")
+
+
+def paddleocr_json_exe() -> Path | None:
+    """MDF_PADDLEOCR_JSON 指向 PaddleOCR-json 可执行文件或它所在的文件夹（Umi-OCR 的
+    UmiOCR-data/plugins/win7_x64_PaddleOCR-json 就是）。不扫磁盘，不猜路径。"""
+    raw = os.environ.get(PADDLEOCR_JSON_ENV, "").strip().strip('"')
+    if not raw:
+        return None
+    path = Path(raw)
+    if path.is_dir():
+        return next((path / n for n in PADDLEOCR_JSON_NAMES if (path / n).is_file()), None)
+    return path if path.is_file() else None
+
+
+class PaddleOcrJsonPipe:
+    """PaddleOCR-json 的管道协议：常驻子进程，stdin 每行一个请求 JSON，stdout 每行一个结果 JSON。
+    code 100 = 有文字，101 = 图中没字，其余是错误。"""
+
+    INIT_MARK = b"OCR init completed."
+
+    def __init__(self, cmd: list[str], cwd: Path | None = None, init_timeout: float = 120.0):
+        self.proc = subprocess.Popen(
+            cmd, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        atexit.register(self.close)
+        ready: dict[str, bool] = {}
+
+        def wait_ready() -> None:
+            for line in iter(self.proc.stdout.readline, b""):
+                if self.INIT_MARK in line:
+                    ready["ok"] = True
+                    return
+
+        waiter = threading.Thread(target=wait_ready, daemon=True)
+        waiter.start()
+        waiter.join(init_timeout)
+        if not ready:
+            self.close()
+            raise RuntimeError(f"PaddleOCR-json did not finish init within {init_timeout:.0f}s")
+
+    def __call__(self, image: bytes) -> tuple[str, float]:
+        if self.proc.poll() is not None:
+            raise RuntimeError(f"PaddleOCR-json exited (code {self.proc.returncode})")
+        request = json.dumps({"image_base64": base64.b64encode(image).decode("ascii")})
+        self.proc.stdin.write(request.encode("ascii") + b"\n")
+        self.proc.stdin.flush()
+        reply = json.loads(self.proc.stdout.readline().decode("utf-8", errors="replace") or "{}")
+        code = reply.get("code")
+        if code == 101:
+            return "", 0.0
+        if code != 100:
+            raise RuntimeError(f"PaddleOCR-json code {code}: {reply.get('data')}")
+        items = [d for d in reply.get("data") or [] if isinstance(d, dict)]
+        texts = [str(d.get("text", "")) for d in items]
+        scores = [float(d["score"]) for d in items if isinstance(d.get("score"), (int, float))]
+        return "\n".join(texts).strip(), _mean(scores)
+
+    def close(self) -> None:
+        if self.proc.poll() is None:
+            try:
+                self.proc.kill()
+            except OSError:
+                pass
+        try:  # 等进程真正退出：Windows 上它还占着 cwd，调用方删不掉目录
+            self.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        for stream in (self.proc.stdin, self.proc.stdout):
+            try:
+                stream.close()
+            except (OSError, AttributeError):
+                pass
+
+
+def _paddleocr_json_runner() -> Callable[[bytes], tuple[str, float]]:
+    exe = paddleocr_json_exe()
+    if exe is None:
+        raise ImportError(f"set {PADDLEOCR_JSON_ENV} to PaddleOCR-json.exe or its folder")
+    # 额外启动参数用空格分隔，例如 --config_path=models/config_chinese_cht.txt --limit_side_len=2880
+    args = os.environ.get(PADDLEOCR_JSON_ARGS_ENV, "").split()
+    return PaddleOcrJsonPipe([str(exe), *args], cwd=exe.parent)
 
 
 def _paddleocr_runner() -> Callable[[bytes], tuple[str, float]]:
@@ -228,15 +342,17 @@ def _paddleocr_runner() -> Callable[[bytes], tuple[str, float]]:
                             scores.append(float(line[1][1]))
                         except (TypeError, ValueError):
                             pass
-        return "\n".join(lines).strip(), sum(scores) / len(scores) if scores else 0.0
+        return "\n".join(lines).strip(), _mean(scores)
 
     return run
 
 
 RUNNER_FACTORIES: dict[str, Callable[[], Callable[[bytes], tuple[str, float]]]] = {
     "rapidocr": _rapidocr_runner,
+    "paddleocr_json": _paddleocr_json_runner,
     "paddleocr": _paddleocr_runner,
 }
+OCR_BACKEND_ENV = "MDF_OCR_BACKEND"
 # 引擎加载很慢（ONNX / Paddle 模型），每个进程每个引擎只建一次——过去每页都新建一次，
 # 600 页的扫描件要加载 600 次模型。缺依赖（ImportError）不缓存，装上后同一进程可重试。
 _RUNNERS: dict[str, Callable[[bytes], tuple[str, float]]] = {}
@@ -264,11 +380,20 @@ def clear_injected_runners() -> None:
     _INJECTED.clear()
 
 
+def ocr_candidates(backend: str = "auto") -> list[str]:
+    """auto 时按 RUNNER_FACTORIES 顺序取第一个出字的引擎；MDF_OCR_BACKEND 可把 auto 钉在一个引擎上
+    （注入的测试引擎仍排最前）。显式指定的 backend 只用它自己。"""
+    if backend != "auto":
+        return [backend]
+    pinned = os.environ.get(OCR_BACKEND_ENV, "").strip()
+    return [*_INJECTED, *([pinned] if pinned and pinned != "auto" else RUNNER_FACTORIES)]
+
+
 def run_ocr(page: Any, backend: str = "auto", *, dpi: int = 150) -> dict[str, Any]:
     """OCR one page, returning an explicit unavailable/error status."""
     if backend == "off":
         return {"status": "disabled", "backend": None, "text": "", "confidence": 0.0}
-    candidates = [*_INJECTED, *RUNNER_FACTORIES] if backend == "auto" else [backend]
+    candidates = ocr_candidates(backend)
     errors: list[str] = []
     try:
         image = _to_image_bytes(page, dpi=dpi)

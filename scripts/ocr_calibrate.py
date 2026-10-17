@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """OCR 校准与扫描件诊断。
 
-    python scripts/mdf.py ocr calibrate [--degrade all|none|light|heavy] [--font PATH] [--json]
-    python scripts/mdf.py ocr scan <file.pdf> [--json]
+    python scripts/mdf.py ocr calibrate [--degrade all|none|light|heavy|severe] [--backend auto|all|NAME] [--font PATH] [--json]
+    python scripts/mdf.py ocr scan <file.pdf> [--backend auto|NAME] [--json]
 
-calibrate：把一份已知真值的文本渲染成无文字层的「扫描件」PDF（可选轻度/重度退化：倾斜、
+calibrate：把一份已知真值的文本渲染成无文字层的「扫描件」PDF（可选轻度/重度/严重退化：倾斜、
 模糊、噪点、降采样），送进 index 用的同一条 PDF→OCR 路径（local_source_pipeline.
 extract_pdf_pages），再与真值比对：
 
@@ -13,7 +13,8 @@ extract_pdf_pages），再与真值比对：
   这才是证据链关心的数字，CER 低不等于引文能溯源；
 - 引擎置信度，以及清洗闸门对这份 OCR 结果打的标（如 low_ocr_confidence）。
 
-不同退化档位的置信度与 CER 放在一张表里，用来校准 clean_corpus 的 OCR 阈值。
+不同退化档位的置信度与 CER 放在一张表里，用来校准 clean_corpus 的 OCR 阈值；--backend all
+把每个装好的引擎各跑一遍，同一批图、同一套指标，引擎之间可以直接比。
 scan：对真实扫描件逐页报告分类、OCR 状态与置信度（没有真值，不算 CER）。
 """
 
@@ -26,6 +27,7 @@ import random
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -51,6 +53,8 @@ DEGRADE = {
     "none": {"angle": 0.0, "blur": 0.0, "noise": 0.0, "scale": 1.0},
     "light": {"angle": 0.6, "blur": 0.4, "noise": 0.06, "scale": 1.0},
     "heavy": {"angle": 1.5, "blur": 0.9, "noise": 0.14, "scale": 0.55},
+    # 老复印件 / 手机翻拍的低分辨率扫描：低置信阈值就落在这一档和 heavy 之间
+    "severe": {"angle": 2.5, "blur": 1.3, "noise": 0.22, "scale": 0.42},
 }
 MIN_SENTENCE_CHARS = 6
 
@@ -104,7 +108,8 @@ def render_page(text: str, font: Path | None, *, dpi: int = 200, degrade: str = 
     if spec["blur"]:
         image = image.filter(ImageFilter.GaussianBlur(spec["blur"]))
     if spec["noise"]:
-        noise = Image.effect_noise((width, height), 64).point(lambda v: 255 if v > 128 else 0)
+        # 噪点用带种子的随机字节（Image.effect_noise 不收种子，同一档两次跑出的数会不一样）
+        noise = Image.frombytes("L", (width, height), rng.randbytes(width * height)).point(lambda v: 255 if v > 128 else 0)
         image = Image.blend(image, noise, spec["noise"])
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", dpi=(dpi, dpi))
@@ -193,15 +198,19 @@ def _ocr_stats(pages: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str], dpi: int = 200,
-              workdir: Path | None = None) -> dict[str, Any]:
+              backends: list[str] | None = None, workdir: Path | None = None) -> dict[str, Any]:
     normalize = _normalize()
     levels = []
     with tempfile.TemporaryDirectory() as td:
         base = workdir or Path(td)
-        for level in degrades:
+        pdfs = {}
+        for level in degrades:  # 同一档的图只画一次，所有引擎读同一份 PDF
             images = [render_page(text, font, dpi=dpi, degrade=level, seed=i) for i, text in enumerate(truth_pages)]
-            pdf = build_pdf(images, base / f"synthetic-{level}.pdf", dpi=dpi)
-            pages, meta = lsp.extract_pdf_pages(pdf)
+            pdfs[level] = build_pdf(images, base / f"synthetic-{level}.pdf", dpi=dpi)
+        for backend, level in ((b, lv) for b in backends or ["auto"] for lv in degrades):
+            started = time.perf_counter()
+            pages, meta = lsp.extract_pdf_pages(pdfs[level], ocr_backend=backend)
+            seconds = time.perf_counter() - started
             rows = []
             for truth, page in zip(truth_pages, pages):
                 ocr = page.get("ocr") or {}
@@ -214,7 +223,9 @@ def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str],
             chars = sum(r["truth_chars"] for r in rows) or 1
             sentences = sum(r["sentences"] for r in rows)
             levels.append({
-                "degrade": level,
+                "engine": backend, "degrade": level,
+                "backend_used": sorted({r["backend"] for r in rows if r["backend"]}),
+                "seconds_per_page": round(seconds / max(1, len(pages)), 2),
                 "document_type": meta.get("document_type"),
                 "cer": round(sum(r["cer"] * r["truth_chars"] for r in rows) / chars, 4),
                 "verbatim_survival": round(sum(r["sentences_verbatim"] for r in rows) / sentences, 4) if sentences else None,
@@ -227,8 +238,8 @@ def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str],
             "low_confidence_threshold": clean_corpus.THRESHOLDS["ocr_low_confidence"], "levels": levels}
 
 
-def scan(pdf: Path) -> dict[str, Any]:
-    pages, meta = lsp.extract_pdf_pages(pdf)
+def scan(pdf: Path, backend: str = "auto") -> dict[str, Any]:
+    pages, meta = lsp.extract_pdf_pages(pdf, ocr_backend=backend)
     stats = _ocr_stats(pages)
     _, gate = clean_corpus.clean_pdf_pages([p.get("text", "") for p in pages], stats)
     rows = [{
@@ -242,17 +253,21 @@ def scan(pdf: Path) -> dict[str, Any]:
 
 def render_calibration(report: dict[str, Any]) -> str:
     lines = [f"## OCR 校准（字体 {report['font'] or 'PIL 内置'}，{report['dpi']} dpi）", "",
-             "| 退化档 | CER | 逐字存活率 | 平均置信度 | OCR 成功页 | 清洗闸门 |", "|---|---|---|---|---|---|"]
+             "| 引擎 | 退化档 | CER | 逐字存活率 | 平均置信度 | OCR 成功页 | 秒/页 | 清洗闸门 |",
+             "|---|---|---|---|---|---|---|---|"]
     for lv in report["levels"]:
         gate = "、".join(lv["gate_reasons"] + lv["gate_flags"]) or "通过"
         survival = "—" if lv["verbatim_survival"] is None else f"{lv['verbatim_survival']:.0%}"
         conf = "—" if lv["mean_confidence"] is None else f"{lv['mean_confidence']:.3f}"
-        lines.append(f"| {lv['degrade']} | {lv['cer']:.2%} | {survival} | {conf} | {lv['ocr_ok_pages']}/{lv['pages']} | {gate} |")
+        engine = "/".join(lv.get("backend_used") or []) or lv.get("engine", "auto")
+        lines.append(f"| {engine} | {lv['degrade']} | {lv['cer']:.2%} | {survival} | {conf} "
+                     f"| {lv['ocr_ok_pages']}/{lv['pages']} | {lv.get('seconds_per_page', '—')} | {gate} |")
     lines += ["", f"清洗闸门的低置信阈值：{report['low_confidence_threshold']}。逐字存活率低于 100% 的档位，"
               "其引文必须对照原图核实，不能直接当 high 证据。"]
-    lost = [(lv["degrade"], s) for lv in report["levels"] for r in lv["page_rows"] for s in r["lost_sentences"]]
+    lost = [("/".join(lv.get("backend_used") or []) or lv.get("engine", "auto"), lv["degrade"], s)
+            for lv in report["levels"] for r in lv["page_rows"] for s in r["lost_sentences"]]
     if lost:
-        lines += ["", "逐字丢失的句子（前 10 条）："] + [f"- [{d}] {s}" for d, s in lost[:10]]
+        lines += ["", "逐字丢失的句子（前 10 条）："] + [f"- [{e} · {d}] {s}" for e, d, s in lost[:10]]
     return "\n".join(lines) + "\n"
 
 
@@ -281,17 +296,25 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--degrade", choices=[*DEGRADE, "all"], default="all")
     p.add_argument("--font", help="CJK 字体文件（默认在常见系统路径里找）")
     p.add_argument("--dpi", type=int, default=200)
+    p.add_argument("--backend", default="auto", help="auto（与 index 相同）、all（每个装好的引擎各跑一遍）或引擎名")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("scan", help="逐页报告真实扫描件的分类、OCR 状态与置信度")
     p.add_argument("pdf", type=Path)
+    p.add_argument("--backend", default="auto", help="auto 或引擎名")
     p.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
-    if not engine_available():
-        print("没有可用的 OCR 引擎：pip install -e .[ocr]（rapidocr_onnxruntime）后重试。", file=sys.stderr)
+    available = engine_available()
+    if not available:
+        print(f"没有可用的 OCR 引擎：pip install -e .[ocr]（rapidocr + onnxruntime），或把环境变量 "
+              f"{pdf_quality.PADDLEOCR_JSON_ENV} 指向 PaddleOCR-json.exe（Umi-OCR 的 PaddleOCR-json 插件目录即可）。",
+              file=sys.stderr)
+        return 2
+    if args.backend not in ("auto", "all") and args.backend not in available:
+        print(f"引擎 {args.backend} 不可用；可用：{', '.join(available)}", file=sys.stderr)
         return 2
     if args.action == "scan":
-        report = scan(args.pdf)
+        report = scan(args.pdf, "auto" if args.backend == "all" else args.backend)
         print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_scan(report), end="\n" if args.json else "")
         return 0
     font = find_cjk_font(args.font)
@@ -299,7 +322,8 @@ def main(argv: list[str] | None = None) -> int:
         print("找不到 CJK 字体：用 --font 指定一个能显示中文的字体文件。", file=sys.stderr)
         return 2
     levels = list(DEGRADE) if args.degrade == "all" else [args.degrade]
-    report = calibrate(load_truth(args.truth), font=font, degrades=levels, dpi=args.dpi)
+    backends = available if args.backend == "all" else [args.backend]
+    report = calibrate(load_truth(args.truth), font=font, degrades=levels, dpi=args.dpi, backends=backends)
     print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_calibration(report), end="\n" if args.json else "")
     return 0
 

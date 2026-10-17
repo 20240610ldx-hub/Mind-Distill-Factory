@@ -179,7 +179,7 @@ def init_stage1a_status(slug: str) -> None:
         print(f"WARNING: could not initialize Stage 1A task_status.json: {e}")
 
 
-def extract_pdf_pages(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def extract_pdf_pages(path: Path, ocr_backend: str = "auto") -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Return every PDF page with text/image diagnostics and OCR eligibility."""
     pages: list[dict[str, Any]] = []
     metadata: dict[str, Any] = {}
@@ -220,7 +220,7 @@ def extract_pdf_pages(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]
             page_quality_records.append(quality)
             ocr = None
             if quality.ocr_required:
-                ocr = run_ocr(page, backend="auto")
+                ocr = run_ocr(page, backend=ocr_backend)
                 if ocr.get("status") == "ok" and ocr.get("text"):
                     # Preserve both layers. The OCR text is only a fallback for
                     # indexing and remains explicitly marked in the page record.
@@ -522,7 +522,9 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                         current_tokens = 0
                     if not page_buffer:
                         page_start = page_number
-                    page_buffer.append(f"--- Page {page_number} ---\n{page_text}")
+                    # 标出 OCR 页：worker 据此把这些页上的引文压到 medium（P2 查不出 OCR 认错的字）
+                    via_ocr = " (OCR)" if (page.get("ocr") or {}).get("status") == "ok" else ""
+                    page_buffer.append(f"--- Page {page_number}{via_ocr} ---\n{page_text}")
                     page_end = page_number
                     current_tokens += page_tokens
                 flush_pdf_buffer()

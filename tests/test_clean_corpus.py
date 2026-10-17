@@ -231,6 +231,23 @@ class CleanPdfTests(unittest.TestCase):
                                                        "mean_confidence": 0.41})
         self.assertIn("low_ocr_confidence", entry["flags"])
 
+    def test_ocr_thresholds_follow_calibration(self):
+        def gate(ok, conf, total=4):
+            return cc.clean_pdf_pages(self.pages(total), {"pages_total": total, "ocr_required": ok, "ocr_ok": ok,
+                                                           "mean_confidence": conf})[1]
+        # 用过 OCR 就标 ocr_text：P2 只能拿 OCR 文字比对，认错的字它查不出来
+        self.assertIn("ocr_text", gate(1, 0.99)["flags"])
+        self.assertNotIn("ocr_text", cc.clean_pdf_pages(self.pages(4))[1]["flags"])
+        # 0.9 以下：校准实测逐字存活率 ≤26%
+        self.assertNotIn("low_ocr_confidence", gate(4, 0.93)["flags"])
+        self.assertIn("low_ocr_confidence", gate(4, 0.87)["flags"])
+        # 0.6 以下且过半页靠 OCR：乱码，整份退回；OCR 只占少数页时只标不退
+        garbled = gate(3, 0.5)
+        self.assertEqual(garbled["verdict"], "rejected")
+        self.assertIn("ocr_garbled", garbled["reasons"])
+        self.assertNotEqual(gate(1, 0.5)["verdict"], "rejected")
+        self.assertIn("low_ocr_confidence", gate(1, 0.5)["flags"])
+
 
 class NearDuplicateTests(unittest.TestCase):
     def test_reformatted_copy_is_duplicate_and_priority_decides(self):

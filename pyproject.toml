@@ -17,7 +17,9 @@ pdf = [
 ]
 ocr = [
     "Pillow>=10.0",
-    "rapidocr_onnxruntime>=1.3",
+    # rapidocr 3.x 自带 PP-OCRv6 中文模型，支持 Python 3.13；旧包 rapidocr_onnxruntime 只到 3.12，装了也认
+    "rapidocr>=3.0",
+    "onnxruntime>=1.17",
 ]
 ocr-high-accuracy = [
     "PaddleOCR>=2.8",

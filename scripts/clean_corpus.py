@@ -46,7 +46,10 @@ THRESHOLDS = {
     "index_page_min_lines": 10,
     "annotation_min_hits": 3,
     "ocr_missing_reject": 0.5,    # 需要 OCR 却没拿到文字的页占比
-    "ocr_low_confidence": 0.6,
+    # OCR 阈值来自 `mdf ocr calibrate` 实测（docs/methodology.md「OCR 校准」）：平均置信度 <0.9 的
+    # 各次运行逐字存活率都 ≤26%；<0.6 的 CER 都在 49% 以上、逐字存活为 0，已是乱码。
+    "ocr_low_confidence": 0.9,
+    "ocr_garbled_reject": 0.6,
     "near_duplicate_jaccard": 0.85,
     "contained_share": 0.9,
 }
@@ -69,7 +72,7 @@ GOOGLE_DISCLAIMER_MARKERS = (
 
 # 显式页码标记是引用定位的依据（「语料位置」），任何规则都不得删除。
 PAGE_MARKER_RE = re.compile(
-    r"^\s*(?:≦\s*\d+\s*≧|=+\s*(?:PDF_)?PAGE\s*\d+\s*=+|-{2,}\s*Page\s+\d+\s*-{2,})\s*$", re.I
+    r"^\s*(?:≦\s*\d+\s*≧|=+\s*(?:PDF_)?PAGE\s*\d+\s*=+|-{2,}\s*Page\s+\d+(?:\s*\(OCR\))?\s*-{2,})\s*$", re.I
 )
 PAGE_NUMBER_RE = re.compile(
     r"^\s*(?:[-–—]\s*\d{1,4}\s*[-–—]|\d{1,4}(?:\s+\d{1,4})?|第\s*\d{1,4}\s*页|page\s+\d{1,4}|\d{1,4}\s*/\s*\d{1,4})\s*$",
@@ -389,8 +392,14 @@ def clean_pdf_pages(pages: list[str], ocr: dict[str, Any] | None = None) -> tupl
         else:
             flags.append("ocr_incomplete")
     confidence = ocr.get("mean_confidence")
+    if ok:
+        # 闸门 P2 拿引文去比对的正是这份 OCR 文字，认错的字它查不出来——所以只要用了 OCR 就要标出来
+        flags.append("ocr_text")
     if ok and confidence is not None and float(confidence) < t["ocr_low_confidence"]:
-        flags.append("low_ocr_confidence")
+        if float(confidence) < t["ocr_garbled_reject"] and total and ok * 2 > total:
+            reasons.append("ocr_garbled")
+        else:
+            flags.append("low_ocr_confidence")
     joined = "\n\n".join(p for p in cleaned_pages if p)
     report = _finish(cleaner, joined, "pdf", reasons, flags, {
         "chars_before": before, "chars_after": _non_space(joined),
@@ -485,13 +494,15 @@ REASON_HINTS = {
     "mojibake_utf8_as_latin": "UTF-8 被当成 Latin-1 保存过（Ã©/â€™），找原始文件",
     "mojibake_utf8_as_gbk": "UTF-8 被当成 GBK 保存过（锛/銆），找原始文件",
     "ocr_unavailable": "扫描件且 OCR 不可用：pip install -e .[ocr] 后重跑 index，或提供文字版",
+    "ocr_garbled": "过半页靠 OCR 且平均置信度 <0.6（校准实测此档已是乱码）：换更清晰的扫描、换引擎（mdf ocr calibrate --backend all 比较），或提供文字版",
 }
 FLAG_HINTS = {
     "modern_annotation": "含现代注释/译文标记：抽取时区分原文与注释者的话（张居正《帝鉴图说》教训）",
     "heavy_removal": "行规则删掉了超过 10% 的字符，抽样核对报告里的 samples",
     "ocr_incomplete": "部分页需要 OCR 但未取得文字",
     "ocr_mostly_missing": "过半页需要 OCR 但未取得文字，覆盖面不完整",
-    "low_ocr_confidence": "OCR 置信度偏低，引文需对照原图",
+    "low_ocr_confidence": "OCR 平均置信度 <0.9（校准实测此档逐字存活率 ≤26%），引文必须对照原图",
+    "ocr_text": "含 OCR 识别文字：最好的引擎在无退化样张上仍约 5% 的句子不能逐字还原，引文对照原图后才能标 high",
     "very_short": "文本很短",
     "replacement_chars": "少量 U+FFFD",
     "private_use_glyphs": "少量私用区字形",

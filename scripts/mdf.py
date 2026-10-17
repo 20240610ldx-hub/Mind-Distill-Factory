@@ -134,7 +134,8 @@ OPTIONAL_DEPS = [
     ("fitz", "PyMuPDF", "pdf", "PDF 文本抽取（首选）"),
     ("pypdf", "pypdf", "pdf", "PDF 文本抽取（回退）"),
     ("PIL", "Pillow", "ocr", "OCR 图像处理"),
-    ("rapidocr_onnxruntime", "rapidocr_onnxruntime", "ocr", "OCR CPU 档"),
+    ("rapidocr", "rapidocr", "ocr", "OCR 默认引擎（PP-OCRv6，校准实测最好）"),
+    ("onnxruntime", "onnxruntime", "ocr", "rapidocr 的推理后端"),
     ("paddleocr", "PaddleOCR", "ocr-high-accuracy", "OCR 高精度档"),
     ("opencc", "opencc-python-reimplemented", "provenance", "繁简异体折叠（P1/P2 比对）"),
 ]
@@ -160,6 +161,10 @@ def doctor_report(root: Path) -> dict[str, Any]:
     for module, package, extra, purpose in OPTIONAL_DEPS:
         found = importlib.util.find_spec(module) is not None
         add(f"可选依赖 {package}", found, purpose + ("" if found else f"；安装：pip install -e .[{extra}]"), required=False)
+    exe = _module("pdf_quality").paddleocr_json_exe()
+    add("可选引擎 PaddleOCR-json", exe is not None, str(exe) if exe else
+        "未配置（可选；环境变量 MDF_PADDLEOCR_JSON 指向 PaddleOCR-json.exe 或其目录，Umi-OCR 插件目录即可）",
+        required=False)
     harness = _module("harness")
     profiles = harness.load_profiles(CODE_ROOT)
     for name, path in harness.detect(profiles).items():

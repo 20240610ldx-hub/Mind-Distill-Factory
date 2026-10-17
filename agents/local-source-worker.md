@@ -91,6 +91,7 @@ python scripts/task_status.py mark-failed sources/{slug}/processed/local_shards/
 - 先看每个 passage 的 `quality_flags`（清洗闸门写入，见 `sources/{slug}/processed/cleaning_report.json`）：
   - `modern_annotation`：来源里混有现代注释/译文/评析（如《帝鉴图说》唐暨礼注评）。只有能确认出自本人的原文才能标 `high`；注释者、译者的话不得记在本人名下，最多作为 `analysis`。
   - `low_ocr_confidence` / `ocr_incomplete` / `ocr_mostly_missing`：OCR 文本可能有错字，引文 `confidence` 不高于 `medium`，并在 `worker_notes` 写明。
+  - `ocr_text`：这份来源有页面是 OCR 识别出来的。P2 拿引文比对的就是这份 OCR 文字，认错的字它查不出来，所以出自 OCR 页（页码标记写作 `--- Page n (OCR) ---`）的引文默认不高于 `medium`；对照原图逐字核实过的才可标 `high`，并在 `worker_notes` 写明核对的页码。
   - `private_use_glyphs` / `replacement_chars`：含无法识别的字形，涉及这些字的句子不要作逐字引文。
 - 正文里的 `===== PDF_PAGE n =====`、`--- Page n ---`、`≦ n ≧` 是页码标记，写进 `source_detail` 作定位，不要当作原文摘录。
 - 必须保留 `source_detail` 中的文件名、页码/章节或 passage id。
