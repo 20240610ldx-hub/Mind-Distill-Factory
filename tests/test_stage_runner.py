@@ -114,15 +114,19 @@ class ConsentTests(RunnerFixture):
 
 class RunTests(RunnerFixture):
     def test_successful_run_is_logged_and_recorded(self):
-        self.assertEqual(self.run_fake(yes=True), 0)
+        # review 带步骤级检查点（validate package --strict）：进程正常结束后立刻跑它；
+        # 这个夹具里没有包，检查点必然不过，结果如实记为未通过。
+        self.assertEqual(self.run_fake(yes=True), 1)
         text = "\n".join(self.lines)
         self.assertIn("▶ 开始：阶段 5 · 质量审查 / 质量审查", text)
         self.assertIn("…", text, "运行中要有心跳")
-        self.assertIn("✅ 进程正常结束", text)
+        self.assertIn("⚠️ 进程结束，但步骤未通过", text)
         self.assertIn("步骤 ⬜ 待办 → ✅ 完成", text)
+        self.assertIn("检查点 `python scripts/mdf.py validate package demo --strict`：未通过", text)
         self.assertIn("进度：", text)
         [record] = self.records()
-        self.assertEqual((record["step"], record["exit_code"], record["ok"]), ("review", 0, True))
+        self.assertEqual((record["step"], record["exit_code"], record["ok"]), ("review", 0, False))
+        self.assertEqual(record["checkpoint"]["command"], "python scripts/mdf.py validate package demo --strict")
         self.assertGreaterEqual(record["changed_files"], 1, "review.md 是新产物（briefs 也算）")
         log = (ROOT / record["log"]) if not Path(record["log"]).is_absolute() else Path(record["log"])
         self.assertIn("已写审查报告", log.read_text(encoding="utf-8"))

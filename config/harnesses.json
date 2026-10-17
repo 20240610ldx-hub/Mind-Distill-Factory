@@ -21,6 +21,7 @@
       },
       "isolated_run": "claude -p --permission-mode acceptEdits --allowedTools Bash,Read,Write,Edit,Glob,Grep --output-format json \"{prompt}\"",
       "model_flag": "--model",
+      "deny_network_args": ["--disallowedTools", "WebSearch,WebFetch"],
       "chapters": {
         "native": true,
         "tool": "mcp__ccd_session__mark_chapter",

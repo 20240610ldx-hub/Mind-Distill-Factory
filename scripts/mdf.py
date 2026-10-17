@@ -7,6 +7,7 @@
 
     python scripts/mdf.py stages                 # 阶段逻辑树（含章节标签）
     python scripts/mdf.py init <slug>            # 建目录
+    python scripts/mdf.py classify <slug> --primary governance --secondary philosophy,conduct   # 记下用户确认的类目
     python scripts/mdf.py status <slug> [--check] [--json]
     python scripts/mdf.py next <slug> [--json]   # 只看下一步
     python scripts/mdf.py doctor [--json]        # 环境与可选依赖自检
@@ -105,6 +106,32 @@ def cmd_init(args: argparse.Namespace) -> int:
             created.append(rel)
     print(f"[OK] {args.slug}: " + ("新建 " + "、".join(created) if created else "目录均已存在"))
     print(f"下一步：把原始资料放进 sources/{args.slug}/raw/，然后运行 python scripts/mdf.py status {args.slug}")
+    return 0
+
+
+def cmd_classify(args: argparse.Namespace) -> int:
+    """记下用户在阶段 0.3 确认的类目。只在用户确认之后调用；不带 --primary 时只显示当前记录。"""
+    cls = _module("classification")
+    root = _data_root(args.root)
+    if args.primary is None:
+        try:
+            data = cls.load(root, args.slug)
+        except ValueError as exc:
+            print(f"[FAIL] {exc}", file=sys.stderr)
+            return 1
+        if data is None:
+            print(f"{args.slug}：类目尚未确认。先让用户确认，再 mdf classify {args.slug} --primary <主类> --secondary <副类1,副类2>")
+            return 1
+        print(f"{args.slug}：{cls.describe(data)}（{data.get('confirmed_at', '')} 确认）")
+        return 0
+    secondary = [c.strip() for c in (args.secondary or "").split(",") if c.strip()]
+    try:
+        path = cls.write(root, args.slug, args.primary, secondary, args.name)
+    except ValueError as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        return 1
+    data = cls.load(root, args.slug)
+    print(f"[OK] {args.slug}：{cls.describe(data)} → {path.relative_to(root).as_posix()}")
     return 0
 
 
@@ -239,6 +266,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("slug", type=slug_arg)
     p.add_argument("--root", help=ROOT_HELP)
     p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser("classify", help="记下用户确认的类目（1 主 + 至多 2 副），下游简报只读不选")
+    p.add_argument("slug", type=slug_arg)
+    p.add_argument("--primary", help="主类 id（config/taxonomy.json）；不给则只显示当前记录")
+    p.add_argument("--secondary", help="副类 id，逗号分隔，至多 2 个")
+    p.add_argument("--name", help="人物显示名，如 墨子")
+    p.add_argument("--root", help=ROOT_HELP)
+    p.set_defaults(func=cmd_classify)
 
     for name, func, help_text in (("status", cmd_status, "查看流水线状态"), ("next", cmd_next, "只看下一步")):
         p = sub.add_parser(name, help=help_text)

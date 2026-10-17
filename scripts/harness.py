@@ -280,6 +280,17 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
     if not roles:
         raise SystemExit(f"步骤 {step_id!r} 不是 agent 步骤（执行者：{step['executor']}）；照 mdf next 给的命令跑")
     status = next(s for s in stages if s.key == step_id)
+    cls = _sibling("classification")
+    try:
+        classification = cls.load(root, slug)
+    except ValueError as exc:
+        raise SystemExit(f"类目文件有问题，不生成简报：{exc}") from exc
+    if "classification" in step.get("requires", []) and classification is None:
+        # 新进程不能向用户提问；类目必须由编排者先问用户、落盘，再交下去（fail-closed）。
+        raise SystemExit(
+            f"步骤 {step_id!r} 需要用户确认的类目，但 sources/{slug}/classification.json 不存在。"
+            f"编排者先按 config/taxonomy.json 推荐 1 主 + 至多 2 副，用 AskUserQuestion 让用户确认，"
+            f"再运行 python scripts/mdf.py classify {slug} --primary <主类> --secondary <副类1,副类2>")
     chapter = phase["chapter"]
     heading = tree["chapter_policy"]["fallback_heading"].format(order=phase["order"], title=phase["title"])
     lines = [
@@ -295,13 +306,29 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
         f"- 当前状态：{status.detail or '（无）'}",
         f"- 待办：{status.next_action or '按角色定义完成本步骤'}",
         f"- 依次扮演的角色：{'、'.join(roles)}（定义全文附在后面）",
+    ]
+    if classification is not None:
+        lines.append(f"- 类目（用户已在阶段 0 确认，照用，不得自选或改动）：{cls.describe(classification)}"
+                     f"——写进产物的 primary_category / secondary_categories 与 SKILL.md 身份卡必须与此一致"
+                     f"（`sources/{slug}/{cls.FILENAME}`）")
+    lines += [
         "",
         "## 规则",
         "",
         "- 规则以 `CLAUDE.md`（v6）为准；与 `AGENTS.md` 冲突时以 `CLAUDE.md` 为准。",
         f"- 引文必须逐字来自 `sources/{slug}/raw/` 的语料，不得编造或改字；网络来源最高 confidence: medium。",
         f"- 进度标题：开始时输出一行 `{heading}`（harness 有章节工具就改用工具）。",
+        "- 换行符：写出的文本文件一律 LF（不要 CRLF）、UTF-8 无 BOM。在 Windows 上写完后自查"
+        "（例如用 Python 以二进制读取，看有没有 `\\r\\n`），有就转成 LF 再跑检查点："
+        "manifest 记的是字节 hash，入库时 .gitattributes 会把 CRLF 改成 LF，hash 就对不上了。",
     ]
+    if step.get("network") == "forbidden":
+        lines += [
+            "- **禁止网络检索**：不得使用 WebSearch、WebFetch、搜索类 MCP、curl / wget / requests 等任何联网手段，"
+            "也不要自己运行 `mdf acquire`。",
+        ]
+        if step.get("network_note"):
+            lines.append(f"  {step['network_note'].replace('{slug}', slug)}")
     if step_id in ISOLATED_STEPS:
         lines.append("- 你是独立审查者：没有参与生成，不得沿用生成过程的结论；只依据包内容、语料与审查标准下裁决。")
     # 步骤自带的检查点优先：阶段检查点（如 validate sources）要等整个阶段做完才可能通过，
@@ -326,10 +353,27 @@ def write_brief(slug: str, step_id: str, text: str, root: Path) -> Path:
     return path
 
 
-def launch_commands(brief_path: str, profiles: dict[str, Any], only: str | None = None) -> dict[str, str]:
+def step_extra_args(profile: dict[str, Any], step: dict[str, Any] | None) -> list[str]:
+    """步骤要求的额外启动参数：禁网步骤在支持的 harness 上从工具层面拿掉联网工具（简报里的禁令仍然写）。"""
+    if step and step.get("network") == "forbidden":
+        return list(profile.get("deny_network_args") or [])
+    return []
+
+
+def launch_commands(brief_path: str, profiles: dict[str, Any], only: str | None = None,
+                    step: dict[str, Any] | None = None) -> dict[str, str]:
     prompt = f"读取 {brief_path} 并严格按其执行，完成后报告检查点结果。"
-    return {name: p["isolated_run"].replace("{prompt}", prompt)
-            for name, p in profiles["harnesses"].items() if only in (None, name)}
+    commands = {}
+    for name, p in profiles["harnesses"].items():
+        if only not in (None, name):
+            continue
+        command = p["isolated_run"].replace("{prompt}", prompt)
+        extra = step_extra_args(p, step)
+        if extra:  # 插在可执行文件之后：变长参数后面紧跟的是 -p 这类选项，不会吞掉提示词
+            exe, _, rest = command.partition(" ")
+            command = " ".join([exe, *extra, rest])
+        commands[name] = command
+    return commands
 
 
 # ── CLI ───────────────────────────────────────────────────────────────
@@ -377,7 +421,8 @@ def main(argv: list[str] | None = None) -> int:
     path = _display_path(write_brief(args.slug, step_id, text, root), CODE_ROOT)
     print(f"[OK] 简报已写入 {path}")
     print("在有子代理的 harness 里交给子代理执行；否则在新进程里执行（各 harness 的命令）：")
-    for name, command in launch_commands(path, load_profiles(), args.harness).items():
+    _, step = find_step(_sibling("pipeline_status").load_stage_tree(CODE_ROOT), step_id)
+    for name, command in launch_commands(path, load_profiles(), args.harness, step).items():
         print(f"  {name}: {command}")
     return 0
 

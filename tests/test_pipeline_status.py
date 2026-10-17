@@ -202,6 +202,8 @@ class RenderingTests(unittest.TestCase):
         self.root = Path(self._td.name)
         (self.root / "sources" / "demo" / "raw").mkdir(parents=True)
         (self.root / "sources" / "demo" / "raw" / "a.txt").write_text("文本", encoding="utf-8")
+        (self.root / "sources" / "demo" / "classification.json").write_text(
+            '{"primary": "governance", "secondary": ["philosophy"]}', encoding="utf-8")
         self.stages = ps.collect_status("demo", self.root, tree=TREE)
 
     def tearDown(self):

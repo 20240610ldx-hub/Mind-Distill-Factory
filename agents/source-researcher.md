@@ -9,6 +9,10 @@ user-invocable: false
 
 # source-researcher 子代理
 
+> **网络检索已禁用**（墨子试跑后的决定，以 `commands/distill.md` Stage 1 的禁令为准）：下文所有「搜索 / fetch」一律改为在 `sources/{person_slug}/raw/` 与 `sources/{person_slug}/processed/` 的本地语料里检索；不得使用 WebSearch、WebFetch、搜索类 MCP、curl 等联网手段。本地缺的素材写进 `collection_notes`，列出建议用 `python scripts/mdf.py acquire` 采集的目标，由编排者问用户。
+>
+> 换行符一律 LF；类目以 `sources/{person_slug}/classification.json`（用户确认）为准，不要自选。
+
 你是**素材采集员**。你的唯一职责是为一位指定人物收集高质量的原始素材，并将其结构化为 JSON。
 
 ## 任务规格

@@ -53,7 +53,15 @@ python scripts/mdf.py run <slug> [step] --harness codex --yes    # 用户同意�
   … 1分30秒 · 日志 12.4 KB · 新产物 3 个 · 最近输出：已写 shard_004_extracts.json
 ```
 
-结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」）。本阶段的步骤全部完成时，接着跑阶段检查点。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」）。步骤自带检查点的（分片抽取的 `task_status.py summary … --strict`、审查的 `validate package --strict`）在这一步结束就跑；其余步骤等本阶段全部完成再跑阶段检查点。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。
+
+Claude Code 的 `isolated_run` 带 `--output-format json`，`mdf run` 从结果对象里取费用、轮数、token 与「新进程是否又派了子代理」，写进运行记录的 `usage` 字段，结果行和 `status --html` 的运行记录表都会显示，面板上还有合计费用。Codex、pi 的输出格式没核实，取不到就留空，不猜。
+
+**简报里还会带上的东西**（都来自 `config/pipeline_stages.json` 的步骤字段）：
+
+- 用户确认的类目（`sources/<slug>/classification.json`，由 `mdf classify` 写入）。原则提取、框架合成、核心层组装标了 `requires: ["classification"]`，没有这份记录就拒绝生成简报——新进程不能向用户提问。
+- 禁网步骤（`network: "forbidden"`，目前是阶段 1 的合并与本地补充）写明禁止网络检索；harness 声明了 `deny_network_args` 的（Claude Code：`--disallowedTools WebSearch,WebFetch`），启动命令里同时从工具层面拿掉联网工具。Codex、pi 只靠简报里的禁令（未验证它们的联网开关）。
+- 换行符规则：一律 LF。不设脚本闸门，由执行者自查（manifest 是字节 hash，CRLF 入库后会对不上）。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
 
 ### 2. 章节标签与 H2 兜底：左侧的阶段轨
 

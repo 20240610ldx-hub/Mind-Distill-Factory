@@ -46,11 +46,12 @@ def _clock(seconds: float) -> str:
     return f"{minutes}分{sec:02d}秒" if minutes else f"{sec}秒"
 
 
-def build_argv(profile: dict[str, Any], executable: str, prompt: str, model: str | None = None) -> list[str]:
+def build_argv(profile: dict[str, Any], executable: str, prompt: str, model: str | None = None,
+               extra: list[str] | None = None) -> list[str]:
     """把 isolated_run 模板（如 `claude -p --permission-mode acceptEdits "{prompt}"`）拆成 argv。
-    不经过 shell：提示词原样作为一个参数传入。"""
+    不经过 shell：提示词原样作为一个参数传入。extra（如禁网步骤的 --disallowedTools）紧跟可执行文件。"""
     tokens = shlex.split(profile["isolated_run"])
-    argv = [executable, *[prompt if t == "{prompt}" else t for t in tokens[1:]]]
+    argv = [executable, *(extra or []), *[prompt if t == "{prompt}" else t for t in tokens[1:]]]
     if model:
         flag = profile.get("model_flag")
         if not flag:
@@ -87,14 +88,69 @@ def _last_line(log: Path) -> str:
         return ""
 
 
-def _checkpoint(phase: dict[str, Any], slug: str, root: Path) -> dict[str, Any] | None:
-    command = phase.get("checkpoint")
+def parse_usage(log: Path) -> dict[str, Any] | None:
+    """从新进程日志里取用量。目前只认 Claude Code `--output-format json` 的最终结果对象
+    （type=result）；其他 harness 的输出格式未核实，取不到就返回 None，不猜。"""
+    try:
+        text = log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    start = text.rfind('{"type":"result"')
+    if start < 0:
+        start = text.find("{")
+    if start < 0:
+        return None
+    try:
+        data, _ = json.JSONDecoder().raw_decode(text[start:])
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("type") != "result":
+        return None
+    usage = data.get("usage") or {}
+    record = {
+        "cost_usd": data.get("total_cost_usd"),
+        "turns": data.get("num_turns"),
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+        "cache_read_tokens": usage.get("cache_read_input_tokens"),
+        "cache_write_tokens": usage.get("cache_creation_input_tokens"),
+    }
+    # 新进程自己又派了子代理（墨子试跑的 review 步骤就这样）：费用与可复现性都变了，要看得见。
+    subagents = (data.get("subagent_stats") or {}).get("spawned")
+    if subagents is not None:
+        record["subagents"] = subagents
+    return {k: v for k, v in record.items() if v is not None} or None
+
+
+def usage_text(usage: dict[str, Any] | None) -> str:
+    if not usage:
+        return ""
+    parts = []
+    if usage.get("cost_usd") is not None:
+        parts.append(f"${usage['cost_usd']:.2f}")
+    if usage.get("turns") is not None:
+        parts.append(f"{usage['turns']} 轮")
+    if usage.get("output_tokens") is not None:
+        parts.append(f"输出 {usage['output_tokens']:,} token")
+    if usage.get("subagents"):
+        parts.append(f"又派了 {usage['subagents']} 个子代理")
+    return " · ".join(parts)
+
+
+def _checkpoint(phase: dict[str, Any], slug: str, root: Path, command: str | None = None) -> dict[str, Any] | None:
+    command = command or phase.get("checkpoint")
     if not command:
         return None
-    rest = shlex.split(command.replace("{slug}", slug)).copy()
-    rest = rest[rest.index("scripts/mdf.py") + 1:] if "scripts/mdf.py" in rest else rest
-    done = subprocess.run([sys.executable, str(SCRIPTS / "mdf.py"), *rest, "--root", str(root)],
-                          cwd=CODE_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    tokens = shlex.split(command.replace("{slug}", slug))
+    script = next((t for t in tokens if t.startswith("scripts/") and t.endswith(".py")), None)
+    if script is None:
+        raise SystemExit(f"检查点命令不是 python scripts/<脚本>.py 形式，不会执行：{command}")
+    rest = tokens[tokens.index(script) + 1:]
+    if script == "scripts/mdf.py":
+        argv, cwd = [sys.executable, str(SCRIPTS / "mdf.py"), *rest, "--root", str(root)], CODE_ROOT
+    else:  # 其他脚本（如 task_status.py）的路径参数相对数据根目录
+        argv, cwd = [sys.executable, str(CODE_ROOT / script), *rest], root
+    done = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     tail = [ln for ln in (done.stdout + done.stderr).splitlines() if ln.strip()][-3:]
     return {"command": command.replace("{slug}", slug), "exit_code": done.returncode, "tail": tail}
 
@@ -122,7 +178,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
         out(f"❌ 没找到 {profile['label']} 的可执行文件（{', '.join(profile['executables'])}）；"
             f"可先用 mdf brief {slug} {step_id} 生成简报，交给子代理执行。")
         return 2
-    argv = build_argv(profile, executable, prompt, model)
+    argv = build_argv(profile, executable, prompt, model, harness.step_extra_args(profile, step))
     if not yes:  # 只打印计划，不写任何文件
         out(f"计划：用 {profile['label']} 在新进程里执行「{step['title']}」（按量计费的模型调用）。")
         out(f"  命令：{shlex.join(argv)}")
@@ -166,7 +222,14 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     after = ps.collect_status(slug, root, tree=tree)
     state_after = next(s.state for s in after if s.key == step_id)
     phase_finished = all(s.state in ps.FINISHED for s in after if s.phase == phase["id"])
-    check = _checkpoint(phase, slug, root) if phase_finished and proc.returncode == 0 and not timed_out else None
+    # 步骤自带检查点（如 extract 的 task_status、review 的 --strict）在步骤结束就跑；
+    # 没有的话，等本阶段步骤全部完成再跑阶段检查点。
+    clean_exit = proc.returncode == 0 and not timed_out
+    if step.get("checkpoint"):
+        check = _checkpoint(phase, slug, root, step["checkpoint"]) if clean_exit else None
+    else:
+        check = _checkpoint(phase, slug, root) if phase_finished and clean_exit else None
+    usage = parse_usage(log)
     ok = proc.returncode == 0 and not timed_out and state_after != "failed" and (check is None or check["exit_code"] == 0)
 
     labels = ps.STATE_LABELS
@@ -177,11 +240,12 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     else:
         verdict = "✅ 进程正常结束" if ok else "⚠️ 进程结束，但步骤未通过"
     out(f"{verdict}：{label}（{_clock(seconds)}）· 步骤 {labels.get(state_before, state_before)} → "
-        f"{labels.get(state_after, state_after)} · 新产物 {len(changed)} 个")
+        f"{labels.get(state_after, state_after)} · 新产物 {len(changed)} 个"
+        + (f" · {usage_text(usage)}" if usage else ""))
     if check:
         out(f"  检查点 `{check['command']}`：{'通过' if check['exit_code'] == 0 else '未通过'}"
             + ("" if check["exit_code"] == 0 else "\n    " + "\n    ".join(check["tail"])))
-    elif not phase_finished:
+    elif not phase_finished and not step.get("checkpoint"):
         out(f"  本阶段还有步骤没完成，检查点留到阶段末尾再跑。")
     out(f"  进度：{ps.progress_bar(after, tree)}")
     out(f"  日志：{harness._display_path(log, CODE_ROOT)}")
@@ -190,7 +254,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
         "schema": RUN_SCHEMA, "slug": slug, "step": step_id, "phase": phase["id"], "harness": harness_name,
         "model": model, "started_at": f"{started:%Y-%m-%d %H:%M:%S}", "seconds": round(seconds),
         "exit_code": proc.returncode, "timed_out": timed_out, "state_before": state_before, "state_after": state_after,
-        "checkpoint": check, "changed_files": len(changed), "ok": ok,
+        "checkpoint": check, "changed_files": len(changed), "ok": ok, "usage": usage,
         "summary": verdict.split(" ", 1)[-1] + f" · {labels.get(state_after, state_after)}",
         "log": harness._display_path(log, CODE_ROOT), "brief": harness._display_path(brief_path, CODE_ROOT),
     }

@@ -126,7 +126,7 @@ python scripts/task_status.py next <status-path>
 → 列出发现的文件
 
 情况 B：目录为空或不存在
-→ 告知用户"未检测到本地素材，将通过网络搜索采集"
+→ 告知用户"未检测到本地素材，需要先用 mdf acquire 从白名单来源合规采集原典（网络检索已禁用）"
 → 询问是否要先提供本地素材，还是直接继续
 ```
 
@@ -142,11 +142,21 @@ python scripts/task_status.py next <status-path>
 是否采用此分类？或有调整？
 ```
 
-### 0.4 确认后初始化目录
+**用提问工具问，不要只在正文里问。** Claude Code 用 `AskUserQuestion`（推荐方案放第一个选项），其他 harness 用同类工具；没有提问工具就停下等用户回复。用户的回答就是决定，编排者不得自行改动。
+
+### 0.4 确认后初始化目录并记下类目
 
 ```bash
 python scripts/mdf.py init {slug}   # 建 sources/{slug}/raw、processed 与 output/{slug}（已存在则跳过）
+python scripts/mdf.py classify {slug} --primary governance --secondary philosophy,conduct --name 墨子
 ```
+
+`mdf classify` 把用户的决定写进 `sources/{slug}/classification.json`（校验 1 主 + 至多 2 副、都在 taxonomy 里）。这是类目传给下游的唯一通道：
+
+- `mdf brief` / `mdf run` 把它写进简报「上下文」；原则提取、框架合成、核心层组装这几步**没有它就拒绝生成简报**——新进程不能向用户提问，不能让它自选。
+- 子代理分派同理：把 `mdf classify {slug}` 打印的那行类目原样写进分派说明。
+- `validate frameworks` 核对 `output/{slug}/frameworks.zh.json` 的 `primary_category` / `secondary_categories`，`validate package` 核对 SKILL.md 身份卡；与用户确认的不一致就报 `CLASSIFICATION_MISMATCH`。
+- 用户事后要改类目：重新问、重新 `mdf classify`，再从受影响的阶段重跑。
 
 ---
 
@@ -171,6 +181,8 @@ python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy  
 - 人物在世时，提醒用户：包里必须带「在世人物声明」（L2 闸门会查），并考虑是否适合公开发布。
 
 将以下任务分派给子代理，**并行执行**：
+
+> **阶段 1 的合并与补充（reduce）禁用网络检索**（墨子试跑后的决定）：子代理 B/C/D 只读 `sources/{slug}/raw/` 与 `sources/{slug}/processed/`，不得用 WebSearch、WebFetch、搜索类 MCP 或 curl 之类联网手段；网络转述的 secondary 全是 confidence: low，徒增噪声。缺素材时停下，列出建议采集的目标（著作、篇目、传记），由编排者征得用户同意后用 1.0 节的 `mdf acquire` 合规采集，再回到子代理 A 的流水线。下文 B/C/D 里的「搜索」一律按「在本地语料里检索」理解。`mdf brief` 生成的 reduce 简报会写明禁令；Claude Code 新进程另加 `--disallowedTools WebSearch,WebFetch`。
 
 ### 子代理 A：用户素材处理（Stage 1A，本地分片流水线）
 
@@ -206,7 +218,7 @@ python scripts/mdf.py clean {slug}    # 查看清洗报告：被拒 / 待复核 
   - 高难度 shard 单独派发，完成/失败后才释放下一槽位；
   - 同一 shard 连续失败时先拆分或降低并发，不让整个 Stage 1A 阻塞。
 - `recommended_worker_count` 只是总量提示，不是强制并发数。实际并发由主 agent 根据当前上下文窗口动态裁决。
-- `sources/{slug}/processed/local_shards/cost_estimate.json` 的 upper bound 超过配置预算时，必须先调用 AskUserQuestion：全量处理 / 分层抽样 / 只用本地素材并降低预算 / 取消；用户选择前不得派 worker 或网络补充。
+- `sources/{slug}/processed/local_shards/cost_estimate.json` 的 upper bound 超过配置预算时，必须先调用 AskUserQuestion：全量处理 / 分层抽样 / 只用本地素材并降低预算 / 取消；用户选择前不得派 worker 或补充采集。
 
 #### A1：local-source-worker[N]（按 shard 并行）
 
@@ -257,35 +269,32 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 - PDF 文本抽取由脚本完成，agent 不得反复打开 PDF 全文
 - 最终对 Stage 2 暴露的接口仍是 `sources/{slug}/processed/user_sources.json`
 
-### 子代理 B：主要文献采集（网络）
+### 子代理 B：主要文献整理（本地）
 
-- 搜索该人物的原著、演讲、书信、访谈
+- 在本地语料里检索该人物的原著、演讲、书信、访谈
 - 重点：**第一手资料**（本人写的或说的）
 - 输出至 `sources/{slug}/processed/primary_sources.json`
 
-### 子代理 C：分析性文献采集（网络）
+### 子代理 C：分析性文献整理（本地）
 
-- 搜索该人物的传记、学术分析、权威评论
+- 在本地语料里检索该人物的传记、学术分析、权威评论（本地没有就留空并写明缺口，见上方禁令）
 - 用于理解背景和验证第一手资料
 - 输出至 `sources/{slug}/processed/secondary_sources.json`
 
 ### 子代理 D：表达风格采集（⚠️ 必须执行，不可跳过）
 
-- 搜索该人物的演讲逐字稿、访谈实录、书信原文、社交媒体
+- 在本地语料里检索该人物的演讲逐字稿、访谈实录、书信原文
 - 重点：**此人怎么说话/写作**，而非说了什么内容
 - 提取句式偏好、高频词汇、修辞手法、幽默实例、语气特征
 - 此任务的 extracts 使用 `content_type: "expression_sample"`
 - 输出至 `sources/{slug}/processed/expression_dna.json`
-- **如果网络搜索全部失败**：从用户提供的 PDF/TXT 资料中提取表达风格素材（演讲段落、论辩用语、典型句式），不得留空
+- 从本地语料（用户提供的 PDF/TXT、`mdf acquire` 采集的原典）中提取表达风格素材（演讲段落、论辩用语、典型句式），不得留空
 
 **注意：** 如果用户提供了充足素材（子代理 A 产出丰富），子代理 B/C 可以精简搜索范围。**子代理 D 始终执行，且必须产出非空的 `sources/{slug}/processed/expression_dna.json`**——表达风格是消除"套公式"感的核心依据，跳过此步骤将导致 SKILL 质量严重下降。
 
-当 Stage 1A 的 `sources/{slug}/processed/user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 应改为**补缺搜索**：围绕本地素材缺失的著作、演讲、传记争议或出处验证进行窄搜索，不得重新铺开泛泛搜索。
+当 Stage 1A 的 `sources/{slug}/processed/user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 只做**补缺清单**：列出本地素材缺失的著作、演讲、传记争议或待验证的出处，交编排者决定是否用 `mdf acquire` 采集，不得自行联网。
 
-**搜索工具回退策略：** 子代理 B/C/D 的网络搜索按以下优先级选择工具：
-
-1. `WebSearch`（内置）→ 2. Tavily MCP（`mcp__tavily-*__tavily_search`）→ 3. `WebFetch` 直接抓取已知 URL → 4. 仅使用已有素材并在 `collection_notes` 中标注搜索失败。
-   详见 `agents/source-researcher.md` 的"搜索工具回退策略"章节。
+**素材不足时：** 网络检索已禁用，不再有「搜索工具回退」。子代理 B/C/D 只用本地语料；本地确实没有的（例如传记、学术评论），在 `collection_notes` 里写明缺什么、建议用 `mdf acquire` 采集哪些目标，由编排者问用户是否采集。`sources/{slug}/processed/primary_sources.json` / `sources/{slug}/processed/secondary_sources.json` 缺失只是警告；`sources/{slug}/processed/expression_dna.json` 必须从本地语料产出。
 
 ### ✓ 检查点 1：素材完整性校验（双重检查）
 
@@ -313,7 +322,7 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 如果 `sources/{slug}/processed/expression_dna.json` 不存在或为空：
 
 - **不要跳过** — 立即补充执行子代理 D
-- 如果网络搜索不可用，指示子代理 D 从 `sources/{slug}/processed/user_sources.json` 中提取表达样本
+- 指示子代理 D 从 `sources/{slug}/processed/user_sources.json` 与本地语料中提取表达样本（网络检索已禁用）
 - 只有确认 `sources/{slug}/processed/expression_dna.json` 非空后才能进入格式校验
 
 **第二步：格式校验**
@@ -532,6 +541,9 @@ python scripts/validate_output.py package {slug}
 ### 6.3 执行安装（如用户选择 [1]）
 
 顺序是**发布 → 校验 → 安装**——校验不过绝不能先把文件 cp 进用户的真实 skills 目录。
+
+**发布前先查换行符（运行时 agent 负责）。** manifest 记的是字节 hash，而仓库的 `.gitattributes`（`eol=lf`）入库时会把 CRLF 改成 LF——墨子试跑里 agent 在 Windows 上写出 CRLF 的 `output/{slug}/references/cases.md`，发布后一入库 hash 就对不上。所以发布前由你（编排者或执行这一步的 agent）检查 `output/{slug}/` 下要发布的文本文件（`output/{slug}/SKILL.md`、`output/{slug}/references/*.md`、`output/{slug}/人物档案.md`）有没有 `
+`，有就转成 LF、重跑 `validate package`，再发布。这一步不设脚本闸门，靠执行者自查；每份简报里也写了「一律 LF」。
 
 ```bash
 # 1. 发布到 gallery 并写 manifest（脚本会自动识别 v6 包并同步 references/）
