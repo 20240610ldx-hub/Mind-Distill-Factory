@@ -1,0 +1,49 @@
+{
+  "schema": "acquisition-policy-v1",
+  "_comment": "文献采集的合规策略：scripts/acquire.py 只按这里放行。默认全部 fail-closed——主机不在白名单、没有联系方式、robots.txt 不允许、权利状态不在 allowed_rights 里，一律拒绝并写入 acquisition_log.jsonl。修改前先读 docs/ethics-and-legal.md。",
+  "contact": "",
+  "_contact_comment": "自动化请求必须在 User-Agent 里带可联系方式（Wikimedia、Internet Archive 的明文要求）。留空时读环境变量 MDF_CONTACT；两者都空则所有网络采集被拒绝。不要把个人邮箱提交进仓库。",
+  "jurisdiction": null,
+  "_jurisdiction_comment": "用户所在法域（ISO 国家码，如 SG、US）。public_domain_us（仅在美国属公有领域）只有在 jurisdiction 为 US 时直接放行，否则需人工复核。",
+  "defaults": {
+    "min_interval_s": 2.0,
+    "timeout_s": 30,
+    "max_bytes": 30000000,
+    "max_requests_per_run": 60,
+    "max_retries": 3,
+    "max_retry_after_s": 120,
+    "backoff_base_s": 2.0
+  },
+  "allowed_rights": ["public_domain", "cc0", "cc-by", "cc-by-sa", "user_owned_copy", "permission_granted"],
+  "review_rights": ["public_domain_us", "unknown"],
+  "connectors": {
+    "wikisource": {
+      "enabled": true,
+      "hosts": ["*.wikisource.org"],
+      "min_interval_s": 1.0,
+      "rights_status": "cc-by-sa",
+      "rights_evidence": "维基文库收录方针：只收公有领域或自由许可文本；站点文字以 CC BY-SA 授权"
+    },
+    "internet_archive": {
+      "enabled": true,
+      "hosts": ["archive.org", "*.archive.org", "*.us.archive.org"],
+      "min_interval_s": 2.0
+    },
+    "gutenberg": {
+      "enabled": true,
+      "mirror": "",
+      "_mirror_comment": "Project Gutenberg 网站禁止自动化访问（gutenberg.org/policy/robot_access.html）。要用这个连接器，先按 gutenberg.org/help/mirroring.html 建私有镜像，把镜像根 URL 填在这里；镜像主机自动加入白名单。",
+      "hosts": [],
+      "rights_status": "public_domain_us",
+      "rights_evidence": "Project Gutenberg：在美国属公有领域；其他法域需按作者卒年核对"
+    },
+    "url": {
+      "enabled": true,
+      "hosts": [],
+      "_hosts_comment": "通用 URL 连接器的主机白名单，默认为空。每加一个主机，都要在提交说明里写清它的授权依据。"
+    },
+    "local": {
+      "enabled": true
+    }
+  }
+}

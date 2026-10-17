@@ -31,7 +31,7 @@ argument-hint: <人物名/charactor name>
    python scripts/mdf.py stages --json      # phases[].chapter.title / .summary
    python scripts/mdf.py next {slug} --json # next.chapter = 当前该进入的 phase
    ```
-2. harness 提供章节工具（如 Claude 桌面版的 `mark_chapter`、Codex 的同类功能）就调用它：`title` = `chapter.title`（如「阶段 1 · 素材采集」），`summary` = `chapter.summary`。
+2. harness 提供章节工具（如 Claude 桌面版的 `mark_chapter`；其他 harness 有同类工具同理）就调用它：`title` = `chapter.title`（如「阶段 1 · 素材采集」），`summary` = `chapter.summary`。
 3. 没有章节工具时，在回复里单独输出一行 H2：`## 阶段 1 · 素材采集`（即 `chapter_policy.fallback_heading`）。终端用户也能靠它在滚动记录里定位。
 4. 同一 phase 内的 step（如 1 里的「登记、抽取与分片」「分片抽取」）只更新任务清单，**不再开章节**；Stage 4.5、3A/3B/3C 这类子阶段同样归入所属 phase。
 5. 恢复执行时只为当前 phase 打一次标签，不为已完成的 phase 补打。
@@ -123,6 +123,20 @@ python scripts/mdf.py init {slug}   # 建 sources/{slug}/raw、processed 与 out
 ## Stage 1：素材采集
 
 **执行者：local-source-indexer / local-source-worker / local-source-reducer + source-researcher 子代理（并行执行）**
+
+### 1.0 合规采集原典（可选，先于子代理 A）
+
+用户没有本地素材、或素材缺原典时，用确定性脚本从白名单来源取公有领域/自由许可文本，**不要让 agent 自己爬网页**：
+
+```bash
+python scripts/mdf.py acquire {slug} --wikisource zh:論語/學而第一 --dry-run   # 先跑离线闸门
+python scripts/mdf.py acquire {slug} --wikisource zh:論語/學而第一 --ia <identifier>
+python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy     # 导入用户自有副本
+```
+
+- 来源与闸门由 `config/acquisition_policy.json` 决定：主机白名单、User-Agent 联系方式（`MDF_CONTACT`）、robots.txt、请求间隔与上限、权利状态。任何一道不过即拒绝，原因写入 `sources/{slug}/processed/acquisition_log.jsonl`。
+- 结果表里的 ⛔ 拒绝需要人处理（改策略或补授权），不要换个办法绕过；`RIGHTS_UNVERIFIED` 只有用户确认权利后才能加 `--allow-unverified-rights`。
+- 采集的文件落在 `sources/{slug}/raw/acquired/`，随后照常走子代理 A 的分片流水线；`sources/{slug}/processed/source_registry.json` 会带上每个文件的来源 URL 与权利状态。
 
 将以下任务分派给子代理，**并行执行**：
 

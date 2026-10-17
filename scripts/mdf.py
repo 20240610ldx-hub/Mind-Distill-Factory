@@ -240,6 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
+    "acquire": ("acquire", [], "合规采集文献到 sources/{slug}/raw/acquired/"),
     "index": ("local_source_pipeline", ["index"], "抽取、清洗、分片 sources/{slug}/raw"),
     "reduce": ("local_source_pipeline", ["reduce"], "合并分片抽取结果"),
     "stats": ("local_source_pipeline", ["stats"], "分片统计"),

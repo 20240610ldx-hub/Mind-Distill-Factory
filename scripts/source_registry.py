@@ -81,14 +81,49 @@ def make_record(
     }
 
 
+def load_acquisition_provenance(log_path: Path) -> dict[str, dict[str, Any]]:
+    """Map raw-relative path -> latest `saved` record from acquisition_log.jsonl (see acquire.py)."""
+    provenance: dict[str, dict[str, Any]] = {}
+    if not log_path.exists():
+        return provenance
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and record.get("event") == "saved" and record.get("path"):
+            provenance[str(record["path"])] = record
+    return provenance
+
+
+def apply_provenance(record: dict[str, Any], acquired: dict[str, Any] | None) -> dict[str, Any]:
+    """Overlay acquisition metadata, but only when the file still has the hash that was logged."""
+    if not acquired or acquired.get("sha256") != record["sha256"]:
+        return record
+    record.update(
+        role="acquired",
+        origin=f"acquired:{acquired.get('connector') or 'unknown'}",
+        canonical_url=canonical_url(str(acquired.get("url") or "")),
+        rights_status=str(acquired.get("rights_status") or "unverified"),
+        rights_review_required=bool(acquired.get("rights_review_required")),
+        retrieved_at=str(acquired.get("retrieved_at") or record["retrieved_at"]),
+        acquisition_target=acquired.get("target_key"),
+    )
+    return record
+
+
 def build_registry(
     raw_dir: Path,
     *,
     role: str = "user_provided",
     origin: str = "local",
     rights_status: str = "unverified",
+    provenance: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build a deterministic registry, recursively including nested source files."""
+    """Build a deterministic registry, recursively including nested source files.
+
+    `provenance` (from load_acquisition_provenance) fills origin/url/rights for acquired files.
+    """
     raw_dir = raw_dir.resolve()
     files = sorted(
         (
@@ -98,10 +133,11 @@ def build_registry(
         ),
         key=lambda path: path.relative_to(raw_dir).as_posix().lower(),
     )
-    records = [
-        make_record(path, raw_dir, role=role, origin=origin, rights_status=rights_status)
-        for path in files
-    ]
+    provenance = provenance or {}
+    records = []
+    for path in files:
+        record = make_record(path, raw_dir, role=role, origin=origin, rights_status=rights_status)
+        records.append(apply_provenance(record, provenance.get(record["relative_path"])))
     by_hash: dict[str, dict[str, Any]] = {}
     for record in records:
         previous = by_hash.get(record["sha256"])
