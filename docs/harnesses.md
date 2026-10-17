@@ -40,13 +40,39 @@ pi -p "读取 output/<slug>/briefs/review.md 并严格按其执行，完成后�
 
 Stage 5 审查的简报额外声明「你是独立审查者」。新进程从没见过生成过程，所以「不得自审」在没有子代理的 harness 里也成立。
 
-### 2. H2 兜底标题：没有章节工具也能定位
+**`mdf run`：简报 + 新进程 + 等待 + 闸门，一条命令。** 墨子试跑时，编排者手写 `until [ -f x.done ]; do sleep 5; done` 去等无头进程，后台任务面板里只有一串看不懂的 shell。现在用：
 
-章节规则写在 `config/pipeline_stages.json` 的 `chapter_policy`：每进入一个阶段打一次标签。Claude 桌面版调用章节工具，左侧出现可跳转的「阶段 N · 标题」；Codex、pi、终端输出同名的 H2 标题（如 `## 阶段 2 · 原则提取`），在长对话里可以搜索。Codex App 的长线程导航是按轮次跳转的，H2 标题落在对应那一轮里，同样能用。
+```bash
+python scripts/mdf.py run <slug> [step] --harness codex          # 阶段卡 + 计划，不执行
+python scripts/mdf.py run <slug> [step] --harness codex --yes    # 用户同意后执行
+```
+
+它先打印阶段卡，再生成简报、按 `config/harnesses.json` 的 `isolated_run` 起新进程（不经过 shell，提示词作为一个参数；`--model` 按各 harness 的 `model_flag` 传入）。运行中每 30 秒一行心跳：
+
+```
+  … 1分30秒 · 日志 12.4 KB · 新产物 3 个 · 最近输出：已写 shard_004_extracts.json
+```
+
+结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」）。本阶段的步骤全部完成时，接着跑阶段检查点。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+
+### 2. 章节标签与 H2 兜底：左侧的阶段轨
+
+章节规则写在 `config/pipeline_stages.json` 的 `chapter_policy`：每进入一个阶段打一次标签。Claude 桌面版的章节工具是 `mcp__ccd_session__mark_chapter`（常列在 deferred 工具里，先用 ToolSearch 加载），调用后左侧出现可跳转的「阶段 N · 标题」；Codex、pi、终端输出同名的 H2 标题（如 `## 阶段 2 · 原则提取`），在长对话里可以搜索。Codex App 的长线程导航是按轮次跳转的，H2 标题落在对应那一轮里，同样能用。
+
+章节由编排者打。只要在驱动流水线，就算每一步都交给新进程、自己只是在等，也算编排者。墨子试跑没有打标签，原因是驱动会话把自己当成了「测试脚本」。现在 `commands/distill.md` 写明了这一点，还规定了每个阶段的三拍叙述：开场贴阶段卡（`mdf next <slug> --card`），过程只在有新信息时开口，收尾贴结果行和进度条。
 
 ### 3. 状态面板 `mdf status`：不靠对话记忆
 
-`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度；`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读。中断后换一个 harness 接着做，进度不丢。
+`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度，表格末尾附一行进度条（▶ 当前、▰ 完成、◐ 部分完成、✖ 未通过、▱ 未开始）。`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读。中断后换一个 harness 接着做，进度不丢。
+
+`--html` 生成自包含的可视化面板 `output/<slug>/status.html`，不引用任何外部资源，离线可开，深浅色、手机宽度都适配。面板内容：
+
+- 左侧是阶段轨，与对话里的章节一一对应；
+- 右侧逐阶段列出步骤状态、说明、下一步和闸门命令；
+- 当前阶段高亮；
+- 底部是 `mdf run` 的运行记录。
+
+在 Claude 桌面版里，编排者用文件发送工具以渲染方式打开它；其他 harness 给出文件路径即可。
 
 ## 安装已发布的技能
 
