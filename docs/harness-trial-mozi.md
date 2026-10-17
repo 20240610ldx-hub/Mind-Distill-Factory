@@ -68,7 +68,8 @@ agent 步骤（每步一个新进程；表中「简报是否自足」指新进�
 10. **`validate sources` 的 `raw_files` 用非递归 `glob("*")`**，采集落在 `raw/acquired/…/` 的语料不会触发「必须有 manifest / task_status」检查。
 11. **阶段 1 的 `reduce` 简报没有禁用网络检索**：执行者用 WebSearch 补 secondary，得到的全是 low 的转述。`distill.md` 说网络来源 confidence 封顶 medium，但对「简报型」执行者没有约束到「只许 acquire」。
 12. **新进程会自己再派子代理**（review 步骤）。对「独立上下文」要求是满足的，但费用与可复现性变了；简报没有说明是否允许。
-13. **费用大头是缓存读**：每个进程反复读取 50–200 万 token 的上下文。分片小（1 个分片）时，extract/reduce/principles 三步其实可以合并成一个进程。
+13. **agent 在 Windows 上写出 CRLF 的 `cases.md`。** 发布的 manifest 记的是 CRLF 的 hash，入库时 `.gitattributes`（eol=lf）改成 LF，别处检出就会 hash 不符。本次手工转 LF 后重发布。建议 `publish_skill` 组包时统一规范行尾，或 P1–P6 里加一条「行尾必须是 LF」的闸门。
+14. **费用大头是缓存读**：每个进程反复读取 50–200 万 token 的上下文。分片小（1 个分片）时，extract/reduce/principles 三步其实可以合并成一个进程。
 
 ## 对三份文件的修改建议
 
