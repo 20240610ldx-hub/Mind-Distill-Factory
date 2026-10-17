@@ -19,7 +19,7 @@
         "native": true,
         "how": "Task 工具调用 agents/*.md；以插件加载时名为 mind-distill-factory:<agent>"
       },
-      "isolated_run": "claude -p --permission-mode acceptEdits \"{prompt}\"",
+      "isolated_run": "claude -p --permission-mode acceptEdits --allowedTools Bash,Read,Write,Edit,Glob,Grep --output-format json \"{prompt}\"",
       "model_flag": "--model",
       "chapters": {
         "native": true,

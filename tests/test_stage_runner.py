@@ -81,7 +81,10 @@ class ArgvTests(unittest.TestCase):
         profile = sr.harness.load_profiles()["harnesses"]["claude-code"]
         argv = sr.build_argv(profile, "/bin/claude", "读取 output/x y/briefs/review.md 并执行", model="sonnet")
         self.assertEqual(argv, ["/bin/claude", "--model", "sonnet", "-p", "--permission-mode", "acceptEdits",
+                                "--allowedTools", "Bash,Read,Write,Edit,Glob,Grep", "--output-format", "json",
                                 "读取 output/x y/briefs/review.md 并执行"])
+        # --allowedTools 是变长参数：提示词紧跟其后会被吞成工具名，所以它后面必须先接一个定长选项。
+        self.assertNotEqual(argv[argv.index("--allowedTools") + 2], argv[-1])
 
     def test_every_harness_declares_model_flag(self):
         for name, profile in sr.harness.load_profiles()["harnesses"].items():

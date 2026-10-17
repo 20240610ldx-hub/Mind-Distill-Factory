@@ -315,7 +315,7 @@ def _stage_attachments(ctx: "Ctx") -> StageStatus:
     else:
         status.state = "in_progress" if present else "pending"
         status.detail = "缺少 " + "、".join(n for n in REQUIRED_REFS if n not in present)
-        status.next_action = "派发 case-builder / evidence-carder（Stage 4.5）"
+        status.next_action = "派发 case-builder / evidence-carder，再由 skill-assembler 续写 voice.md 并回写案例索引（Stage 4.5）"
     return status
 
 
