@@ -53,6 +53,11 @@ try:
 except ImportError:  # pragma: no cover - supports package-style imports
     from scripts.source_registry import sha256_file  # type: ignore
 
+try:
+    from slug_rules import slug_arg
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.slug_rules import slug_arg  # type: ignore
+
 
 TARGET_TOKENS = 30_000
 SOFT_LIMIT_TOKENS = 50_000
@@ -869,15 +874,15 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     index_parser = subparsers.add_parser("index", help="extract and shard sources/{slug}/raw")
-    index_parser.add_argument("slug")
+    index_parser.add_argument("slug", type=slug_arg)
 
     reduce_parser = subparsers.add_parser("reduce", help="merge shard worker outputs into user_sources.json")
-    reduce_parser.add_argument("slug")
+    reduce_parser.add_argument("slug", type=slug_arg)
     reduce_parser.add_argument("--person-name", default=None)
     reduce_parser.add_argument("--max-extracts", type=int, default=DEFAULT_MAX_EXTRACTS)
 
     stats_parser = subparsers.add_parser("stats", help="show shard manifest stats")
-    stats_parser.add_argument("slug")
+    stats_parser.add_argument("slug", type=slug_arg)
 
     args = parser.parse_args()
     if args.command == "index":

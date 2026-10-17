@@ -50,16 +50,20 @@ DOSSIER_NAME = "人物档案.md"
 REFERENCE_DIR = "references"
 
 
-def _load_validator():
-    """按路径加载同目录的 validate_output 模块（scripts/ 不是包）。"""
+def _load_sibling(name: str):
+    """按路径加载同目录的模块（scripts/ 不是包）。"""
     import importlib.util
-    path = Path(__file__).resolve().parent / "validate_output.py"
-    spec = importlib.util.spec_from_file_location("validate_output", path)
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_validator():
+    return _load_sibling("validate_output")
 
 
 def is_v6_package(skill_md: Path) -> bool:
@@ -204,14 +208,17 @@ def main() -> int:
             pass
 
     parser = argparse.ArgumentParser(description="Publish a thinker skill to the gallery.")
-    parser.add_argument("--slug", required=True, help="The slug of the thinker (e.g. seneca)")
+    parser.add_argument(
+        "--slug", required=True, type=_load_sibling("slug_rules").slug_arg,
+        help="The slug of the thinker (e.g. seneca); rejected, not normalized, if malformed",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Perform checks but do not modify files")
     parser.add_argument("--force", action="store_true", help="Skip pre-publication validation check")
     parser.add_argument("--notes", help="Custom notes to add/update in gallery/index.json")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
-    slug = args.slug.strip().lower()
+    slug = args.slug
 
     output_dir = root / "output" / slug
     output_skill = output_dir / "SKILL.md"

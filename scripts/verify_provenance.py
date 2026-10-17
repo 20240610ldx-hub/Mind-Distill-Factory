@@ -241,11 +241,21 @@ def check_p1_quote_closure(skill_md: Path, evidence_md: Path) -> list[str]:
     return errors
 
 
-def check_p2_corpus_closure(evidence_md: Path, slug: str, root: Path) -> list[str]:
-    """P2：evidence.md 中每条逐字原文必须逐字出现在语料中。"""
+def check_p2_corpus_closure(
+    evidence_md: Path,
+    slug: str,
+    root: Path,
+    corpus: list[tuple[str, str]] | None = None,
+) -> list[str]:
+    """P2：evidence.md 中每条逐字原文必须逐字出现在语料中。
+
+    传入 corpus 时直接用它，不再重读磁盘——发布证明需要对「P2 实际比对的那份
+    语料」取指纹，两次分别读盘之间语料若被改动，指纹就会证明一份没被检查过的语料。
+    """
     if not evidence_md.exists():
         return [f"MISSING: {evidence_md}"]
-    corpus = load_corpus(slug, root)
+    if corpus is None:
+        corpus = load_corpus(slug, root)
     if not corpus:
         return [f"EMPTY_CORPUS: sources/{slug}/ 下没有可读的 .txt/.md 语料"]
     errors: list[str] = []

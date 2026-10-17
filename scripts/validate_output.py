@@ -786,16 +786,20 @@ def validate_package(slug: str) -> list[str]:
     return errors
 
 
-def _load_provenance():
-    """按路径加载同目录的 verify_provenance 模块（scripts/ 不是包）。"""
+def _load_sibling(name: str):
+    """按路径加载同目录的模块（scripts/ 不是包）。"""
     import importlib.util
-    path = Path(__file__).resolve().parent / "verify_provenance.py"
-    spec = importlib.util.spec_from_file_location("verify_provenance", path)
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_provenance():
+    return _load_sibling("verify_provenance")
 
 
 def _validate_merged_skill(filepath: Path, slug: str) -> list[str]:
@@ -985,7 +989,11 @@ def main():
         sys.exit(1)
 
     stage = sys.argv[1]
-    slug = sys.argv[2]
+    try:
+        slug = _load_sibling("slug_rules").validate_slug(sys.argv[2])
+    except ValueError as e:  # InvalidSlug 是 ValueError 子类
+        print(f"Invalid slug: {e}")
+        sys.exit(1)
 
     if stage not in STAGES:
         print(f"Unknown stage: {stage}. Available: {', '.join(STAGES.keys())}")

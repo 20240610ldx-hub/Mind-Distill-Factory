@@ -21,6 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from slug_rules import slug_arg
+except ImportError:  # pragma: no cover - supports package-style imports
+    from scripts.slug_rules import slug_arg  # type: ignore
+
 STATUS_SCHEMA_VERSION = "task-status-v2"
 
 
@@ -356,7 +361,7 @@ def main() -> None:
 
     init = sub.add_parser("init")
     init.add_argument("stage", choices=["stage1a", "stage3"])
-    init.add_argument("slug")
+    init.add_argument("slug", type=slug_arg)
 
     completed = sub.add_parser("mark-completed")
     completed.add_argument("status_path")
