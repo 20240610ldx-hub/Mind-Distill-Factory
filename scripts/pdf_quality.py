@@ -195,6 +195,9 @@ KEEP_SCORE = 0.5          # 与 rapidocr text_score、PaddleOCR drop_score 的�
 VERTICAL_RATIO = 1.5      # 高 > 1.5 × 宽 的框算竖排列
 SUSPECT_MIN_CELLS = 4     # 至少能放 4 个字的框才算「一行字」，排除斑点、页码
 SHORT_LINE_SHARE = 0.5    # 认出的字不到该有字数的一半：只认出了一部分
+WIDENED_MAX = 1.5         # 被丢的框不超过 1.5 个本页字宽，才按本页字号折算字数（见 summarize_lines）
+WIDENED_MIN_HAN = 3       # 而且引擎在框里读出了 ≥3 个汉字：一串字，不是印章上的一两个大字
+HAN_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 
 OcrLine = tuple[Any, str, float]  # (四点框, 文字, 分数)
 # 引擎：图片字节 → (文本, 平均置信度) 或 (文本, 平均置信度, 诊断)；诊断字段见 summarize_lines
@@ -291,13 +294,27 @@ def undetected_columns(lines: list[OcrLine]) -> int:
 def summarize_lines(lines: list[OcrLine], keep_score: float = KEEP_SCORE) -> tuple[str, float, dict[str, Any]]:
     """把引擎的逐行结果变成 (文本, 平均置信度, 诊断)。低于 keep_score 的行不进文本，但要数出来。"""
     ordered, layout = order_lines(lines)
+    # 本页一个字有多大：完整行（≥4 字）短边的中位数。刻本経文夹着小字音注时，框被音注撑宽，
+    # 按自身短边只算出 3.9 个字（《四書経筵直解》p12 整列被丢却没计数），按本页字号算是 5.5 个。
+    # 只对像正文的框这样算：宽度不超过 WIDENED_MAX 个字宽（大字加旁注最多 1.5 字宽；《吶喊》p141 的
+    # 「圖書」馆藏印 1.8 字宽、插图标注 2.1 字宽），且引擎读出了 ≥WIDENED_MIN_HAN 个汉字（真漏认的
+    # 「洪…結竹猗猗」「歐而止」；《吶喊》p61 的「國家」印只 1.2 字宽，但读出来是「CDI」）
+    sides = [(min(x1 - x0, y1 - y0), max(x1 - x0, y1 - y0)) for x0, y0, x1, y1 in (_extent(ln[0]) for ln in lines)]
+    regular = sorted(s for s, ln in sides if s > 0 and ln / s >= SUSPECT_MIN_CELLS)
+    unit = regular[len(regular) // 2] if regular else 0.0
     texts: list[str] = []
     scores: list[float] = []
     dropped = short = 0
     for box, text, score in ordered:
         text, cells = str(text).strip(), _cells(box)
         if float(score) < keep_score or not text:
-            dropped += cells >= SUSPECT_MIN_CELLS
+            # 像正文的被丢框，按自身短边和本页字号两种算法取大；只认出一部分的行仍只按自身短边，
+            # 免得大字号章题被当成「只认出一半」
+            x0, y0, x1, y1 = _extent(box)
+            narrow, long = min(x1 - x0, y1 - y0), max(x1 - x0, y1 - y0)
+            looks_like_body = narrow <= WIDENED_MAX * unit and len(HAN_RE.findall(text)) >= WIDENED_MIN_HAN
+            by_page = long / unit if unit and looks_like_body else 0.0
+            dropped += max(cells, by_page) >= SUSPECT_MIN_CELLS
             continue
         texts.append(text)
         scores.append(float(score))

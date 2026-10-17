@@ -132,6 +132,34 @@ class SyntheticScanTests(unittest.TestCase):
         self.assertEqual([r["ocr_status"] for r in report["pages"]], ["ok", "ok"])
         self.assertEqual({r["backend"] for r in report["pages"]}, {"fake"})
 
+    def test_scan_reads_selected_pages_from_the_original_file(self):
+        # 拷进临时 PDF 再渲染，分层压缩的扫描件会变图：抽页必须在原文件上读，导出的图就是 OCR 读的那张
+        seen: list[bytes] = []
+        oc.pdf_quality.register_runner("fake", lambda image: (seen.append(image), ("文字", 0.97))[1])
+        calls = []
+        real = oc.lsp.extract_pdf_pages
+
+        def spy(path, **kwargs):
+            calls.append((Path(path), kwargs.get("page_numbers")))
+            return real(path, **kwargs)
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(oc.lsp, "extract_pdf_pages", spy):
+            pdf = oc.build_pdf([oc.render_page(t, None) for t in TRUTH + TRUTH[:1]], Path(td) / "scan.pdf")
+            report = oc.scan(pdf, "fake", "2", Path(td) / "out")
+            exported = (Path(td) / "out" / "p0002.png").read_bytes()
+        self.assertEqual(calls, [(pdf, [2])])
+        self.assertEqual([r["page"] for r in report["pages"]], [2])
+        self.assertEqual(report["pages_in_file"], 3)
+        self.assertEqual(seen, [exported])
+
+    def test_extract_pdf_pages_subset_keeps_page_numbers(self):
+        oc.pdf_quality.register_runner("fake", lambda image: ("文字", 0.97))
+        with tempfile.TemporaryDirectory() as td:
+            pdf = oc.build_pdf([oc.render_page(t, None) for t in TRUTH + TRUTH[:1]], Path(td) / "scan.pdf")
+            pages, meta = oc.lsp.extract_pdf_pages(pdf, ocr_backend="fake", page_numbers=[3, 1, 9])
+        self.assertEqual([p["page_number"] for p in pages], [3, 1])
+        self.assertEqual((meta["page_count"], meta["ocr_page_count"]), (3, 2))
+
     def test_degrade_levels_render(self):
         for level in oc.DEGRADE:
             with self.subTest(level=level):
@@ -288,6 +316,16 @@ class LineLayoutTests(unittest.TestCase):
         self.assertAlmostEqual(conf, (0.95 + 0.6) / 2)
         self.assertEqual(details, {"layout": "vertical", "lines": 2, "dropped_lines": 1, "short_lines": 1,
                                    "undetected_lines": 0})
+
+    def test_dropped_box_widened_by_glosses_counts_by_page_glyph_size(self):
+        # 《四書経筵直解》p12：経文夹小字音注，框被撑到 1.4 倍宽，按自身短边只有 3.9 字，按本页字号是 5.5 字
+        body = [column(1000 - 50 * k, 0, "繼續熙是光明敬止是無不敬而安所") for k in range(4)]
+        widened = (box(760, 0, 56, 220), "洪結竹猗猗", 0.475)
+        title = column(640, 0, "大學", w=120)                     # 大字号章题：2 字占 2 格，不算只认出一半
+        seal = (box(560, 300, 72, 210), "高表", 0.34)               # 《吶喊》p141 的「圖書」馆藏印：1.8 字宽，不是正文
+        stamp = (box(520, 900, 49, 165), "CDI", 0.35)               # 《吶喊》p61 的「國家」印：只 1.2 字宽，但读不出汉字
+        _text, _conf, details = oc.pdf_quality.summarize_lines(body + [widened, title, seal, stamp])
+        self.assertEqual((details["dropped_lines"], details["short_lines"]), (1, 0))
 
     def test_undetected_columns_are_inferred_from_column_gaps(self):
         # 《大學中庸》国图本 p20：透墨的列根本没被框出来，只能从列距推

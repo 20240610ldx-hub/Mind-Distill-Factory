@@ -179,8 +179,12 @@ def init_stage1a_status(slug: str) -> None:
         print(f"WARNING: could not initialize Stage 1A task_status.json: {e}")
 
 
-def extract_pdf_pages(path: Path, ocr_backend: str = "auto") -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Return every PDF page with text/image diagnostics and OCR eligibility."""
+def extract_pdf_pages(path: Path, ocr_backend: str = "auto",
+                      page_numbers: list[int] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Return every PDF page (or only `page_numbers`, 1-based) with text/image diagnostics and OCR eligibility.
+
+    抽页（mdf ocr scan/survey）必须在原文件上逐页读：把页拷进新 PDF 再渲染，JBIG2+JPX 分层压缩的
+    扫描件（日本国立公文书馆的明刻本）会渲染出不同的图，OCR 结果跟 index 对不上。"""
     pages: list[dict[str, Any]] = []
     metadata: dict[str, Any] = {}
 
@@ -195,7 +199,8 @@ def extract_pdf_pages(path: Path, ocr_backend: str = "auto") -> tuple[list[dict[
             "backend": "fitz",
         }
         page_quality_records: list[Any] = []
-        for idx in range(len(doc)):
+        wanted = range(len(doc)) if page_numbers is None else [n - 1 for n in page_numbers if 1 <= n <= len(doc)]
+        for idx in wanted:
             page = doc[idx]
             text = page.get_text("text") or ""
             image_infos: list[dict[str, Any]] = []
@@ -252,6 +257,8 @@ def extract_pdf_pages(path: Path, ocr_backend: str = "auto") -> tuple[list[dict[
         reader = PdfReader(str(path))
         metadata.update({"page_count": len(reader.pages), "title": path.stem, "backend": "pypdf"})
         for idx, page in enumerate(reader.pages):
+            if page_numbers is not None and idx + 1 not in page_numbers:
+                continue
             text = page.extract_text() or ""
             quality = classify_page(idx + 1, text)
             pages.append({

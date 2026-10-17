@@ -320,18 +320,11 @@ def parse_pages(spec: str | None, count: int) -> list[int]:
 def scan(pdf: Path, backend: str = "auto", pages_spec: str | None = None, out_dir: Path | None = None) -> dict[str, Any]:
     import fitz  # type: ignore  # OCR 本身就要 PyMuPDF 渲染页面
 
-    with fitz.open(pdf) as src, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+    with fitz.open(pdf) as src:
         selected = parse_pages(pages_spec, len(src))
-        target = pdf
-        if len(selected) < len(src):  # 只抽几页：拷进临时 PDF，走的仍是 index 的同一条路径
-            target = Path(td) / "selected.pdf"
-            with fitz.open() as part:
-                for number in selected:
-                    part.insert_pdf(src, from_page=number - 1, to_page=number - 1)
-                part.save(target)
-        pages, meta = lsp.extract_pdf_pages(target, ocr_backend=backend)
-        for page, number in zip(pages, selected):
-            page["page_number"] = number
+        # 在原文件上只读这几页，与 index 逐页走同一条路径。不能先拷进临时 PDF：分层压缩的扫描件
+        # 拷贝后渲染出的图不同（《四書経筵直解》p12 约一成像素变了，置信度 0.95→0.92）
+        pages, meta = lsp.extract_pdf_pages(pdf, ocr_backend=backend, page_numbers=selected)
         if out_dir:
             out_dir.mkdir(parents=True, exist_ok=True)
             for page in pages:
