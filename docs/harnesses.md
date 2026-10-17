@@ -53,7 +53,7 @@ python scripts/mdf.py run <slug> [step] --harness codex --yes    # 用户同意�
   … 1分30秒 · 日志 12.4 KB · 新产物 3 个 · 最近输出：已写 shard_004_extracts.json
 ```
 
-结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」）。本阶段的步骤全部完成时，接着跑阶段检查点。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`，例如审查步骤是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。Claude Code 的无头进程用 `--output-format json` 输出结果对象，结果行和运行记录里带上费用、轮数和缓存读取 token（墨子试跑 9 次调用合计 $6.04，大头是缓存读）；Codex、pi 的用量格式没有核实，不解析。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
 
 ### 2. 章节标签与 H2 兜底：左侧的阶段轨
 
@@ -95,4 +95,5 @@ python scripts/mdf.py harness plan zhang-juzheng-v6 --target codex
 - **AGENTS.md 过时**：它还停在 v6 之前的规则（「双语合一 SKILL.md」），Codex 和 pi 都会读到。编排 skill 已声明以 `CLAUDE.md` 为准，但根治需要同步 `AGENTS.md`；文档分支 `claude/dreamy-hamilton-3fd992` 做了这件事，尚未合并。`mdf harness` 会对此给出 ⚠️。
 - **Codex 子代理**：二手资料称已正式提供，但说法互相矛盾，官方文档里没有核实到，所以流水线不依赖它，统一走简报 + 新进程。
 - **gallery 包的 frontmatter**：含 `format_version`、`argument-hint` 等非 Agent Skills 标准字段。Codex、pi 是否对此告警没有逐一验证；`harness plan` 会提示。
-- **没有做端到端实测**：本次只验证了适配文件结构（`claude plugin validate`、本仓库单测），没有在 Codex、pi 里真正跑完一个人物。首次使用请留意 agent 是否按简报写对了文件，检查点会兜底。
+- **Codex、pi 仍没有端到端实测**：墨子试跑（[harness-trial-mozi.md](harness-trial-mozi.md)）用 `claude -p` 新进程走完了简报路径（到发布），修掉了简报缺口，但 Codex、pi 本身没有跑过。首次使用请留意 agent 是否按简报写对了文件，检查点会兜底。
+- **Claude Code 无头模式需要 `--allowedTools`**：只给 `--permission-mode acceptEdits` 时 Bash 被拦，执行者跑不了检查点命令；`mdf brief` 打印的命令和 `mdf run` 已带上 `--allowedTools Bash,Read,Write,Edit,Glob,Grep`（等于授权该进程执行任意 shell，自行判断）。提示词必须写在 `--allowedTools` 前面：它是可变参数，排在它后面的位置参数会被当成工具名吞掉。

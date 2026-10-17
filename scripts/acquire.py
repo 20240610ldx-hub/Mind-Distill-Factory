@@ -500,6 +500,9 @@ DROP_CLASSES = {
 # class 里含这些片段的元素一律丢弃：靠样式表隐藏的悬浮注释（如维基文库的 variant-tooltip
 # 校勘注）若拼进正文，会把「學已矣」变成「學已一無「已」字矣」，破坏逐字溯源。
 DROP_CLASS_FRAGMENTS = ("tooltip",)
+# 维基文库页眉模板（上一篇/下一篇、目录、作者）渲染成 <div id="headerContainer">，不带 ws-header class。
+# 实测墨子：留下的「下一篇题」被 worker 当成本篇标题，3/13 篇的出处标错。
+DROP_IDS = {"headerContainer"}
 
 
 class _TextExtractor(HTMLParser):
@@ -527,7 +530,7 @@ class _TextExtractor(HTMLParser):
         is_root = bool(self.root_class) and self.root_class in classes and self.root_open == 0
         hidden = "display:none" in (attributes.get("style") or "").replace(" ", "").lower()
         is_skip = (
-            tag in SKIP_TAGS or bool(classes & self.drop) or hidden
+            tag in SKIP_TAGS or bool(classes & self.drop) or hidden or attributes.get("id") in DROP_IDS
             or any(fragment in c for c in classes for fragment in DROP_CLASS_FRAGMENTS)
         )
         self.found_root |= is_root

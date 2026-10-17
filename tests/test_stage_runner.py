@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -34,6 +35,8 @@ if mode == "fail":
 out = Path(os.environ["MDF_DATA_ROOT"]) / "output" / "demo" / "review.md"
 out.write_text("# 审查\n\n## 裁决\n\n[PASS] 假 harness 写的审查结论\n", encoding="utf-8")
 print("已写审查报告", flush=True)
+if mode == "usage":
+    print('{"type":"result","subtype":"success","num_turns":9,"total_cost_usd":0.53,"usage":{"output_tokens":1200,"cache_read_input_tokens":880000},"result":"检查点通过"}', flush=True)
 '''
 
 
@@ -62,6 +65,7 @@ class RunnerFixture(unittest.TestCase):
         profiles["harnesses"]["fake"] = {
             "label": "假 harness", "executables": ["fakeagent"], "model_flag": "--model",
             "isolated_run": f'fakeagent -I "{self.script.as_posix()}" {mode} "{{prompt}}"',
+            "usage_parser": "claude-json",
         }
         return profiles
 
@@ -79,9 +83,18 @@ class RunnerFixture(unittest.TestCase):
 class ArgvTests(unittest.TestCase):
     def test_prompt_is_one_argument_and_model_follows_executable(self):
         profile = sr.harness.load_profiles()["harnesses"]["claude-code"]
-        argv = sr.build_argv(profile, "/bin/claude", "读取 output/x y/briefs/review.md 并执行", model="sonnet")
-        self.assertEqual(argv, ["/bin/claude", "--model", "sonnet", "-p", "--permission-mode", "acceptEdits",
-                                "读取 output/x y/briefs/review.md 并执行"])
+        prompt = "读取 output/x y/briefs/review.md 并执行"
+        argv = sr.build_argv(profile, "/bin/claude", prompt, model="sonnet")
+        self.assertEqual(argv[:5], ["/bin/claude", "--model", "sonnet", "-p", prompt])
+        self.assertIn("--allowedTools", argv)
+
+    def test_prompt_is_not_swallowed_by_variadic_allowed_tools(self):
+        # --allowedTools 是 <tools...> 可变参数：排在它后面的位置参数会被当成工具名（墨子试跑分支的模板就是这样）。
+        profile = sr.harness.load_profiles()["harnesses"]["claude-code"]
+        argv = sr.build_argv(profile, "claude", "PROMPT")
+        self.assertLess(argv.index("PROMPT"), argv.index("--allowedTools"))
+        tools = argv[argv.index("--allowedTools") + 1]
+        self.assertEqual(tools.split(","), ["Bash", "Read", "Write", "Edit", "Glob", "Grep"])
 
     def test_every_harness_declares_model_flag(self):
         for name, profile in sr.harness.load_profiles()["harnesses"].items():
@@ -109,9 +122,20 @@ class ConsentTests(RunnerFixture):
         self.assertEqual(code, 2)
 
 
+def passing_checkpoint(calls: list):
+    def fake(command, slug, root):
+        calls.append(command.replace("{slug}", slug) if command else command)
+        return {"command": command.replace("{slug}", slug), "exit_code": 0, "tail": []} if command else None
+    return fake
+
+
 class RunTests(RunnerFixture):
     def test_successful_run_is_logged_and_recorded(self):
-        self.assertEqual(self.run_fake(yes=True), 0)
+        calls: list = []
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint(calls)):
+            self.assertEqual(self.run_fake(yes=True), 0)
+        self.assertEqual(calls, ["python scripts/mdf.py validate package demo --strict"],
+                         "review 用步骤自带的检查点，而不是去编一个 validate review")
         text = "\n".join(self.lines)
         self.assertIn("▶ 开始：阶段 5 · 质量审查 / 质量审查", text)
         self.assertIn("…", text, "运行中要有心跳")
@@ -124,6 +148,30 @@ class RunTests(RunnerFixture):
         log = (ROOT / record["log"]) if not Path(record["log"]).is_absolute() else Path(record["log"])
         self.assertIn("已写审查报告", log.read_text(encoding="utf-8"))
         self.assertTrue((self.root / "output" / "demo" / "briefs" / "review.md").exists())
+
+    def test_failing_step_checkpoint_fails_the_run_and_explains(self):
+        failing = lambda command, slug, root: {"command": command, "exit_code": 1, "tail": ["P2 失败"]}  # noqa: E731
+        with mock.patch.object(sr, "_checkpoint", failing):
+            self.assertEqual(self.run_fake(yes=True), 1)
+        text = "\n".join(self.lines)
+        self.assertIn("⚠️ 进程结束，但步骤未通过", text)
+        self.assertIn("P2 失败", text)
+        self.assertIn("没有名为 review 的校验阶段", text, "checkpoint_note 在检查点失败时给出")
+
+    def test_usage_is_parsed_into_result_line_and_record(self):
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
+            self.assertEqual(self.run_fake("usage", yes=True), 0)
+        self.assertIn("费用 $0.53 · 9 轮", "\n".join(self.lines))
+        record = self.records()[0]
+        self.assertEqual((record["cost_usd"], record["turns"], record["cache_read_tokens"]), (0.53, 9, 880000))
+        html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
+        self.assertIn("$0.53 · 9 轮", html)
+
+    def test_checkpoint_runs_in_the_data_root(self):
+        check = sr._checkpoint("python scripts/mdf.py validate sources {slug}", "demo", self.root)
+        self.assertEqual(check["command"], "python scripts/mdf.py validate sources demo")
+        self.assertNotEqual(check["exit_code"], 0, "空的 demo 没有素材，检查点应当不通过")
+        self.assertTrue(check["tail"])
 
     def test_failing_process(self):
         self.assertEqual(self.run_fake("fail", yes=True), 1)

@@ -46,9 +46,10 @@ def _clock(seconds: float) -> str:
     return f"{minutes}分{sec:02d}秒" if minutes else f"{sec}秒"
 
 
-def build_argv(profile: dict[str, Any], executable: str, prompt: str, model: str | None = None) -> list[str]:
-    """把 isolated_run 模板（如 `claude -p --permission-mode acceptEdits "{prompt}"`）拆成 argv。
-    不经过 shell：提示词原样作为一个参数传入。"""
+def build_argv(profile: dict[str, Any], executable: str, prompt: str, model: str | None = None,
+               usage: bool = False) -> list[str]:
+    """把 isolated_run 模板（如 `claude -p "{prompt}" --permission-mode acceptEdits …`）拆成 argv。
+    不经过 shell：提示词原样作为一个参数传入。usage=True 时追加 usage_flags（机器可读的结果与用量）。"""
     tokens = shlex.split(profile["isolated_run"])
     argv = [executable, *[prompt if t == "{prompt}" else t for t in tokens[1:]]]
     if model:
@@ -56,7 +57,35 @@ def build_argv(profile: dict[str, Any], executable: str, prompt: str, model: str
         if not flag:
             raise SystemExit(f"{profile.get('label', '该 harness')} 没有配置 model_flag，不能指定 --model")
         argv[1:1] = [flag, model]
+    if usage:
+        argv += list(profile.get("usage_flags") or [])
     return argv
+
+
+def parse_usage(log: Path, parser: str | None) -> dict[str, Any]:
+    """从日志里取费用、轮数、token。只认已核实的格式：claude-json = `claude -p --output-format json`
+    在结尾打印的结果对象（墨子试跑的费用统计就靠它）。认不出就返回空，不猜。"""
+    if parser != "claude-json":
+        return {}
+    try:
+        text = log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    start = text.rfind('{"type":"result"')
+    if start < 0:
+        start = text.rfind("{")
+    try:
+        data = json.loads(text[start:])
+    except ValueError:
+        return {}
+    usage = data.get("usage") or {}
+    return {
+        "cost_usd": data.get("total_cost_usd"),
+        "turns": data.get("num_turns"),
+        "output_tokens": usage.get("output_tokens"),
+        "cache_read_tokens": usage.get("cache_read_input_tokens"),
+        "result_excerpt": str(data.get("result") or "")[:300],
+    }
 
 
 def _snapshot(dirs: list[Path]) -> dict[str, float]:
@@ -87,16 +116,20 @@ def _last_line(log: Path) -> str:
         return ""
 
 
-def _checkpoint(phase: dict[str, Any], slug: str, root: Path) -> dict[str, Any] | None:
-    command = phase.get("checkpoint")
+def _checkpoint(command: str | None, slug: str, root: Path) -> dict[str, Any] | None:
+    """跑阶段树里写的检查点命令。`python` 换成当前解释器，`scripts/*.py` 换成仓库里的绝对路径，
+    在数据根目录下执行（命令里的 sources/… output/… 相对数据根目录）。"""
     if not command:
         return None
-    rest = shlex.split(command.replace("{slug}", slug)).copy()
-    rest = rest[rest.index("scripts/mdf.py") + 1:] if "scripts/mdf.py" in rest else rest
-    done = subprocess.run([sys.executable, str(SCRIPTS / "mdf.py"), *rest, "--root", str(root)],
-                          cwd=CODE_ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    command = command.replace("{slug}", slug)
+    tokens = shlex.split(command)
+    if tokens and tokens[0] in ("python", "python3"):
+        tokens[0] = sys.executable
+    tokens = [str(CODE_ROOT / t) if t.startswith("scripts/") and t.endswith(".py") else t for t in tokens]
+    done = subprocess.run(tokens, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          env={**os.environ, "MDF_DATA_ROOT": str(root), "PYTHONUTF8": "1"})
     tail = [ln for ln in (done.stdout + done.stderr).splitlines() if ln.strip()][-3:]
-    return {"command": command.replace("{slug}", slug), "exit_code": done.returncode, "tail": tail}
+    return {"command": command, "exit_code": done.returncode, "tail": tail}
 
 
 def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, yes: bool = False,
@@ -122,7 +155,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
         out(f"❌ 没找到 {profile['label']} 的可执行文件（{', '.join(profile['executables'])}）；"
             f"可先用 mdf brief {slug} {step_id} 生成简报，交给子代理执行。")
         return 2
-    argv = build_argv(profile, executable, prompt, model)
+    argv = build_argv(profile, executable, prompt, model, usage=True)
     if not yes:  # 只打印计划，不写任何文件
         out(f"计划：用 {profile['label']} 在新进程里执行「{step['title']}」（按量计费的模型调用）。")
         out(f"  命令：{shlex.join(argv)}")
@@ -166,8 +199,14 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     after = ps.collect_status(slug, root, tree=tree)
     state_after = next(s.state for s in after if s.key == step_id)
     phase_finished = all(s.state in ps.FINISHED for s in after if s.phase == phase["id"])
-    check = _checkpoint(phase, slug, root) if phase_finished and proc.returncode == 0 and not timed_out else None
-    ok = proc.returncode == 0 and not timed_out and state_after != "failed" and (check is None or check["exit_code"] == 0)
+    # 步骤自带的检查点每次都跑；阶段检查点要等本阶段的步骤都做完才有意义（墨子试跑发现 1）
+    commands = [step.get("checkpoint")]
+    if phase_finished and phase.get("checkpoint") != step.get("checkpoint"):
+        commands.append(phase.get("checkpoint"))
+    process_ok = proc.returncode == 0 and not timed_out
+    checks = [c for c in (_checkpoint(cmd, slug, root) for cmd in commands if cmd and process_ok) if c]
+    ok = process_ok and state_after != "failed" and all(c["exit_code"] == 0 for c in checks)
+    usage = parse_usage(log, profile.get("usage_parser"))
 
     labels = ps.STATE_LABELS
     if timed_out:
@@ -176,13 +215,17 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
         verdict = f"❌ 进程退出码 {proc.returncode}"
     else:
         verdict = "✅ 进程正常结束" if ok else "⚠️ 进程结束，但步骤未通过"
-    out(f"{verdict}：{label}（{_clock(seconds)}）· 步骤 {labels.get(state_before, state_before)} → "
+    spent = "".join([f" · 费用 ${usage['cost_usd']:.2f}" if isinstance(usage.get("cost_usd"), (int, float)) else "",
+                     f" · {usage['turns']} 轮" if usage.get("turns") else ""])
+    out(f"{verdict}：{label}（{_clock(seconds)}{spent}）· 步骤 {labels.get(state_before, state_before)} → "
         f"{labels.get(state_after, state_after)} · 新产物 {len(changed)} 个")
-    if check:
+    for check in checks:
         out(f"  检查点 `{check['command']}`：{'通过' if check['exit_code'] == 0 else '未通过'}"
             + ("" if check["exit_code"] == 0 else "\n    " + "\n    ".join(check["tail"])))
-    elif not phase_finished:
-        out(f"  本阶段还有步骤没完成，检查点留到阶段末尾再跑。")
+    if step.get("checkpoint_note") and any(c["exit_code"] for c in checks):
+        out(f"  说明：{step['checkpoint_note'].replace('{slug}', slug)}")
+    if not phase_finished and phase.get("checkpoint"):
+        out("  本阶段还有步骤没完成，阶段检查点留到阶段末尾再跑。")
     out(f"  进度：{ps.progress_bar(after, tree)}")
     out(f"  日志：{harness._display_path(log, CODE_ROOT)}")
 
@@ -190,7 +233,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
         "schema": RUN_SCHEMA, "slug": slug, "step": step_id, "phase": phase["id"], "harness": harness_name,
         "model": model, "started_at": f"{started:%Y-%m-%d %H:%M:%S}", "seconds": round(seconds),
         "exit_code": proc.returncode, "timed_out": timed_out, "state_before": state_before, "state_after": state_after,
-        "checkpoint": check, "changed_files": len(changed), "ok": ok,
+        "checkpoints": checks, "changed_files": len(changed), "ok": ok, **usage,
         "summary": verdict.split(" ", 1)[-1] + f" · {labels.get(state_after, state_after)}",
         "log": harness._display_path(log, CODE_ROOT), "brief": harness._display_path(brief_path, CODE_ROOT),
     }

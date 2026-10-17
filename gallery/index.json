@@ -148,6 +148,27 @@
       "format_version": 6,
       "has_attachments": true,
       "lang": "zh"
+    },
+    {
+      "slug": "mozi",
+      "name_zh": "墨子",
+      "name_en": "Mozi",
+      "name_original": "墨子",
+      "primary_category": "philosophy",
+      "secondary_categories": [
+        "governance",
+        "pedagogy"
+      ],
+      "era": "春秋战国之际，约公元前五至四世纪；诸侯混战、礼崩乐坏，墨家是有组织的学派",
+      "distilled_on": "2026-10-18",
+      "distill_method": "pipeline",
+      "review_status": "PASS",
+      "skill_dir": "gallery/mozi/",
+      "install_path": "mozi-wisdom",
+      "notes": "Distilled skill for Mozi.",
+      "format_version": 6,
+      "has_attachments": true,
+      "lang": "zh"
     }
   ]
 }

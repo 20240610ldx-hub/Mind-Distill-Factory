@@ -315,7 +315,7 @@ def _stage_attachments(ctx: "Ctx") -> StageStatus:
     else:
         status.state = "in_progress" if present else "pending"
         status.detail = "缺少 " + "、".join(n for n in REQUIRED_REFS if n not in present)
-        status.next_action = "派发 case-builder / evidence-carder（Stage 4.5）"
+        status.next_action = "派发 case-builder / evidence-carder，再由 skill-assembler 续写 voice.md 并回写案例索引（Stage 4.5）"
     return status
 
 
@@ -542,7 +542,7 @@ def render_card(slug: str, stages: list[StageStatus], tree: dict | None = None, 
     how = (f"`{step['command'].replace('{slug}', slug)}`" if step.get("command") else
            f"agent：{step.get('agent', '')}（交给子代理；没有子代理的 harness 用 "
            f"`python scripts/mdf.py run {slug} {step['id']} --harness <名称> --yes` 交给新进程）")
-    gate = phase.get("checkpoint")
+    gate = step.get("checkpoint") or phase.get("checkpoint")  # 步骤自带的检查点优先
     lines = [
         tree["chapter_policy"]["fallback_heading"].format(order=phase["order"], title=phase["title"]),
         "",
@@ -573,6 +573,12 @@ def load_runs(root: Path, slug: str, limit: int = 20) -> list[dict[str, Any]]:
     except OSError:
         return []
     return runs[::-1][:limit]
+
+
+def _cost(record: dict[str, Any]) -> str:
+    cost, turns = record.get("cost_usd"), record.get("turns")
+    parts = [f"${cost:.2f}" if isinstance(cost, (int, float)) else "", f"{turns} 轮" if turns else ""]
+    return " · ".join(p for p in parts if p) or "—"
 
 
 def render_html(slug: str, stages: list[StageStatus], tree: dict | None = None,
@@ -610,10 +616,11 @@ def render_html(slug: str, stages: list[StageStatus], tree: dict | None = None,
     run_rows = "".join(
         f'<tr><td>{escape(str(r.get("started_at", "")))}</td><td>{escape(str(r.get("step", "")))}</td>'
         f'<td>{escape(str(r.get("harness", "")))}</td><td>{escape(str(r.get("seconds", "")))} 秒</td>'
+        f'<td>{escape(_cost(r))}</td>'
         f'<td><span class="badge {"ok" if r.get("ok") else "bad"}">{"通过" if r.get("ok") else "未通过"}</span></td>'
         f'<td>{escape(str(r.get("summary", "")))}</td></tr>' for r in runs or [])
     runs_html = (f'<section><h2>运行记录（mdf run）</h2><table><thead><tr><th>开始</th><th>步骤</th><th>harness</th>'
-                 f'<th>用时</th><th>结果</th><th>摘要</th></tr></thead><tbody>{run_rows}</tbody></table></section>') if run_rows else ""
+                 f'<th>用时</th><th>费用</th><th>结果</th><th>摘要</th></tr></thead><tbody>{run_rows}</tbody></table></section>') if run_rows else ""
     rail_html, sections_html = "".join(rail), "".join(sections)
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

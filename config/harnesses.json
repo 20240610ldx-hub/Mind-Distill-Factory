@@ -19,8 +19,11 @@
         "native": true,
         "how": "Task 工具调用 agents/*.md；以插件加载时名为 mind-distill-factory:<agent>"
       },
-      "isolated_run": "claude -p --permission-mode acceptEdits \"{prompt}\"",
+      "isolated_run": "claude -p \"{prompt}\" --permission-mode acceptEdits --allowedTools Bash,Read,Write,Edit,Glob,Grep",
+      "_isolated_run_comment": "提示词必须放在 --allowedTools 前面：它是可变参数（<tools...>），后面的位置参数会被当成工具名吞掉。只用 acceptEdits 时 Bash 会被拦（墨子试跑发现 7），检查点命令跑不了",
       "model_flag": "--model",
+      "usage_flags": ["--output-format", "json"],
+      "usage_parser": "claude-json",
       "chapters": {
         "native": true,
         "tool": "mcp__ccd_session__mark_chapter",
