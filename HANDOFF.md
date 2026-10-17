@@ -8,6 +8,8 @@
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
 结果：`Ran 293 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
 
+CI：`.github/workflows/tests.yml`（PR #3 合入）在 ubuntu + windows × Python 3.12 / 3.13 上跑 `py_compile` 与全套单测，触发于所有 PR 及 push 到 main；不装 extras、无网络/OCR/API key 依赖。
+
 ---
 
 ## 一、阶段 2 / P0 已完成（M1–M4）
@@ -84,8 +86,8 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 
 ### P3：负面 fixtures、CI、文档收敛
 - `evaluation/fixtures/negative/` 不存在，`regression-protocol.md` 却声称有 4 个
-- 无 `.github/workflows/`；CI 需在无网络、无 OCR、无 API key 下通过（现有测试已满足：P6 pilot 测试改读已提交的 gallery 副本）
-- CI 若跑 `published` 全量，需先处理 charlie-munger
+- ~~无 `.github/workflows/`~~ **已完成（PR #3）**：离线单测 CI，4 个矩阵组合全绿，未改任何测试
+- CI 尚未跑 `validate_output.py published` 全量 gallery；要加这一步，需先处理 charlie-munger
 
 ---
 
@@ -122,7 +124,7 @@ python scripts/publish_skill.py --slug <slug> --dry-run
 ## 六、建议的下一动作顺序
 
 1. 人工决定项（charlie-munger、张居正补审、文档分支合并、`--install`）
-2. P3 的 CI 骨架（测试已可离线跑通，成本最低、收益立刻可见）
+2. ~~P3 的 CI 骨架~~ 已完成（PR #3）；处理完 charlie-munger 后可在 CI 加 `published` 全量 gallery 校验
 3. P1 claim ledger 与覆盖矩阵
 4. P2 runtime `read_reference` + trace + judge schema
 5. P3 负面 fixtures + 文档 drift 清零
