@@ -272,6 +272,89 @@ def verify_manifest(package_dir: Path, manifest: dict[str, Any], slug: str) -> l
     return errors
 
 
+def _load_sibling(name: str) -> Any:
+    """按路径加载同目录的模块（scripts/ 不是包）。"""
+    import importlib.util
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def backfill(slug: str, root: Path, corpus_root: Path, force: bool = False) -> int:
+    """给已在 gallery/ 里的包补发 v2 manifest，返回进程退出码。
+
+    legacy 包只记文件 hash，不写 review——index.json 里的 review_status 是
+    publish_skill.py 无条件写的 PASS，不能拿来冒充审查结论。v6 包需要
+    output/{slug}/framework_core.json 取簇列表，并在 corpus_root/sources/{slug}/
+    下重跑 P2；P2 不通过就拒绝写入，不生成一份注定校验失败的 manifest。
+    """
+    gallery_dir = root / "gallery" / slug
+    skill_md = gallery_dir / "SKILL.md"
+    if not skill_md.exists():
+        print(f"ERROR: {skill_md} 不存在")
+        return 1
+
+    path = gallery_dir / MANIFEST_NAME
+    if path.exists() and not force:
+        existing, _ = load_manifest(path)
+        if existing is not None:
+            print(f"[SKIP] {path} 已是 v{MANIFEST_VERSION}（用 --force 覆盖）")
+            return 0
+
+    is_v6 = _load_sibling("validate_output").is_v6_skill(skill_md.read_text(encoding="utf-8"))
+    if is_v6:
+        output_dir = root / "output" / slug
+        core_file = output_dir / "framework_core.json"
+        if not core_file.exists():
+            print(f"ERROR: v6 补发需要 {core_file} 提供簇列表")
+            return 1
+        p2 = attest_p2(gallery_dir / EVIDENCE_REL, slug, corpus_root, _load_sibling("verify_provenance"))
+        if p2["status"] != "pass":
+            print(f"ERROR: P2 未通过，拒绝写入：{json.dumps(p2, ensure_ascii=False)}")
+            return 1
+        manifest = build_manifest(
+            gallery_dir, slug, format_version=6, clusters=load_cluster_ids(core_file),
+            p2_attestation=p2, review=read_review_verdict(output_dir / "review.md"),
+        )
+    else:
+        manifest = build_manifest(gallery_dir, slug, format_version=1)
+
+    write_manifest(path, manifest)
+    errors = verify_manifest(gallery_dir, manifest, slug)
+    if errors:
+        print(f"ERROR: 写入后自检失败：{errors}")
+        return 1
+    print(f"[OK] {path}: format_version={manifest['format_version']}, {len(manifest['files'])} 个文件")
+    return 0
+
+
+def main() -> int:
+    import argparse
+    import sys
+
+    if sys.platform.startswith("win"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except AttributeError:
+            pass
+
+    parser = argparse.ArgumentParser(description="发布包 manifest 工具")
+    sub = parser.add_subparsers(dest="command", required=True)
+    bf = sub.add_parser("backfill", help="给 gallery/{slug}/ 补发 v2 manifest")
+    bf.add_argument("slug", type=_load_sibling("slug_rules").slug_arg)
+    bf.add_argument("--corpus-root", type=Path, default=None,
+                    help="含 sources/{slug}/ 的目录（v6 重跑 P2 用），默认仓库根")
+    bf.add_argument("--force", action="store_true", help="覆盖已有的 v2 manifest")
+    args = parser.parse_args()
+
+    root = Path(__file__).resolve().parent.parent
+    return backfill(args.slug, root, args.corpus_root or root, args.force)
+
+
 def _verify_v6_attestation(where: Path, manifest: dict[str, Any], files: dict[str, Any]) -> list[str]:
     errors: list[str] = []
 
@@ -304,3 +387,7 @@ def _verify_v6_attestation(where: Path, manifest: dict[str, Any], files: dict[st
             f"当前 {EVIDENCE_REL}={str(actual)[:12]}"
         )
     return errors
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

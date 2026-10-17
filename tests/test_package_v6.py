@@ -379,7 +379,9 @@ class P6CoreSelfSufficiencyTests(unittest.TestCase):
     def test_p6_accepts_the_real_pilot_package(self) -> None:
         # The thresholds must not exceed genuine content — the real zhang-juzheng-v6
         # pilot (9 principles, smallest section well over 150 chars) must keep passing.
-        pilot = ROOT / "output" / "zhang-juzheng-v6" / "SKILL.md"
+        # 读的是已发布、进版本控制的 gallery 副本：output/ 被 gitignore，干净
+        # checkout 里没有它，读 output/ 会让这条测试在 CI 上必然失败。
+        pilot = ROOT / "gallery" / "zhang-juzheng-v6" / "SKILL.md"
         errors = validator.check_p6_core(pilot)
         self.assertEqual(errors, [])
 

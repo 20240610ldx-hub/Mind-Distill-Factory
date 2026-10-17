@@ -1,4 +1,6 @@
 {
+  "manifest_version": 2,
+  "slug": "zhang-juzheng-v6",
   "format_version": 6,
   "files": {
     "SKILL.md": "cfbfb7fa133106d9b6fe5935ec8927b32b3b82c219097fa397ac337e47e10e71",
@@ -6,5 +8,31 @@
     "references/evidence.md": "8ee4e72e36349c65e3d265840a2ebe1b01b270e854bb3264a7fce74db4994b2d",
     "references/voice.md": "fdacc16592a48429aa416d62c2d2189b12fe264f363a743cc1b5e32c3d6d6217",
     "人物档案.md": "d0b89ad25c6d11e8cd9ea5628fd5a368575d9acb33ce9c03d20878ecd583b182"
+  },
+  "clusters": [
+    "cluster_009",
+    "cluster_007",
+    "cluster_010",
+    "cluster_014",
+    "cluster_013",
+    "cluster_012",
+    "cluster_008",
+    "cluster_011",
+    "cluster_015"
+  ],
+  "attestation": {
+    "p2": {
+      "status": "pass",
+      "hard_errors": 0,
+      "warnings": 0,
+      "evidence_sha256": "8ee4e72e36349c65e3d265840a2ebe1b01b270e854bb3264a7fce74db4994b2d",
+      "corpus_fingerprint": "c8212ba328918f5da48e330cae02cff062c90dd3fba63d60bc4aefbdbd1685ef",
+      "corpus_files": 12
+    }
+  },
+  "review": {
+    "verdict": "MISSING",
+    "detail": "",
+    "review_sha256": null
   }
 }

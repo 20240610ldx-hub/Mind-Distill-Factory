@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "slug": "zeng-guofan",
+  "format_version": 1,
+  "files": {
+    "SKILL.md": "0148bab425d8380bc37143f8341f70e5dfcd23b7dac621d91136413505c83fbe",
+    "draft.en.md": "b5ac1a02d82e7c0061a3457d0f27415bfd6bd979bf25c0d79ca9d55a75acf058",
+    "draft.zh.md": "6c8931cb32d407f7991ca35ba9812eda427543a69c138ff0c5d2f0968ce3d9ee"
+  }
+}

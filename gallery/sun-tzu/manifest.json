@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "slug": "sun-tzu",
+  "format_version": 1,
+  "files": {
+    "SKILL.md": "b23d6e1cd1336b259af2f5f44e09fc2752852b8d8657481bca964f321c35aec1",
+    "draft.en.md": "6715be99e0a82d539c0c4a8256d7e9def3a30d95033d66b41704f3827c9431d8",
+    "draft.zh.md": "eca8055b400414d355e5514c403ecd4fc96ceb71ba384d43ffde35540e25e7ee"
+  }
+}

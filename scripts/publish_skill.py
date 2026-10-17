@@ -173,28 +173,27 @@ def copy_package(output_dir: Path, gallery_dir: Path, is_v6: bool) -> list[str]:
     return copied
 
 
-def file_sha256(path: Path) -> str:
-    import hashlib
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def write_manifest(gallery_dir: Path, slug: str, is_v6: bool, output_dir: Path, root: Path) -> Path:
+    """写 gallery/{slug}/manifest.json（v2）：文件 sha256 + 审查结论，v6 另加簇列表与 P2 证明。
 
-
-def write_manifest(gallery_dir: Path, copied: list[str], is_v6: bool) -> Path:
-    """写 gallery/{slug}/manifest.json，含每个文件的 sha256。
-
-    format_version 必须反映实际检测到的包格式——legacy 发布（is_v6=False）不能被
-    打上 6 的戳，否则会跟同一次运行打印的 format_version=legacy 与
-    index.json 里记的 format_version: 1 互相矛盾。
+    format_version 必须反映实际检测到的包格式——legacy 发布不能被打上 6 的戳。
+    P2 证明针对 gallery 里刚复制好的 evidence.md 取 hash，绑定的是实际发布的字节。
     """
-    manifest = {
-        "format_version": 6 if is_v6 else 1,
-        "files": {rel: file_sha256(gallery_dir / rel) for rel in sorted(copied)},
-    }
-    path = gallery_dir / "manifest.json"
-    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    pm = _load_sibling("package_manifest")
+    review = pm.read_review_verdict(output_dir / "review.md")
+    if is_v6:
+        manifest = pm.build_manifest(
+            gallery_dir, slug, format_version=6,
+            clusters=pm.load_cluster_ids(output_dir / "framework_core.json"),
+            p2_attestation=pm.attest_p2(
+                gallery_dir / pm.EVIDENCE_REL, slug, root, _load_sibling("verify_provenance")
+            ),
+            review=review,
+        )
+    else:
+        manifest = pm.build_manifest(gallery_dir, slug, format_version=1, review=review)
+    path = gallery_dir / pm.MANIFEST_NAME
+    pm.write_manifest(path, manifest)
     return path
 
 
@@ -280,7 +279,7 @@ def main() -> int:
     try:
         v6 = is_v6_package(output_skill)
         copied = copy_package(output_dir, gallery_dir, is_v6=v6)
-        manifest_path = write_manifest(gallery_dir, copied, is_v6=v6)
+        manifest_path = write_manifest(gallery_dir, slug, v6, output_dir, root)
         print(f"  Copied {len(copied)} file(s) to {gallery_dir}: {', '.join(copied)}")
         print(f"  Wrote {manifest_path.name} (format_version={'6' if v6 else 'legacy'})")
     except Exception as e:

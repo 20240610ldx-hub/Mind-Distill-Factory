@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "slug": "mao-zedong",
+  "format_version": 1,
+  "files": {
+    "SKILL.md": "de6a0bb47aabd310ec163a9c85cca677651ab6f939138a220c197bef009f6914",
+    "draft.en.md": "a03760d042b4d30722310c2427e7a75e13ead2b473aca2d7200bda0b431f9819",
+    "draft.zh.md": "e748f620f4ef3ae389c2b574cb976fe7bbd1ea3e1ceb2bde454fa2bf69c442bd"
+  }
+}

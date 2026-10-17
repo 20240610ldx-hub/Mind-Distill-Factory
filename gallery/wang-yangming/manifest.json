@@ -1,0 +1,10 @@
+{
+  "manifest_version": 2,
+  "slug": "wang-yangming",
+  "format_version": 1,
+  "files": {
+    "SKILL.md": "28d83622df0e59f21910c3b5ef7085dedf014b224baf14976fdbe22c947ef7bd",
+    "draft.en.md": "5db7c8827dd6d1c7e06212fe838e9ed397c868a6fff9d239e12299b647eff4d6",
+    "draft.zh.md": "7bdcdf9f4cc81c9ef2e52aa85d269e267ba2c413958bfdbd14f566535af03854"
+  }
+}

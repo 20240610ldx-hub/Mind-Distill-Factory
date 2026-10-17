@@ -32,6 +32,9 @@ def build_v6_output(root: Path) -> Path:
     for name in ("cases.md", "evidence.md", "voice.md"):
         (refs / name).write_text(f"# {name}\n", encoding="utf-8")
     (out / "人物档案.md").write_text("# 档案\n", encoding="utf-8")
+    (out / "framework_core.json").write_text(
+        json.dumps({"principle_clusters": [{"cluster_id": "cluster_001"}]}), encoding="utf-8"
+    )
     return out
 
 
@@ -122,7 +125,7 @@ class ManifestTests(unittest.TestCase):
             out = build_v6_output(root)
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=True)
-            manifest_path = publisher.write_manifest(gallery, copied, is_v6=True)
+            manifest_path = publisher.write_manifest(gallery, "demo", True, out, root)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(sorted(manifest["files"].keys()), sorted(copied))
             for digest in manifest["files"].values():
@@ -135,11 +138,11 @@ class ManifestTests(unittest.TestCase):
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=True)
             first = json.loads(
-                publisher.write_manifest(gallery, copied, is_v6=True).read_text(encoding="utf-8")
+                publisher.write_manifest(gallery, "demo", True, out, root).read_text(encoding="utf-8")
             )
             (gallery / "references" / "cases.md").write_text("# changed\n", encoding="utf-8")
             second = json.loads(
-                publisher.write_manifest(gallery, copied, is_v6=True).read_text(encoding="utf-8")
+                publisher.write_manifest(gallery, "demo", True, out, root).read_text(encoding="utf-8")
             )
             self.assertNotEqual(
                 first["files"]["references/cases.md"], second["files"]["references/cases.md"]
@@ -157,9 +160,11 @@ class ManifestTests(unittest.TestCase):
             (out / "SKILL.md").write_text("---\nname: demo-wisdom\n---\n", encoding="utf-8")
             gallery = root / "gallery" / "demo"
             copied = publisher.copy_package(out, gallery, is_v6=False)
-            manifest_path = publisher.write_manifest(gallery, copied, is_v6=False)
+            manifest_path = publisher.write_manifest(gallery, "demo", False, out, root)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["format_version"], 1)
+            self.assertEqual(manifest["manifest_version"], 2)
+            self.assertNotIn("attestation", manifest)
 
 
 V6_SKILL = """---

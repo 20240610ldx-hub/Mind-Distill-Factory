@@ -11,14 +11,15 @@ Stages:
   frameworks — validate output/{slug}/frameworks.{zh,en}.json
   skill     — validate output/{slug}/SKILL.md frontmatter and bilingual structure
   package   — validate the v6 package: output/{slug}/SKILL.md + references/ (gates P1-P6)
-  gallery   — validate gallery/{slug}/SKILL.md and ensure it matches output/{slug}/SKILL.md
+  published — validate gallery/{slug}/ standalone: manifest v2 hashes + attested P2,
+              v6 gates P1/P3-P6 rerun in place; never reads output/ or sources/
+  gallery   — alias of published
 """
 
 import json
 import sys
 import re
 import os
-import hashlib
 from pathlib import Path
 
 # Fix Windows console encoding for Unicode output
@@ -511,70 +512,6 @@ def validate_skill(slug: str) -> list[str]:
     return errors
 
 
-def _sha256(filepath: Path) -> str:
-    """Return the SHA-256 digest for a file."""
-    h = hashlib.sha256()
-    with open(filepath, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def validate_gallery(slug: str) -> list[str]:
-    """Validate the published gallery artifact and ensure it is synced from output."""
-    errors = []
-    output_file = Path(f"output/{slug}/SKILL.md")
-    gallery_file = Path(f"gallery/{slug}/SKILL.md")
-
-    if not output_file.exists():
-        return [f"MISSING: {output_file}"]
-    if not gallery_file.exists():
-        return [f"MISSING: {gallery_file}"]
-
-    v6 = is_v6_skill(gallery_file.read_text(encoding="utf-8"))
-    sync_targets = ["SKILL.md"]
-    if v6:
-        refs_src = Path(f"output/{slug}/references")
-        if refs_src.exists():
-            sync_targets += [f"references/{p.name}" for p in sorted(refs_src.glob("*.md"))]
-
-    for rel in sync_targets:
-        out_path = Path(f"output/{slug}/{rel}")
-        gal_path = Path(f"gallery/{slug}/{rel}")
-        if not gal_path.exists():
-            errors.append(f"GALLERY_MISSING_FILE: {gal_path} (present in output/)")
-            continue
-        if _sha256(out_path) != _sha256(gal_path):
-            errors.append(
-                f"GALLERY_OUT_OF_SYNC: {gal_path} does not match {out_path} "
-                f"(gallery={_sha256(gal_path)[:12]}, output={_sha256(out_path)[:12]})"
-            )
-
-    if v6:
-        errors.extend(validate_package(slug))
-    else:
-        errors.extend(_validate_merged_skill(gallery_file, slug))
-
-    index_file = Path("gallery/index.json")
-    if not index_file.exists():
-        errors.append(f"MISSING: {index_file}")
-    else:
-        try:
-            index = read_json_file(index_file)
-            entries = index.get("skills", [])
-            entry = next((e for e in entries if e.get("slug") == slug), None)
-            if not entry:
-                errors.append(f"MISSING_GALLERY_INDEX_ENTRY: {index_file}: slug='{slug}'")
-            elif entry.get("skill_dir") != f"gallery/{slug}/":
-                errors.append(
-                    f"INVALID_GALLERY_INDEX_ENTRY: {index_file}: skill_dir='{entry.get('skill_dir')}'"
-                )
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            errors.append(f"PARSE_ERROR: {index_file}: {e}")
-
-    return errors
-
-
 # ── v6 包闸门（P3–P6）────────────────────────────────────────────────
 
 BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:md|json|py|txt))`")
@@ -722,15 +659,106 @@ def check_p6_core(skill_md: Path) -> list[str]:
 
 
 def validate_package(slug: str) -> list[str]:
-    """v6 包整体校验：结构 + P1–P6 六道闸门。"""
+    """构建期 v6 包校验（output/{slug}/）：结构 + P1–P6，P2 现场比对语料。"""
     root = Path(".")
     output_dir = root / "output" / slug
     skill_md = output_dir / "SKILL.md"
-    refs_dir = output_dir / PACKAGE_SCHEMA["reference_dir"]
-    errors: list[str] = []
-
     if not skill_md.exists():
         return [f"MISSING: {skill_md}"]
+
+    errors: list[str] = []
+    cluster_ids: list[str] = []
+    core_file = output_dir / "framework_core.json"
+    if not core_file.exists():
+        # 硬性失败：cluster_ids 缺失会让按簇覆盖检查静默退化成空循环、不报任何错。
+        errors.append(f"MISSING: {core_file}")
+    else:
+        try:
+            core = read_json_file(core_file)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            errors.append(f"PARSE_ERROR: {core_file}: {e}")
+        else:
+            cluster_ids = [
+                c.get("cluster_id") for c in core.get("principle_clusters", [])
+                if c.get("cluster_id")
+            ]
+            if not cluster_ids:
+                errors.append(
+                    f"P4_EMPTY_CLUSTERS: {core_file}: principle_clusters 为空或均无 "
+                    f"cluster_id，P4 的按簇覆盖检查无法执行"
+                )
+
+    errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
+    return errors
+
+
+def validate_published(slug: str) -> list[str]:
+    """发布后校验（gallery/{slug}/）：只依赖包内文件 + manifest，不读 output/ 与 sources/。
+
+    legacy 与 v6 一视同仁：都必须有 v2 manifest 且文件 hash 全部吻合。v6 额外重跑
+    P1/P3–P6；P4 的簇列表取自 manifest，P2 不重跑（语料不随包发布），改由
+    manifest 里的构建期证明担保——evidence.md 的 hash 与证明一致，证明才算数。
+    """
+    root = Path(".")
+    gallery_dir = root / "gallery" / slug
+    skill_md = gallery_dir / "SKILL.md"
+    if not skill_md.exists():
+        return [f"MISSING: {skill_md}"]
+
+    pm = _load_sibling("package_manifest")
+    v6 = is_v6_skill(skill_md.read_text(encoding="utf-8"))
+    manifest, errors = pm.load_manifest(gallery_dir / pm.MANIFEST_NAME)
+    clusters: list[str] = []
+    if manifest is not None:
+        errors.extend(pm.verify_manifest(gallery_dir, manifest, slug))
+        expected = PACKAGE_SCHEMA["format_version"] if v6 else 1
+        if manifest.get("format_version") != expected:
+            errors.append(
+                f"MANIFEST_FORMAT_MISMATCH: {gallery_dir / pm.MANIFEST_NAME}: "
+                f"format_version={manifest.get('format_version')!r}，SKILL.md 实际为 {expected}"
+            )
+        if isinstance(manifest.get("clusters"), list):
+            clusters = [c for c in manifest["clusters"] if isinstance(c, str) and c]
+
+    if v6:
+        errors.extend(_check_v6_package(gallery_dir, slug, root, clusters, run_p2=False))
+    else:
+        errors.extend(_validate_merged_skill(skill_md, slug))
+
+    errors.extend(_check_gallery_index_entry(slug))
+    return errors
+
+
+# 旧名保留：commands/、agents/ 与文档里都写的是 `gallery` 阶段。
+validate_gallery = validate_published
+
+
+def _check_gallery_index_entry(slug: str) -> list[str]:
+    index_file = Path("gallery/index.json")
+    if not index_file.exists():
+        return [f"MISSING: {index_file}"]
+    try:
+        index = read_json_file(index_file)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        return [f"PARSE_ERROR: {index_file}: {e}"]
+    entry = next((e for e in index.get("skills", []) if e.get("slug") == slug), None)
+    if not entry:
+        return [f"MISSING_GALLERY_INDEX_ENTRY: {index_file}: slug='{slug}'"]
+    if entry.get("skill_dir") != f"gallery/{slug}/":
+        return [f"INVALID_GALLERY_INDEX_ENTRY: {index_file}: skill_dir='{entry.get('skill_dir')}'"]
+    return []
+
+
+def _check_v6_package(
+    package_dir: Path, slug: str, root: Path, cluster_ids: list[str], *, run_p2: bool
+) -> list[str]:
+    """v6 包本体检查，构建期与发布后共用。
+
+    run_p2=False 时跳过 P2（发布后无语料），由调用方核对 manifest 的构建期证明。
+    """
+    skill_md = package_dir / "SKILL.md"
+    refs_dir = package_dir / PACKAGE_SCHEMA["reference_dir"]
+    errors: list[str] = []
 
     content = skill_md.read_text(encoding="utf-8")
     if not is_v6_skill(content):
@@ -751,29 +779,6 @@ def validate_package(slug: str) -> list[str]:
     cases_md = refs_dir / "cases.md"
     evidence_md = refs_dir / "evidence.md"
 
-    cluster_ids: list[str] = []
-    core_file = output_dir / "framework_core.json"
-    if not core_file.exists():
-        # 硬性失败：cluster_ids 缺失会让下面的按簇覆盖检查静默退化成空循环、
-        # 不报任何错——framework_core.json 不进 gallery/（publish_skill.py 不
-        # 复制它），所以 gallery-time 重新校验正是会踩中这个洞的真实路径。
-        errors.append(f"MISSING: {core_file}")
-    else:
-        try:
-            core = read_json_file(core_file)
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            errors.append(f"PARSE_ERROR: {core_file}: {e}")
-        else:
-            cluster_ids = [
-                c.get("cluster_id") for c in core.get("principle_clusters", [])
-                if c.get("cluster_id")
-            ]
-            if not cluster_ids:
-                errors.append(
-                    f"P4_EMPTY_CLUSTERS: {core_file}: principle_clusters 为空或均无 "
-                    f"cluster_id，P4 的按簇覆盖检查无法执行"
-                )
-
     if cases_md.exists():
         errors.extend(check_p4_cases(cases_md, cluster_ids))
         errors.extend(check_p5_index(skill_md, cases_md))
@@ -781,7 +786,8 @@ def validate_package(slug: str) -> list[str]:
     if evidence_md.exists():
         prov = _load_provenance()
         errors.extend(prov.check_p1_quote_closure(skill_md, evidence_md))
-        errors.extend(prov.check_p2_corpus_closure(evidence_md, slug, root))
+        if run_p2:
+            errors.extend(prov.check_p2_corpus_closure(evidence_md, slug, root))
 
     return errors
 
@@ -979,7 +985,8 @@ STAGES = {
     "frameworks": validate_frameworks,
     "skill": validate_skill,
     "package": validate_package,
-    "gallery": validate_gallery,
+    "published": validate_published,
+    "gallery": validate_published,
 }
 
 def main():
