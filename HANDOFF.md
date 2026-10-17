@@ -7,7 +7,7 @@
 - 阶段 3（流水线自动化，分支 `claude/pipeline-automation`，**未推送、未开 PR**）：`effcb3f` → `e8c7d28` → `050a2b4` → `e91c7c6` → `0069e53` → `8b12577` → 本次文档收敛提交
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 505 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
+结果：`Ran 518 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
 
 ---
 
@@ -26,7 +26,8 @@
 | `be4db33` | 负例夹具 10 个 + 阳性对照；回归协议勘误；`distill.md` 规则 4 与 v6 对齐；本文件 | `evaluation/fixtures/negative/`、`evaluation/scripts/check_negative_fixtures.py` |
 | `9f8f0a9` | 采集遵守 W3C TDMRep（站点 JSON → 响应头 → HTML meta，保留即拒） | `scripts/acquire.py`、`config/acquisition_policy.json` |
 | `4d0e927` | OCR 校准台 `mdf ocr calibrate` / `scan`；OCR 引擎每进程只建一次 | `scripts/ocr_calibrate.py`、`evaluation/fixtures/ocr/` |
-| 本次 | 真实 OCR 校准：rapidocr 3.x（PP-OCRv6）适配、PaddleOCR-json（Umi-OCR 插件）管道引擎、`MDF_OCR_BACKEND` 钉选；按实测把低置信阈值 0.6→0.9，新增 `ocr_garbled` 退回与 `ocr_text` 标记（OCR 页码标 `(OCR)`，引文默认 ≤medium） | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
+| `21334b5` | 真实 OCR 校准：rapidocr 3.x（PP-OCRv6）适配、PaddleOCR-json（Umi-OCR 插件）管道引擎、`MDF_OCR_BACKEND` 钉选；按实测把低置信阈值 0.6→0.9，新增 `ocr_garbled` 退回与 `ocr_text` 标记（OCR 页码标 `(OCR)`，引文默认 ≤medium） | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
+| 本次 | 真实扫描件抽查后的 OCR 行级后处理：竖排页按列右→左重排、横排页眉页脚归位到页首页尾；识别分 <0.5 被丢的行与只认出一部分的行计为「可疑行」，新增 `ocr_lines_dropped` 标记与 `--- Page n (OCR, k unread) ---` 页码标记；`mdf ocr scan --pages/--out` 抽页并导出页图与识别文字供人对照 | `scripts/pdf_quality.py`、`scripts/ocr_calibrate.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
 
 文档入口：[架构](docs/architecture.md) · [方法论](docs/methodology.md) · [伦理与法律](docs/ethics-and-legal.md) · [harness 适配](docs/harnesses.md)。
 
@@ -115,7 +116,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 
 ### P4：阶段 3 留下的缺口
 - **Codex / pi 端到端实测**：只验证了适配文件结构（`claude plugin validate` 通过、本机 `--help` 核对参数），没有在 Codex、pi 里真正跑完一个人物
-- ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比，数字与结论见 `docs/methodology.md`「OCR 校准」。遗留：样张只有 3 页 19 句、只用宋体；还没在真实扫描书上跑过 `mdf ocr scan`；CI 不装引擎，真实引擎路径只在本机验证过
+- ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比，数字与结论见 `docs/methodology.md`「OCR 校准」。真实扫描件已抽查七类页面（民国竖排、明刻本对开、透墨国图本、手稿、横排简体、英文），结论见同节「真实扫描件抽查」。遗留：样张只有 3 页 19 句、只用宋体；没被检测出来的行（透墨、淡印）不计入可疑行；刻本双行小注会与大字交错；CI 不装引擎，真实引擎路径只在本机验证过
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
 
 ---

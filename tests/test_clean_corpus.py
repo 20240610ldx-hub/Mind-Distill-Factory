@@ -248,6 +248,16 @@ class CleanPdfTests(unittest.TestCase):
         self.assertNotEqual(gate(1, 0.5)["verdict"], "rejected")
         self.assertIn("low_ocr_confidence", gate(1, 0.5)["flags"])
 
+    def test_unread_ocr_lines_are_flagged(self):
+        def gate(suspect):
+            return cc.clean_pdf_pages(self.pages(4), {"pages_total": 4, "ocr_required": 2, "ocr_ok": 2,
+                                                       "mean_confidence": 0.95, "suspect_lines": suspect})[1]
+        # 《吶喊》国图本：两整列压在印章上，置信度 0.92 照样「通过」——只有行数对不上才看得出来
+        self.assertIn("ocr_lines_dropped", gate(2)["flags"])
+        self.assertNotIn("ocr_lines_dropped", gate(0)["flags"])
+        self.assertNotEqual(gate(2)["verdict"], "rejected", "漏行只标不退：其余文字仍可用")
+        self.assertTrue(cc.PAGE_MARKER_RE.match("--- Page 61 (OCR, 2 unread) ---"), "清洗规则不得删掉带漏行数的页码标记")
+
 
 class NearDuplicateTests(unittest.TestCase):
     def test_reformatted_copy_is_duplicate_and_priority_decides(self):

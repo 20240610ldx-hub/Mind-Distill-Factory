@@ -72,7 +72,7 @@ GOOGLE_DISCLAIMER_MARKERS = (
 
 # 显式页码标记是引用定位的依据（「语料位置」），任何规则都不得删除。
 PAGE_MARKER_RE = re.compile(
-    r"^\s*(?:≦\s*\d+\s*≧|=+\s*(?:PDF_)?PAGE\s*\d+\s*=+|-{2,}\s*Page\s+\d+(?:\s*\(OCR\))?\s*-{2,})\s*$", re.I
+    r"^\s*(?:≦\s*\d+\s*≧|=+\s*(?:PDF_)?PAGE\s*\d+\s*=+|-{2,}\s*Page\s+\d+(?:\s*\(OCR[^)]*\))?\s*-{2,})\s*$", re.I
 )
 PAGE_NUMBER_RE = re.compile(
     r"^\s*(?:[-–—]\s*\d{1,4}\s*[-–—]|\d{1,4}(?:\s+\d{1,4})?|第\s*\d{1,4}\s*页|page\s+\d{1,4}|\d{1,4}\s*/\s*\d{1,4})\s*$",
@@ -395,6 +395,9 @@ def clean_pdf_pages(pages: list[str], ocr: dict[str, Any] | None = None) -> tupl
     if ok:
         # 闸门 P2 拿引文去比对的正是这份 OCR 文字，认错的字它查不出来——所以只要用了 OCR 就要标出来
         flags.append("ocr_text")
+    if ok and int(ocr.get("suspect_lines") or 0):
+        # 检测到文字行却没认出来（印章、透墨、污渍、手写）：缺的行不在语料里，缺口两侧在原书中并不相连
+        flags.append("ocr_lines_dropped")
     if ok and confidence is not None and float(confidence) < t["ocr_low_confidence"]:
         if float(confidence) < t["ocr_garbled_reject"] and total and ok * 2 > total:
             reasons.append("ocr_garbled")
@@ -503,6 +506,7 @@ FLAG_HINTS = {
     "ocr_mostly_missing": "过半页需要 OCR 但未取得文字，覆盖面不完整",
     "low_ocr_confidence": "OCR 平均置信度 <0.9（校准实测此档逐字存活率 ≤26%），引文必须对照原图",
     "ocr_text": "含 OCR 识别文字：最好的引擎在无退化样张上仍约 5% 的句子不能逐字还原，引文对照原图后才能标 high",
+    "ocr_lines_dropped": "OCR 检测到文字行却没认出来（印章、透墨、污渍、手写）：这些行不在语料里，缺口两侧在原书中并不相连，跨行引文必须对照原图（页码标记写明每页漏几行）",
     "very_short": "文本很短",
     "replacement_chars": "少量 U+FFFD",
     "private_use_glyphs": "少量私用区字形",

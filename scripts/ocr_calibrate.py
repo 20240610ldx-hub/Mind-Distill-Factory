@@ -225,7 +225,7 @@ def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str],
                 "document_type": meta.get("document_type"),
                 "cer": round(sum(r["cer"] * r["truth_chars"] for r in rows) / chars, 4),
                 "verbatim_survival": round(sum(r["sentences_verbatim"] for r in rows) / sentences, 4) if sentences else None,
-                "mean_confidence": stats["mean_confidence"],
+                "mean_confidence": stats["mean_confidence"], "suspect_lines": stats["suspect_lines"],
                 "ocr_ok_pages": stats["ocr_ok"], "pages": len(pages),
                 "gate_flags": gate.get("flags", []), "gate_reasons": gate.get("reasons", []),
                 "page_rows": rows,
@@ -275,6 +275,9 @@ def scan(pdf: Path, backend: str = "auto", pages_spec: str | None = None, out_di
         "ocr_status": (p.get("ocr") or {}).get("status"), "backend": (p.get("ocr") or {}).get("backend"),
         "confidence": (p.get("ocr") or {}).get("confidence"), "chars": len(_squash(p.get("text", ""))),
         "preview": _squash((p.get("ocr") or {}).get("text", ""))[:24],
+        "layout": (p.get("ocr") or {}).get("layout"),
+        "suspect_lines": int((p.get("ocr") or {}).get("dropped_lines") or 0)
+        + int((p.get("ocr") or {}).get("short_lines") or 0),
     } for p in pages]
     return {"schema": "ocr-scan-v1", "file": str(pdf), "document_type": meta.get("document_type"),
             "pages_in_file": meta.get("page_count"), "out_dir": str(out_dir) if out_dir else None,
@@ -283,15 +286,16 @@ def scan(pdf: Path, backend: str = "auto", pages_spec: str | None = None, out_di
 
 def render_calibration(report: dict[str, Any]) -> str:
     lines = [f"## OCR 校准（字体 {report['font'] or 'PIL 内置'}，{report['dpi']} dpi）", "",
-             "| 引擎 | 退化档 | CER | 逐字存活率 | 平均置信度 | OCR 成功页 | 秒/页 | 清洗闸门 |",
-             "|---|---|---|---|---|---|---|---|"]
+             "| 引擎 | 退化档 | CER | 逐字存活率 | 平均置信度 | 可疑行 | OCR 成功页 | 秒/页 | 清洗闸门 |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for lv in report["levels"]:
         gate = "、".join(lv["gate_reasons"] + lv["gate_flags"]) or "通过"
         survival = "—" if lv["verbatim_survival"] is None else f"{lv['verbatim_survival']:.0%}"
         conf = "—" if lv["mean_confidence"] is None else f"{lv['mean_confidence']:.3f}"
         engine = "/".join(lv.get("backend_used") or []) or lv.get("engine", "auto")
         lines.append(f"| {engine} | {lv['degrade']} | {lv['cer']:.2%} | {survival} | {conf} "
-                     f"| {lv['ocr_ok_pages']}/{lv['pages']} | {lv.get('seconds_per_page', '—')} | {gate} |")
+                     f"| {lv.get('suspect_lines', '—')} | {lv['ocr_ok_pages']}/{lv['pages']} "
+                     f"| {lv.get('seconds_per_page', '—')} | {gate} |")
     lines += ["", f"清洗闸门的低置信阈值：{report['low_confidence_threshold']}。逐字存活率低于 100% 的档位，"
               "其引文必须对照原图核实，不能直接当 high 证据。"]
     lost = [("/".join(lv.get("backend_used") or []) or lv.get("engine", "auto"), lv["degrade"], s)
@@ -304,12 +308,16 @@ def render_calibration(report: dict[str, Any]) -> str:
 def render_scan(report: dict[str, Any]) -> str:
     lines = [f"## 扫描件诊断：{report['file']}", "",
              f"类型 {report['document_type']}；需 OCR {report['ocr_required']} 页，成功 {report['ocr_ok']} 页，"
-             f"平均置信度 {report['mean_confidence']}；清洗闸门："
+             f"平均置信度 {report['mean_confidence']}；竖排 {report.get('vertical_pages', 0)} 页，"
+             f"可疑行 {report.get('suspect_lines', 0)}（检测到却没认全的行）；清洗闸门："
              + ("、".join(report["gate_reasons"] + report["gate_flags"]) or "通过"), "",
-             "| 页 | 分类 | OCR | 引擎 | 置信度 | 字数 | 识别开头 |", "|---|---|---|---|---|---|---|"]
+             "| 页 | 分类 | OCR | 引擎 | 版式 | 置信度 | 可疑行 | 字数 | 识别开头 |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for r in report["pages"]:
+        layout = {"vertical": "竖排", "horizontal": "横排"}.get(r.get("layout") or "", "—")
         lines.append(f"| {r['page']} | {r['classification']} | {r['ocr_status'] or '—'} | {r['backend'] or '—'} "
-                     f"| {r['confidence'] if r['confidence'] is not None else '—'} | {r['chars']} "
+                     f"| {layout} | {r['confidence'] if r['confidence'] is not None else '—'} "
+                     f"| {r.get('suspect_lines') or 0} | {r['chars']} "
                      f"| {r.get('preview') or '—'} |")
     if report.get("out_dir"):
         lines += ["", f"每页送进 OCR 的图与识别文字已成对存到 {report['out_dir']}（pNNNN.png / pNNNN.txt），"

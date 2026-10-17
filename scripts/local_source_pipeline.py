@@ -515,8 +515,12 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                         current_tokens = 0
                     if not page_buffer:
                         page_start = page_number
-                    # 标出 OCR 页：worker 据此把这些页上的引文压到 medium（P2 查不出 OCR 认错的字）
-                    via_ocr = " (OCR)" if (page.get("ocr") or {}).get("status") == "ok" else ""
+                    # 标出 OCR 页：worker 据此把这些页上的引文压到 medium（P2 查不出 OCR 认错的字）；
+                    # 有没认出来的行时写明几行，worker 不在缺口两侧拼引文
+                    page_ocr = page.get("ocr") or {}
+                    unread = int(page_ocr.get("dropped_lines") or 0) + int(page_ocr.get("short_lines") or 0)
+                    via_ocr = "" if page_ocr.get("status") != "ok" else (
+                        f" (OCR, {unread} unread)" if unread else " (OCR)")
                     page_buffer.append(f"--- Page {page_number}{via_ocr} ---\n{page_text}")
                     page_end = page_number
                     current_tokens += page_tokens
