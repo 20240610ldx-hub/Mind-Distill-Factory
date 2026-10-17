@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from pdf_quality import classify_document, classify_page, quality_band, run_ocr
+    from pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr
 except ImportError:  # pragma: no cover - supports package-style imports
-    from scripts.pdf_quality import classify_document, classify_page, quality_band, run_ocr  # type: ignore
+    from scripts.pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr  # type: ignore
 
 try:
     from sampling import SamplingConfig, build_sampling_plan, write_plan
@@ -452,14 +452,7 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                 }
                 for page in pages
             ]
-            ok_conf = [float((page.get("ocr") or {}).get("confidence") or 0) for page in pages
-                       if (page.get("ocr") or {}).get("status") == "ok"]
-            ocr_stats = {
-                "pages_total": len(pages),
-                "ocr_required": sum(1 for page in pages if page.get("quality", {}).get("ocr_required")),
-                "ocr_ok": len(ok_conf),
-                "mean_confidence": round(sum(ok_conf) / len(ok_conf), 3) if ok_conf else None,
-            }
+            ocr_stats = summarize_ocr(pages)
             # 侧车已按原始页文本写好（P2 用它比对）；分片用清洗后的页文本。
             cleaned_pages, entry = clean_corpus.clean_pdf_pages([page.get("text", "") for page in pages], ocr_stats)
             cleaning[relative_path] = entry

@@ -2,7 +2,7 @@
 """OCR 校准与扫描件诊断。
 
     python scripts/mdf.py ocr calibrate [--degrade all|none|light|heavy|severe] [--backend auto|all|NAME] [--font PATH] [--json]
-    python scripts/mdf.py ocr scan <file.pdf> [--backend auto|NAME] [--json]
+    python scripts/mdf.py ocr scan <file.pdf> [--pages 1-3,40] [--out DIR] [--backend auto|NAME] [--json]
 
 calibrate：把一份已知真值的文本渲染成无文字层的「扫描件」PDF（可选轻度/重度/严重退化：倾斜、
 模糊、噪点、降采样），送进 index 用的同一条 PDF→OCR 路径（local_source_pipeline.
@@ -15,7 +15,9 @@ extract_pdf_pages），再与真值比对：
 
 不同退化档位的置信度与 CER 放在一张表里，用来校准 clean_corpus 的 OCR 阈值；--backend all
 把每个装好的引擎各跑一遍，同一批图、同一套指标，引擎之间可以直接比。
-scan：对真实扫描件逐页报告分类、OCR 状态与置信度（没有真值，不算 CER）。
+scan：对真实扫描件逐页报告分类、OCR 状态与置信度（没有真值，不算 CER）。--pages 只抽几页
+（几百页的书先抽样再决定要不要整本跑），--out 把每页送进 OCR 的图和识别出的文字成对存下，
+供人对照原图核实——worker 规则里「OCR 页引文对照原图后才可标 high」靠的就是这一步。
 """
 
 from __future__ import annotations
@@ -188,13 +190,7 @@ def engine_available() -> list[str]:
 
 
 def _ocr_stats(pages: list[dict[str, Any]]) -> dict[str, Any]:
-    ok = [float((p.get("ocr") or {}).get("confidence") or 0) for p in pages if (p.get("ocr") or {}).get("status") == "ok"]
-    return {
-        "pages_total": len(pages),
-        "ocr_required": sum(1 for p in pages if p.get("quality", {}).get("ocr_required")),
-        "ocr_ok": len(ok),
-        "mean_confidence": round(sum(ok) / len(ok), 4) if ok else None,
-    }
+    return pdf_quality.summarize_ocr(pages)
 
 
 def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str], dpi: int = 200,
@@ -238,16 +234,50 @@ def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str],
             "low_confidence_threshold": clean_corpus.THRESHOLDS["ocr_low_confidence"], "levels": levels}
 
 
-def scan(pdf: Path, backend: str = "auto") -> dict[str, Any]:
-    pages, meta = lsp.extract_pdf_pages(pdf, ocr_backend=backend)
+def parse_pages(spec: str | None, count: int) -> list[int]:
+    """「1-3,10」→ [1, 2, 3, 10]（从 1 起算，越界的丢掉）；不给就是全部页。"""
+    if not spec:
+        return list(range(1, count + 1))
+    wanted: set[int] = set()
+    for part in (p.strip() for p in spec.split(",")):
+        if not part:
+            continue
+        low, _, high = part.partition("-")
+        wanted.update(range(int(low), int(high or low) + 1))
+    return sorted(n for n in wanted if 1 <= n <= count)
+
+
+def scan(pdf: Path, backend: str = "auto", pages_spec: str | None = None, out_dir: Path | None = None) -> dict[str, Any]:
+    import fitz  # type: ignore  # OCR 本身就要 PyMuPDF 渲染页面
+
+    with fitz.open(pdf) as src, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+        selected = parse_pages(pages_spec, len(src))
+        target = pdf
+        if len(selected) < len(src):  # 只抽几页：拷进临时 PDF，走的仍是 index 的同一条路径
+            target = Path(td) / "selected.pdf"
+            with fitz.open() as part:
+                for number in selected:
+                    part.insert_pdf(src, from_page=number - 1, to_page=number - 1)
+                part.save(target)
+        pages, meta = lsp.extract_pdf_pages(target, ocr_backend=backend)
+        for page, number in zip(pages, selected):
+            page["page_number"] = number
+        if out_dir:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for page in pages:
+                stem = out_dir / f"p{page['page_number']:04d}"
+                stem.with_suffix(".png").write_bytes(pdf_quality._to_image_bytes(src[page["page_number"] - 1]))
+                stem.with_suffix(".txt").write_text((page.get("ocr") or {}).get("text", ""), encoding="utf-8")
     stats = _ocr_stats(pages)
     _, gate = clean_corpus.clean_pdf_pages([p.get("text", "") for p in pages], stats)
     rows = [{
         "page": p["page_number"], "classification": p.get("quality", {}).get("classification"),
         "ocr_status": (p.get("ocr") or {}).get("status"), "backend": (p.get("ocr") or {}).get("backend"),
         "confidence": (p.get("ocr") or {}).get("confidence"), "chars": len(_squash(p.get("text", ""))),
+        "preview": _squash((p.get("ocr") or {}).get("text", ""))[:24],
     } for p in pages]
     return {"schema": "ocr-scan-v1", "file": str(pdf), "document_type": meta.get("document_type"),
+            "pages_in_file": meta.get("page_count"), "out_dir": str(out_dir) if out_dir else None,
             **stats, "gate_flags": gate.get("flags", []), "gate_reasons": gate.get("reasons", []), "pages": rows}
 
 
@@ -276,10 +306,14 @@ def render_scan(report: dict[str, Any]) -> str:
              f"类型 {report['document_type']}；需 OCR {report['ocr_required']} 页，成功 {report['ocr_ok']} 页，"
              f"平均置信度 {report['mean_confidence']}；清洗闸门："
              + ("、".join(report["gate_reasons"] + report["gate_flags"]) or "通过"), "",
-             "| 页 | 分类 | OCR | 引擎 | 置信度 | 字数 |", "|---|---|---|---|---|---|"]
+             "| 页 | 分类 | OCR | 引擎 | 置信度 | 字数 | 识别开头 |", "|---|---|---|---|---|---|---|"]
     for r in report["pages"]:
         lines.append(f"| {r['page']} | {r['classification']} | {r['ocr_status'] or '—'} | {r['backend'] or '—'} "
-                     f"| {r['confidence'] if r['confidence'] is not None else '—'} | {r['chars']} |")
+                     f"| {r['confidence'] if r['confidence'] is not None else '—'} | {r['chars']} "
+                     f"| {r.get('preview') or '—'} |")
+    if report.get("out_dir"):
+        lines += ["", f"每页送进 OCR 的图与识别文字已成对存到 {report['out_dir']}（pNNNN.png / pNNNN.txt），"
+                  "对照原图核实后再给引文标 high。"]
     return "\n".join(lines) + "\n"
 
 
@@ -300,6 +334,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("scan", help="逐页报告真实扫描件的分类、OCR 状态与置信度")
     p.add_argument("pdf", type=Path)
+    p.add_argument("--pages", help="只看这些页，如 1-3,40（从 1 起算）")
+    p.add_argument("--out", type=Path, help="把每页的图与 OCR 文字成对存到这个目录，供人对照核实")
     p.add_argument("--backend", default="auto", help="auto 或引擎名")
     p.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -314,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"引擎 {args.backend} 不可用；可用：{', '.join(available)}", file=sys.stderr)
         return 2
     if args.action == "scan":
-        report = scan(args.pdf, "auto" if args.backend == "all" else args.backend)
+        report = scan(args.pdf, "auto" if args.backend == "all" else args.backend, args.pages, args.out)
         print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_scan(report), end="\n" if args.json else "")
         return 0
     font = find_cjk_font(args.font)
