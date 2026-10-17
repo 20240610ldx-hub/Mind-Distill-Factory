@@ -5,7 +5,8 @@ sources/{slug}/raw/acquired/{connector}/。
 每个目标依次过这些闸门，任何一道不过就拒绝并记日志（fail-closed）：
 
     连接器启用 → https + 主机白名单 → User-Agent 联系方式 → 请求预算
-    → robots.txt（RFC 9309，最长匹配）→ 主机间隔 / 429·5xx 退避
+    → robots.txt（RFC 9309，最长匹配）→ TDMRep 站点级保留（W3C）→ 主机间隔 / 429·5xx 退避
+    → TDMRep 响应头 / HTML meta 保留
     → 权利状态 → 内容类型与大小 → 去重 → 原子写入
 
 所有结果（saved / duplicate / skipped / refused / failed）都追加到
@@ -35,7 +36,7 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
 VERSION = "1.0"
@@ -195,6 +196,83 @@ class RobotsRules:
         return best_allow
 
 
+# ── TDMRep（W3C TDM Reservation Protocol）────────────────────────────
+#
+# EU DSM 指令第 4 条允许权利人用机器可读方式保留文本与数据挖掘（TDM）权利。TDMRep 有三处
+# 表达：站点 /.well-known/tdmrep.json、响应头 tdm-reservation、HTML <meta name="tdm-reservation">；
+# 后者依次覆盖前者，缺省的属性不清除已有值。值只有 "1"（保留）与 "0"（不保留），其他值是
+# 协议错误，按「未设置」处理且不覆盖已有值。tdmrep.json 不存在或无效＝站点未实现该协议。
+# 依据：https://www.w3.org/community/reports/tdmrep/CG-FINAL-tdmrep-20240510/
+
+TDM_WELL_KNOWN = "/.well-known/tdmrep.json"
+
+
+def _tdm_value(value: Any) -> int | None:
+    text = str(value).strip() if value is not None and not isinstance(value, bool) else ""
+    return int(text) if text in ("0", "1") else None
+
+
+class TdmRules:
+    """tdmrep.json 的规则表：location 按路径整段匹配（`*` 任意串，`$` 结尾），按顺序首个匹配生效。"""
+
+    def __init__(self, rules: list[tuple[str, int | None, str | None]]):
+        self.rules = rules
+
+    @classmethod
+    def parse(cls, text: str) -> "TdmRules":
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return cls([])
+        rules = []
+        for item in data if isinstance(data, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("location"), str):
+                policy = item.get("tdm-policy")
+                rules.append((item["location"], _tdm_value(item.get("tdm-reservation")),
+                              policy if isinstance(policy, str) and policy else None))
+        return cls(rules)
+
+    def lookup(self, path: str) -> tuple[int | None, str | None]:
+        decoded = unquote(path)
+        for location, reservation, policy in self.rules:
+            pattern = unquote(location)
+            body = pattern[:-1] if pattern.endswith("$") else pattern
+            regex = "".join(".*" if ch == "*" else re.escape(ch) for ch in body)
+            if re.fullmatch(regex, decoded):
+                return reservation, policy
+        return None, None
+
+
+class _TdmMeta(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.values: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "meta":
+            attr = {k.lower(): (v or "") for k, v in attrs}
+            name = attr.get("name", "").strip().lower()
+            if name in ("tdm-reservation", "tdm-policy") and name not in self.values:
+                self.values[name] = attr.get("content", "")
+
+
+def tdm_from_html(body: bytes) -> dict[str, str]:
+    parser = _TdmMeta()
+    try:
+        parser.feed(body[:256_000].decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 - 坏 HTML 不该让采集崩溃，按「没有声明」处理
+        return {}
+    return parser.values
+
+
+def merge_tdm(state: dict[str, Any], reservation: Any, policy: Any, source: str) -> dict[str, Any]:
+    """后出现的声明覆盖先前的；无效或缺省的值不覆盖。"""
+    value = _tdm_value(reservation)
+    if value is None:
+        return state
+    return {"reservation": value, "policy": (str(policy).strip() or None) if policy else None, "source": source}
+
+
 # ── 网络 ──────────────────────────────────────────────────────────────
 
 
@@ -255,6 +333,8 @@ class Session:
         self.requests = 0
         self._last: dict[str, float] = {}
         self._robots: dict[tuple[str, str], RobotsRules] = {}
+        self._tdm_sites: dict[tuple[str, str], TdmRules] = {}
+        self.tdm_seen: dict[str, dict[str, Any]] = {}  # 请求 URL → 该资源最终的 TDMRep 状态（写进采集日志）
 
     @property
     def user_agent(self) -> str:
@@ -313,6 +393,37 @@ class Session:
             self._robots[key] = rules
         return self._robots[key]
 
+    def tdm_site(self, url: str, connector: str) -> TdmRules:
+        """站点级 TDMRep 规则（每主机取一次并缓存）。取不到或格式无效＝站点未实现协议，规则表为空。"""
+        parts = urlsplit(url)
+        key = (parts.scheme, (parts.hostname or "").lower())
+        if key not in self._tdm_sites:
+            try:
+                response = self._request(f"{parts.scheme}://{parts.netloc}{TDM_WELL_KNOWN}", connector)
+            except Failed:
+                rules = TdmRules([])
+            else:
+                final = urlsplit(response.url or "")
+                same_site = final.scheme == "https" and host_allowed(final.hostname, self.hosts_for(connector))
+                ok = response.status == 200 and same_site
+                rules = TdmRules.parse(response.body[:512_000].decode("utf-8", errors="replace")) if ok else TdmRules([])
+            self._tdm_sites[key] = rules
+        return self._tdm_sites[key]
+
+    def respects_tdm(self) -> bool:
+        # 只有符合 DSM 第 3 条的科研机构/文化遗产机构才可以不受保留约束；默认一律尊重。
+        return bool(self.policy.get("defaults", {}).get("respect_tdm_reservation", True))
+
+    def _refuse_if_reserved(self, state: dict[str, Any], url: str) -> None:
+        if state.get("reservation") == 1 and self.respects_tdm():
+            where = {"well-known": TDM_WELL_KNOWN, "header": "响应头", "meta": "HTML meta"}.get(state.get("source"), "")
+            policy = f"；授权条件见 {state['policy']}" if state.get("policy") else ""
+            raise Refused(
+                "TDM_RESERVED",
+                f"权利人通过 TDMRep（{where}）保留了文本与数据挖掘权利：{url}{policy}。"
+                "取得授权后用 --local 导入并声明 --rights permission_granted",
+            )
+
     def _retry_delay(self, response: Response, attempt: int) -> float:
         cap = float(self.policy["defaults"].get("max_retry_after_s", 120))
         value = response.headers.get("retry-after", "").strip()
@@ -341,6 +452,10 @@ class Session:
         path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
         if not self.robots(url, connector).allowed(path):
             raise Refused("ROBOTS_DISALLOWED", f"{parts.hostname} 的 robots.txt 不允许抓取 {path}")
+        reservation, policy = self.tdm_site(url, connector).lookup(parts.path or "/")
+        tdm = merge_tdm({"reservation": None, "policy": None, "source": None}, reservation, policy, "well-known")
+        self.tdm_seen[url] = tdm
+        self._refuse_if_reserved(tdm, url)  # 站点级保留：正文一个字节都不取
         retries = int(self.policy["defaults"].get("max_retries", 3))
         max_bytes = int(setting(self.policy, connector, "max_bytes") or 30_000_000)
         for attempt in range(retries + 1):
@@ -359,6 +474,12 @@ class Session:
                 raise Failed(f"HTTP_{response.status}", url)
             if len(response.body) > max_bytes:
                 raise Failed("TOO_LARGE", f"超过 {max_bytes} 字节：{url}")
+            tdm = merge_tdm(tdm, response.headers.get("tdm-reservation"), response.headers.get("tdm-policy"), "header")
+            if "html" in response.headers.get("content-type", "").lower():
+                meta = tdm_from_html(response.body)
+                tdm = merge_tdm(tdm, meta.get("tdm-reservation"), meta.get("tdm-policy"), "meta")
+            self.tdm_seen[url] = tdm
+            self._refuse_if_reserved(tdm, url)
             return response
         raise Failed("UNREACHABLE", url)  # pragma: no cover - 循环必然 return 或 raise
 
@@ -845,7 +966,8 @@ def _acquire_one(
         "url": fetched.url, "http_status": fetched.http_status, "content_type": fetched.content_type,
         "title": fetched.title, "rights_status": fetched.rights_status, "rights_evidence": fetched.rights_evidence,
         "rights_review_required": decision == "review", "sha256": digest, "bytes": len(data),
-        **({"user_agent": session.user_agent} if connector in NETWORK_CONNECTORS else {}),
+        **({"user_agent": session.user_agent, "tdm": session.tdm_seen.get(fetched.url)}
+           if connector in NETWORK_CONNECTORS else {}),
         **{k: v for k, v in fetched.extras.items() if k != "keep_bytes"}, **extras,
     }
     duplicate = saved_by_sha.get(digest)

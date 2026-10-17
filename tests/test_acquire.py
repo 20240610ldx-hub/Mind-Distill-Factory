@@ -98,6 +98,7 @@ WS_ROUTES = {
     WS_URL: response(body=WIKISOURCE_PAGE.encode("utf-8"), headers={"content-type": "text/html; charset=UTF-8"}),
 }
 WS_TARGET = {"connector": "wikisource", "lang": "zh", "title": "論語"}
+WS_TDM = "https://zh.wikisource.org/.well-known/tdmrep.json"
 
 
 class RobotsTests(unittest.TestCase):
@@ -201,6 +202,122 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(acq.target_key(a), acq.target_key(b))
 
 
+class TdmRulesTests(unittest.TestCase):
+    """W3C TDMRep tdmrep.json：路径整段匹配、按顺序首个匹配生效、无效值视为未设置。"""
+
+    RULES = json.dumps([
+        {"location": "/private/*", "tdm-reservation": 1, "tdm-policy": "https://h.example/policy.json"},
+        {"location": "/odd/*", "tdm-reservation": "yes"},
+        {"location": "/exact$", "tdm-reservation": 1},
+        {"location": "/wiki/論語", "tdm-reservation": 1},
+        {"location": "/*", "tdm-reservation": 0},
+    ], ensure_ascii=False)
+
+    def setUp(self):
+        self.rules = acq.TdmRules.parse(self.RULES)
+
+    def test_first_match_wins(self):
+        self.assertEqual(self.rules.lookup("/private/a/b"), (1, "https://h.example/policy.json"))
+        self.assertEqual(self.rules.lookup("/public/a"), (0, None))
+
+    def test_invalid_value_is_unset(self):
+        self.assertEqual(self.rules.lookup("/odd/x"), (None, None))
+
+    def test_whole_path_match_and_end_anchor(self):
+        self.assertEqual(self.rules.lookup("/exact"), (1, None))
+        self.assertEqual(self.rules.lookup("/exactly"), (0, None), "/exact$ 不匹配 /exactly，落到 /*")
+
+    def test_percent_encoded_path_matches_unicode_location(self):
+        self.assertEqual(self.rules.lookup("/wiki/%E8%AB%96%E8%AA%9E"), (1, None))
+
+    def test_missing_or_invalid_file_means_not_implemented(self):
+        for text in ("", "not json", '{"location": "/*"}', "[1, 2]"):
+            with self.subTest(text=text):
+                self.assertEqual(acq.TdmRules.parse(text).lookup("/a"), (None, None))
+
+    def test_merge_keeps_previous_on_invalid_value(self):
+        state = acq.merge_tdm({"reservation": None, "policy": None, "source": None}, "1", None, "well-known")
+        self.assertEqual(acq.merge_tdm(state, "maybe", None, "header"), state)
+        self.assertEqual(acq.merge_tdm(state, None, None, "header"), state)
+        self.assertEqual(acq.merge_tdm(state, " 0 ", None, "meta")["reservation"], 0)
+
+    def test_meta_parsing_any_attribute_order(self):
+        html = b'<html><head><meta content="1" name="TDM-Reservation"><meta name="tdm-policy" content="https://p"></head>'
+        self.assertEqual(acq.tdm_from_html(html), {"tdm-reservation": "1", "tdm-policy": "https://p"})
+
+
+class TdmRepRunTests(unittest.TestCase):
+    """采集流程里的 TDMRep 闸门：站点级保留不取正文；响应头与 meta 覆盖站点声明；结果写进日志。"""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.root = Path(self._td.name)
+        self.raw = self.root / "sources" / "demo" / "raw"
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def run_one(self, routes, policy=None):
+        session, fetcher, _ = make_session(routes, policy=policy)
+        [result] = acq.run_acquisition("demo", [WS_TARGET], root=self.root, session=session)
+        return result, fetcher
+
+    def test_site_reservation_refuses_before_fetching_content(self):
+        routes = dict(WS_ROUTES)
+        routes[WS_TDM] = response(body=json.dumps([
+            {"location": "/wiki/*", "tdm-reservation": 1, "tdm-policy": "https://zh.wikisource.org/tdm"}]).encode())
+        result, fetcher = self.run_one(routes)
+        self.assertEqual((result["event"], result["reason"]), ("refused", "TDM_RESERVED"))
+        self.assertIn("https://zh.wikisource.org/tdm", result["message"])
+        self.assertNotIn(WS_URL, [c[0] for c in fetcher.calls], "保留时正文一个字节都不取")
+        self.assertFalse(self.raw.exists())
+
+    def test_header_reservation_refuses(self):
+        routes = dict(WS_ROUTES)
+        page = WS_ROUTES[WS_URL]
+        routes[WS_URL] = response(body=page["body"], headers={**page["headers"], "tdm-reservation": "1"})
+        result, _ = self.run_one(routes)
+        self.assertEqual(result["reason"], "TDM_RESERVED")
+        self.assertFalse(self.raw.exists())
+
+    def test_meta_overrides_header(self):
+        routes = dict(WS_ROUTES)
+        page = WS_ROUTES[WS_URL]
+        body = b'<html><head><meta name="tdm-reservation" content="1"></head>' + page["body"]
+        routes[WS_URL] = response(body=body, headers={**page["headers"], "tdm-reservation": "0"})
+        result, _ = self.run_one(routes)
+        self.assertEqual(result["reason"], "TDM_RESERVED")
+
+    def test_header_zero_without_site_rule_is_saved_and_logged(self):
+        routes = dict(WS_ROUTES)
+        page = WS_ROUTES[WS_URL]
+        routes[WS_URL] = response(body=page["body"], headers={**page["headers"], "tdm-reservation": "0"})
+        result, _ = self.run_one(routes)
+        self.assertEqual(result["event"], "saved")
+        self.assertEqual(result["tdm"], {"reservation": 0, "policy": None, "source": "header"})
+
+    def test_unmatched_site_rule_does_not_block(self):
+        routes = dict(WS_ROUTES)
+        routes[WS_TDM] = response(body=b'[{"location": "/private/*", "tdm-reservation": 1}]')
+        result, _ = self.run_one(routes)
+        self.assertEqual(result["event"], "saved")
+
+    def test_well_known_redirect_off_allowlist_is_ignored(self):
+        routes = dict(WS_ROUTES)
+        routes[WS_TDM] = response(body=b'[{"location": "/*", "tdm-reservation": 1}]', url="https://evil.example/tdm.json")
+        result, _ = self.run_one(routes)
+        self.assertEqual(result["event"], "saved", "白名单外的声明不代表本站点")
+
+    def test_research_exception_logs_but_does_not_refuse(self):
+        policy = copy.deepcopy(POLICY)
+        policy["defaults"]["respect_tdm_reservation"] = False  # 仅 DSM 第 3 条主体可这样配置
+        routes = dict(WS_ROUTES)
+        routes[WS_TDM] = response(body=b'[{"location": "/*", "tdm-reservation": 1}]')
+        result, _ = self.run_one(routes, policy=policy)
+        self.assertEqual(result["event"], "saved")
+        self.assertEqual(result["tdm"]["reservation"], 1)
+
+
 class RunTests(unittest.TestCase):
     def setUp(self):
         self._td = tempfile.TemporaryDirectory()
@@ -228,10 +345,12 @@ class RunTests(unittest.TestCase):
         self.assertNotIn("\r", saved.read_bytes().decode("utf-8"))
         self.assertEqual(result["rights_status"], "cc-by-sa")
         self.assertEqual(result["converted_from"], "text/html")
-        # robots 先于正文；两次请求都带联系方式；同主机第二次请求前等了 min_interval
-        self.assertEqual([c[0] for c in fetcher.calls], ["https://zh.wikisource.org/robots.txt", WS_URL])
+        # robots → TDMRep 站点声明 → 正文；每次请求都带联系方式；同主机每次请求之间等 min_interval
+        self.assertEqual([c[0] for c in fetcher.calls],
+                         ["https://zh.wikisource.org/robots.txt", WS_TDM, WS_URL])
         self.assertTrue(all("tests@example.invalid" in c[1]["User-Agent"] for c in fetcher.calls))
-        self.assertEqual(clock.sleeps, [1.0])
+        self.assertEqual(clock.sleeps, [1.0, 1.0])
+        self.assertEqual(result["tdm"], {"reservation": None, "policy": None, "source": None})
         [logged] = self.log_records()
         self.assertEqual(logged["sha256"], result["sha256"])
         self.assertEqual(logged["schema"], "acquisition-log-v1")
@@ -261,7 +380,7 @@ class RunTests(unittest.TestCase):
         session3, fetcher3, _ = make_session(WS_ROUTES)
         [refetched] = self.run_targets([WS_TARGET], session3, refresh=True)
         self.assertEqual(refetched["event"], "saved")
-        self.assertEqual(len(fetcher3.calls), 2)
+        self.assertEqual(len(fetcher3.calls), 3)  # robots + tdmrep.json + 正文
 
     def test_identical_content_from_another_target_is_duplicate(self):
         routes = dict(WS_ROUTES)
@@ -280,7 +399,7 @@ class RunTests(unittest.TestCase):
         [result] = self.run_targets([WS_TARGET], session)
         self.assertEqual(result["event"], "saved")
         self.assertIn(5.0, clock.sleeps)
-        self.assertEqual(len(fetcher.calls), 3)
+        self.assertEqual(len(fetcher.calls), 4)  # robots + tdmrep.json + 429 + 成功
 
     def test_excessive_retry_after_fails(self):
         routes = dict(WS_ROUTES)
@@ -295,7 +414,7 @@ class RunTests(unittest.TestCase):
         session, fetcher, _ = make_session(routes)
         [result] = self.run_targets([WS_TARGET], session)
         self.assertEqual(result["reason"], "HTTP_502")
-        self.assertEqual(len(fetcher.calls), 1 + 1 + POLICY["defaults"]["max_retries"])
+        self.assertEqual(len(fetcher.calls), 2 + 1 + POLICY["defaults"]["max_retries"])  # robots + tdmrep.json + 首次 + 重试
 
     def test_redirect_off_allowlist_is_refused(self):
         routes = dict(WS_ROUTES)

@@ -12,8 +12,10 @@
     "max_requests_per_run": 60,
     "max_retries": 3,
     "max_retry_after_s": 120,
-    "backoff_base_s": 2.0
+    "backoff_base_s": 2.0,
+    "respect_tdm_reservation": true
   },
+  "_tdm_comment": "W3C TDMRep：站点 /.well-known/tdmrep.json、响应头或 HTML meta 声明 tdm-reservation=1 时拒绝采集（EU DSM 指令第 4 条的机器可读保留）。只有符合第 3 条的科研机构/文化遗产机构才可改为 false，改之前先读 docs/ethics-and-legal.md。",
   "allowed_rights": ["public_domain", "cc0", "cc-by", "cc-by-sa", "user_owned_copy", "permission_granted"],
   "review_rights": ["public_domain_us", "unknown"],
   "connectors": {

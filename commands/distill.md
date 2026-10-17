@@ -144,7 +144,7 @@ python scripts/mdf.py acquire {slug} --wikisource zh:論語/學而第一 --ia <i
 python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy     # 导入用户自有副本
 ```
 
-- 来源与闸门由 `config/acquisition_policy.json` 决定：主机白名单、User-Agent 联系方式（`MDF_CONTACT`）、robots.txt、请求间隔与上限、权利状态。任何一道不过即拒绝，原因写入 `sources/{slug}/processed/acquisition_log.jsonl`。
+- 来源与闸门由 `config/acquisition_policy.json` 决定：主机白名单、User-Agent 联系方式（`MDF_CONTACT`）、robots.txt、TDMRep 挖掘保留、请求间隔与上限、权利状态。任何一道不过即拒绝，原因写入 `sources/{slug}/processed/acquisition_log.jsonl`。
 - 结果表里的 ⛔ 拒绝需要人处理（改策略或补授权），不要换个办法绕过；`RIGHTS_UNVERIFIED` 只有用户确认权利后才能加 `--allow-unverified-rights`。
 - 采集的文件落在 `sources/{slug}/raw/acquired/`，随后照常走子代理 A 的分片流水线；`sources/{slug}/processed/source_registry.json` 会带上每个文件的来源 URL 与权利状态。
 - 用户直接放进 `raw/` 的文件权利状态默认是 `unverified`。**请用户**（不是 agent 替他判断）在 `sources/{slug}/rights.json` 里逐文件声明权利状态和依据，再跑 `mdf index`；`--strict` 发布会拦下权利未放行的证据来源（S4）。格式与判定规则见 `docs/ethics-and-legal.md`。

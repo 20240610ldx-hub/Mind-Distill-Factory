@@ -7,7 +7,7 @@
 - 阶段 3（流水线自动化，分支 `claude/pipeline-automation`，**未推送、未开 PR**）：`effcb3f` → `e8c7d28` → `050a2b4` → `e91c7c6` → `0069e53` → `8b12577` → 本次文档收敛提交
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 470 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
+结果：`Ran 484 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
 
 ---
 
@@ -18,7 +18,7 @@
 | 提交 | 内容 | 关键文件 |
 |---|---|---|
 | `effcb3f` | 阶段逻辑树（7 个 phase，每个 phase 一次章节标签，无章节工具时用 H2 兜底）；`mdf status/next/stages/init/doctor/validate` | `config/pipeline_stages.json`、`scripts/pipeline_status.py`、`scripts/mdf.py` |
-| `e8c7d28` | 合规采集 `mdf acquire`：白名单 + https、带联系方式的 UA、RFC 9309 robots、限速与 Retry-After、权利三态、去重、原子写、采集日志；连接器 Wikisource / Internet Archive / Gutenberg 镜像 / URL / 本地 | `scripts/acquire.py`、`config/acquisition_policy.json` |
+| `e8c7d28` | 合规采集 `mdf acquire`（后续提交补了 W3C TDMRep 保留闸门）：白名单 + https、带联系方式的 UA、RFC 9309 robots、限速与 Retry-After、权利三态、去重、原子写、采集日志；连接器 Wikisource / Internet Archive / Gutenberg 镜像 / URL / 本地 | `scripts/acquire.py`、`config/acquisition_policy.json` |
 | `050a2b4` | 减法清洗闸门（只删不改，页码标记受保护，近重复检测）；index / 清洗 / P2 共用一个解码器 | `scripts/clean_corpus.py`、`scripts/text_decoding.py` |
 | `e91c7c6` | 确定性人格/表达代理指标：主张账本、来源集中度、去名锚点、文体指纹、对话漂移；方法论文档 | `scripts/persona_metrics.py`、`docs/methodology.md` |
 | `0069e53` | 伦理与法律闸门：L1 引文长度、L2 在世人物声明、strict S4 证据来源权利（P2 证明里带权利汇总）；人工权利声明 `sources/{slug}/rights.json` | `scripts/validate_output.py`、`docs/ethics-and-legal.md` |
@@ -112,7 +112,6 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 
 ### P4：阶段 3 留下的缺口
 - **Codex / pi 端到端实测**：只验证了适配文件结构（`claude plugin validate` 通过、本机 `--help` 核对参数），没有在 Codex、pi 里真正跑完一个人物
-- **W3C TDMRep**：采集只遵守 robots.txt，未解析 `tdm-reservation`；对欧盟站点规模化采集前补上（`docs/ethics-and-legal.md` 第 8 节）
 - **OCR 路径**：清洗闸门对 OCR 质量只打标（`quality_flags`），没有在真实扫描件上做过端到端校准
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
 
@@ -169,7 +168,7 @@ claude plugin validate .
 ## 六、建议的下一动作顺序
 
 1. 人工决定项：合并文档分支（Codex/pi 读的 AGENTS.md 过时）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式
-2. 本分支开 PR 合入 main（CI 会在 ubuntu + windows 上重跑 470 个离线单测）
+2. 本分支开 PR 合入 main（CI 会在 ubuntu + windows 上重跑全部离线单测）
 3. 在 Codex 或 pi 里端到端跑一个公有领域人物（如用 `mdf acquire --wikisource` 取原典），验证简报 + 新进程路径
 4. P2 runtime `read_reference` + trace + judge schema
-5. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验；补 TDMRep
+5. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验
