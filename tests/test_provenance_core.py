@@ -37,6 +37,20 @@ class NormalizeTests(unittest.TestCase):
         once = prov.normalize("如此，月有考。")
         self.assertEqual(prov.normalize(once), once)
 
+    def test_fullwidth_and_halfwidth_punctuation_agree(self) -> None:
+        # OCR 校准：原文「不亦說乎？」，OCR 吐出「不亦說乎?」，曾因全角 ？ 没去掉而对不上
+        self.assertEqual(prov.normalize("不亦說乎？不亦樂乎！"), prov.normalize("不亦說乎?不亦樂乎!"))
+
+    def test_strips_vertical_presentation_forms(self) -> None:
+        # 竖排书用 ﹁﹂﹃﹄︵︶︑︒，电子版用「」『』（），，。——同一句话
+        self.assertEqual(prov.normalize("﹁掛旗！﹂﹃是﹄︵注︶︑︒"), prov.normalize("「掛旗！」『是』（注），。"))
+
+    def test_folds_fullwidth_digits_and_letters(self) -> None:
+        self.assertEqual(prov.normalize("１９１２年ＡＢｃ"), prov.normalize("1912年ABc"))
+
+    def test_keeps_ideographic_characters_in_symbol_block(self) -> None:
+        self.assertEqual(prov.normalize("人々〇〆"), "人々〇〆")
+
 
 class CorpusTests(unittest.TestCase):
     def test_load_corpus_reads_txt_files_and_normalizes(self) -> None:

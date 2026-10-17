@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr
+    from pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr, suspect_count
 except ImportError:  # pragma: no cover - supports package-style imports
-    from scripts.pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr  # type: ignore
+    from scripts.pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr, suspect_count  # type: ignore
 
 try:
     from sampling import SamplingConfig, build_sampling_plan, write_plan
@@ -518,7 +518,7 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                     # 标出 OCR 页：worker 据此把这些页上的引文压到 medium（P2 查不出 OCR 认错的字）；
                     # 有没认出来的行时写明几行，worker 不在缺口两侧拼引文
                     page_ocr = page.get("ocr") or {}
-                    unread = int(page_ocr.get("dropped_lines") or 0) + int(page_ocr.get("short_lines") or 0)
+                    unread = suspect_count(page_ocr)
                     via_ocr = "" if page_ocr.get("status") != "ok" else (
                         f" (OCR, {unread} unread)" if unread else " (OCR)")
                     page_buffer.append(f"--- Page {page_number}{via_ocr} ---\n{page_text}")

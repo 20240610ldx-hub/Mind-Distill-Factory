@@ -46,8 +46,8 @@ THRESHOLDS = {
     "index_page_min_lines": 10,
     "annotation_min_hits": 3,
     "ocr_missing_reject": 0.5,    # 需要 OCR 却没拿到文字的页占比
-    # OCR 阈值来自 `mdf ocr calibrate` 实测（docs/methodology.md「OCR 校准」）：平均置信度 <0.9 的
-    # 各次运行逐字存活率都 ≤26%；<0.6 的 CER 都在 49% 以上、逐字存活为 0，已是乱码。
+    # OCR 阈值来自 `mdf ocr calibrate` 实测（docs/methodology.md「OCR 校准」，64 次运行）：平均置信度
+    # <0.9 的各次运行逐字存活率都 ≤58%；<0.6 的 CER 都在 71% 以上、逐字存活为 0，已是乱码。
     "ocr_low_confidence": 0.9,
     "ocr_garbled_reject": 0.6,
     "near_duplicate_jaccard": 0.85,
@@ -504,9 +504,9 @@ FLAG_HINTS = {
     "heavy_removal": "行规则删掉了超过 10% 的字符，抽样核对报告里的 samples",
     "ocr_incomplete": "部分页需要 OCR 但未取得文字",
     "ocr_mostly_missing": "过半页需要 OCR 但未取得文字，覆盖面不完整",
-    "low_ocr_confidence": "OCR 平均置信度 <0.9（校准实测此档逐字存活率 ≤26%），引文必须对照原图",
+    "low_ocr_confidence": "OCR 平均置信度 <0.9（校准实测此档逐字存活率 ≤58%），引文必须对照原图",
     "ocr_text": "含 OCR 识别文字：最好的引擎在无退化样张上仍约 5% 的句子不能逐字还原，引文对照原图后才能标 high",
-    "ocr_lines_dropped": "OCR 检测到文字行却没认出来（印章、透墨、污渍、手写）：这些行不在语料里，缺口两侧在原书中并不相连，跨行引文必须对照原图（页码标记写明每页漏几行）",
+    "ocr_lines_dropped": "OCR 有没认全的行（印章、透墨、污渍、手写；竖排页还按列距推算漏检列）：这些行不在语料里，缺口两侧在原书中并不相连，跨行引文必须对照原图（页码标记写明每页漏几行）",
     "very_short": "文本很短",
     "replacement_chars": "少量 U+FFFD",
     "private_use_glyphs": "少量私用区字形",

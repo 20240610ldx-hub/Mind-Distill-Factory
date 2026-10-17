@@ -238,7 +238,7 @@ class CleanPdfTests(unittest.TestCase):
         # 用过 OCR 就标 ocr_text：P2 只能拿 OCR 文字比对，认错的字它查不出来
         self.assertIn("ocr_text", gate(1, 0.99)["flags"])
         self.assertNotIn("ocr_text", cc.clean_pdf_pages(self.pages(4))[1]["flags"])
-        # 0.9 以下：校准实测逐字存活率 ≤26%
+        # 0.9 以下：校准实测逐字存活率 ≤58%
         self.assertNotIn("low_ocr_confidence", gate(4, 0.93)["flags"])
         self.assertIn("low_ocr_confidence", gate(4, 0.87)["flags"])
         # 0.6 以下且过半页靠 OCR：乱码，整份退回；OCR 只占少数页时只标不退

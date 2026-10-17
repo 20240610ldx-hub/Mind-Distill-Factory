@@ -250,6 +250,44 @@ def order_lines(lines: list[OcrLine]) -> tuple[list[OcrLine], str]:
     return [lines[i] for i in order], "vertical"
 
 
+GAP_MIN_PITCHES = 2.5     # 相邻两列相隔 ≥2.5 个常规列距才算中间有漏检列：单个空列（分段、章题前后）不算
+
+
+def undetected_columns(lines: list[OcrLine]) -> int:
+    """竖排页里检测器根本没框出来的列（透墨、淡印）：识别分再低也有框，没框就只能从列距推。
+    常规列距只用完整的列（能放 ≥4 字、不论识别分）来算：相邻列中心间距里「不超过两倍列宽」那些的中位数。
+    找空档时所有不是横排的框都算占位——章题「十一」只有两个字，不算一列，但它占着位置，
+    它前后的空白不能当成漏检（《鲁迅入门读本》p100 曾因此误报 3 列）。
+    间距 ≥ GAP_MIN_PITCHES 个列距的地方，按 round(间距 / 列距) - 1 计漏检列。少于 3 列不推算。"""
+    cols: list[list[float]] = []
+    occupied: list[float] = []
+    for box, _text, _score in lines:
+        x0, y0, x1, y1 = _extent(box)
+        w, h = x1 - x0, y1 - y0
+        if w <= 0 or w > VERTICAL_RATIO * h:  # 横排的页眉页码不占列位
+            continue
+        occupied.append((x0 + x1) / 2)
+        if h <= VERTICAL_RATIO * w or h / w < SUSPECT_MIN_CELLS:
+            continue
+        for col in cols:
+            if min(x1, col[1]) - max(x0, col[0]) > 0.5 * min(w, col[1] - col[0]):
+                col[0], col[1] = min(x0, col[0]), max(x1, col[1])
+                break
+        else:
+            cols.append([x0, x1])
+    if len(cols) < 3:
+        return 0
+    centers = sorted((a + b) / 2 for a, b in cols)
+    width = sorted(b - a for a, b in cols)[len(cols) // 2]
+    regular = sorted(g for g in (b - a for a, b in zip(centers, centers[1:])) if g <= 2 * width)
+    if not regular:
+        return 0
+    pitch = regular[len(regular) // 2]
+    spots = sorted(occupied)
+    gaps = [b - a for a, b in zip(spots, spots[1:])]
+    return sum(round(g / pitch) - 1 for g in gaps if g >= GAP_MIN_PITCHES * pitch)
+
+
 def summarize_lines(lines: list[OcrLine], keep_score: float = KEEP_SCORE) -> tuple[str, float, dict[str, Any]]:
     """把引擎的逐行结果变成 (文本, 平均置信度, 诊断)。低于 keep_score 的行不进文本，但要数出来。"""
     ordered, layout = order_lines(lines)
@@ -266,7 +304,13 @@ def summarize_lines(lines: list[OcrLine], keep_score: float = KEEP_SCORE) -> tup
         short += cells >= SUSPECT_MIN_CELLS and len("".join(text.split())) < SHORT_LINE_SHARE * cells
     return "\n".join(texts).strip(), _mean(scores), {
         "layout": layout, "lines": len(texts), "dropped_lines": int(dropped), "short_lines": int(short),
+        "undetected_lines": undetected_columns(lines) if layout == "vertical" else 0,
     }
+
+
+def suspect_count(ocr: dict[str, Any]) -> int:
+    """一页里没认全的行：被丢的 + 只认出一部分的 + 从列距推算的漏检列。"""
+    return sum(int(ocr.get(k) or 0) for k in ("dropped_lines", "short_lines", "undetected_lines"))
 
 
 def _rapidocr_runner() -> OcrRunner:
@@ -474,7 +518,7 @@ def summarize_ocr(pages: list[dict[str, Any]]) -> dict[str, Any]:
         "ocr_ok": len(ok),
         "mean_confidence": round(sum(conf) / len(conf), 4) if conf else None,
         "vertical_pages": sum(1 for o in ok if o.get("layout") == "vertical"),
-        "suspect_lines": sum(int(o.get("dropped_lines") or 0) + int(o.get("short_lines") or 0) for o in ok),
+        "suspect_lines": sum(suspect_count(o) for o in ok),
     }
 
 

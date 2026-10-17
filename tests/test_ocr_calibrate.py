@@ -55,10 +55,21 @@ class MetricTests(unittest.TestCase):
         self.assertLess(row["sentences_verbatim"], row["sentences"])
         self.assertTrue(row["lost_sentences"])
 
+    def test_sample_pages_avoid_covers(self):
+        self.assertEqual(oc.sample_pages(100, 3), [25, 50, 75])
+        self.assertEqual(oc.sample_pages(2, 3), [1, 2])
+        self.assertEqual(oc.sample_pages(5, 1), [2])
+
     def test_truth_file_splits_pages(self):
         pages = oc.load_truth()
-        self.assertEqual(len(pages), 3)
+        self.assertEqual(len(pages), 8)
         self.assertTrue(all(pages))
+        sentences = sum(oc.page_metrics(p, p)["sentences"] for p in pages)
+        self.assertGreaterEqual(sentences, 50, "样张太小，阈值就是在三五句话上调出来的")
+
+    def test_english_sentences_split_on_full_stop_not_decimals(self):
+        row = oc.page_metrics("Version 2.0 lists 3.32M tokens. We are met on a great field.", "")
+        self.assertEqual(row["sentences"], 2)
 
 
 class EngineCacheTests(unittest.TestCase):
@@ -275,7 +286,27 @@ class LineLayoutTests(unittest.TestCase):
         text, conf, details = oc.pdf_quality.summarize_lines(lines)
         self.assertEqual(text, "星期日的早晨我揭去一張隔夜的日曆\n管")
         self.assertAlmostEqual(conf, (0.95 + 0.6) / 2)
-        self.assertEqual(details, {"layout": "vertical", "lines": 2, "dropped_lines": 1, "short_lines": 1})
+        self.assertEqual(details, {"layout": "vertical", "lines": 2, "dropped_lines": 1, "short_lines": 1,
+                                   "undetected_lines": 0})
+
+    def test_undetected_columns_are_inferred_from_column_gaps(self):
+        # 《大學中庸》国图本 p20：透墨的列根本没被框出来，只能从列距推
+        pitch = 50
+        detected = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in (0, 1, 2, 9, 10)]
+        self.assertEqual(oc.pdf_quality.undetected_columns(detected), 6, "第 2 与第 9 列之间缺 6 列")
+        regular = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in range(6)]
+        self.assertEqual(oc.pdf_quality.undetected_columns(regular), 0)
+        blank = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in (0, 1, 3, 4)]
+        self.assertEqual(oc.pdf_quality.undetected_columns(blank), 0, "单个空列是分段或章题，不算漏检")
+        self.assertEqual(oc.pdf_quality.undetected_columns(detected[:2]), 0, "少于 3 列不推算")
+        # 《鲁迅入门读本》p100：章题「十一」前后各空一列，短框也占位，不算漏检
+        heading = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in (0, 1, 2, 6, 7, 8)]
+        heading.append(column(1000 - pitch * 4, 0, "十一"))
+        self.assertEqual(oc.pdf_quality.undetected_columns(heading), 0)
+        heading.append((box(700, -60, 200, 30), "第三編 閱讀魯迅", 0.99))  # 横排页眉不占列位
+        self.assertEqual(oc.pdf_quality.undetected_columns(heading), 0)
+        page = oc.pdf_quality.summarize_lines(detected)[2]
+        self.assertEqual((page["undetected_lines"], oc.pdf_quality.suspect_count(page)), (6, 6))
 
     def test_latin_lines_are_not_mistaken_for_short(self):
         # 拉丁字母比字高窄，一行的字数总多于框的长宽比，不会误报
@@ -328,7 +359,7 @@ class OcrIntoIndexTests(unittest.TestCase):
         self.assertEqual(by_engine["good"]["verbatim_survival"], 1.0)
         self.assertLess(by_engine["bad"]["verbatim_survival"], 1.0)
         self.assertIn("ocr_garbled", by_engine["bad"]["gate_reasons"])
-        self.assertIn("| bad | none |", oc.render_calibration(report))
+        self.assertIn("| bad | builtin | 横排 | none |", oc.render_calibration(report))
 
     def test_ocr_pages_are_marked_in_shards(self):
         oc.pdf_quality.register_runner("fake", fake_engine(TRUTH))
@@ -342,6 +373,38 @@ class OcrIntoIndexTests(unittest.TestCase):
         self.assertIn("--- Page 1 (OCR) ---", text)
         self.assertTrue(all("ocr_text" in s.quality_flags for s in segments))
         self.assertTrue(oc.clean_corpus.PAGE_MARKER_RE.match("--- Page 1 (OCR) ---"), "清洗规则不得删掉 OCR 页码标记")
+
+    def test_vertical_layout_only_renders_cjk_pages(self):
+        oc.pdf_quality.register_runner("fake", lambda image: ("文", 0.97))
+        truth = [TRUTH[1], "Version 2.0 of the index lists 13 files and 86 shards."]
+        report = oc.calibrate(truth, font=None, degrades=["none"], fonts={"builtin": None},
+                              layouts=("horizontal", "vertical"))
+        pages = {lv["layout"]: lv["pages"] for lv in report["levels"]}
+        self.assertEqual(pages, {"horizontal": 2, "vertical": 1}, "英文页不竖排")
+        self.assertEqual({g["layout"] for g in oc.summarize_levels(report["levels"], "layout")},
+                         {"horizontal", "vertical"})
+
+    def test_vertical_render_and_overflow(self):
+        self.assertTrue(oc.render_page(TRUTH[0], None, layout="vertical").startswith(b"\x89PNG"))
+        with self.assertRaises(ValueError, msg="放不下就报错，不能悄悄截断真值"):
+            oc.render_page("字" * 5000, None, layout="vertical")
+        with self.assertRaises(ValueError):
+            oc.render_page("字" * 5000, None)
+
+    def test_survey_samples_each_pdf_and_reports_problems(self):
+        oc.pdf_quality.register_runner("fake", fake_engine(TRUTH, confidence=0.8))
+        with tempfile.TemporaryDirectory() as td:
+            oc.build_pdf([oc.render_page(t, None) for t in TRUTH * 3], Path(td) / "book.pdf")
+            (Path(td) / "broken.pdf").write_bytes(b"not a pdf")
+            report = oc.survey(Path(td), per_file=2)
+        by_file = {f["file"]: f for f in report["files"]}
+        self.assertIn("error", by_file["broken.pdf"])
+        book = by_file["book.pdf"]
+        self.assertEqual((book["pages_in_file"], book["sampled"], book["ocr_share"]), (6, [2, 4], 1.0))
+        self.assertIn("low_ocr_confidence", book["gate_flags"])
+        text = oc.render_survey(report)
+        self.assertIn("需要人看一眼的 2 份", text)
+        self.assertIn("打不开", text)
 
     def test_unread_lines_reach_the_shard_and_the_gate(self):
         def leaky(image):

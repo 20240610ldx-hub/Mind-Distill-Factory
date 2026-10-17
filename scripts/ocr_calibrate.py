@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """OCR 校准与扫描件诊断。
 
-    python scripts/mdf.py ocr calibrate [--degrade all|none|light|heavy|severe] [--backend auto|all|NAME] [--font PATH] [--json]
+    python scripts/mdf.py ocr calibrate [--degrade all|none|light|heavy|severe] [--backend auto|all|NAME]
+                                        [--fonts song,kai,hei,fangsong|all] [--layout horizontal|vertical|all] [--json]
     python scripts/mdf.py ocr scan <file.pdf> [--pages 1-3,40] [--out DIR] [--backend auto|NAME] [--json]
+    python scripts/mdf.py ocr survey <slug|目录|file.pdf> [--per-file 3] [--json]
 
 calibrate：把一份已知真值的文本渲染成无文字层的「扫描件」PDF（可选轻度/重度/严重退化：倾斜、
 模糊、噪点、降采样），送进 index 用的同一条 PDF→OCR 路径（local_source_pipeline.
@@ -18,6 +20,10 @@ extract_pdf_pages），再与真值比对：
 scan：对真实扫描件逐页报告分类、OCR 状态与置信度（没有真值，不算 CER）。--pages 只抽几页
 （几百页的书先抽样再决定要不要整本跑），--out 把每页送进 OCR 的图和识别出的文字成对存下，
 供人对照原图核实——worker 规则里「OCR 页引文对照原图后才可标 high」靠的就是这一步。
+--fonts / --layout 把同一份真值换字体（宋、楷、黑、仿宋）、换版式（横排、竖排）再画一遍，
+竖排的真值才能检验阅读顺序重排是否正确。
+survey：index 之前给一批 PDF 抽样体检——每份均匀抽几页，报要不要 OCR、预计耗时、置信度、
+竖排与可疑行，列出需要人看一眼的文件。
 """
 
 from __future__ import annotations
@@ -44,13 +50,22 @@ import pdf_quality  # noqa: E402
 CODE_ROOT = SCRIPTS.parent
 DEFAULT_TRUTH = CODE_ROOT / "evaluation" / "fixtures" / "ocr" / "sample_zh.txt"
 PAGE_SEPARATOR = re.compile(r"^---\s*$", re.MULTILINE)
-SENTENCE_RE = re.compile(r"[^。！？；!?;\n]+[。！？；!?;]?")
-FONT_CANDIDATES = (
-    "C:/Windows/Fonts/simsun.ttc", "C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/NotoSerifSC-VF.ttf",
-    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/noto-cjk/NotoSerifCJK-Regular.ttc", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-    "/System/Library/Fonts/Supplemental/Songti.ttc", "/System/Library/Fonts/PingFang.ttc",
-)
+# 中文按句末标点断句；英文句号只在后面是空白或行尾时才算句末（3.32M、2.0 不断）
+SENTENCE_RE = re.compile(r"[^。！？；!?;\n]+?(?:[。！？；!?;]|\.(?=\s|$)|(?=\n)|$)")
+# 书籍正文最常见的四种字体：宋（排印本主力）、楷（古籍影印、手写感）、黑（现代标题与教材）、仿宋（公文、旧排印本）
+FONT_FAMILIES = {
+    "song": ("C:/Windows/Fonts/simsun.ttc", "C:/Windows/Fonts/NotoSerifSC-VF.ttf",
+             "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc", "/usr/share/fonts/noto-cjk/NotoSerifCJK-Regular.ttc",
+             "/System/Library/Fonts/Supplemental/Songti.ttc"),
+    "kai": ("C:/Windows/Fonts/simkai.ttf", "/usr/share/fonts/truetype/arphic/ukai.ttc",
+            "/System/Library/Fonts/Supplemental/Kaiti.ttc"),
+    "hei": ("C:/Windows/Fonts/simhei.ttf", "C:/Windows/Fonts/msyh.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            "/System/Library/Fonts/PingFang.ttc"),
+    "fangsong": ("C:/Windows/Fonts/simfang.ttf",),
+}
+FONT_CANDIDATES = tuple(path for family in FONT_FAMILIES.values() for path in family)
+LAYOUTS = ("horizontal", "vertical")
 DEGRADE = {
     "none": {"angle": 0.0, "blur": 0.0, "noise": 0.0, "scale": 1.0},
     "light": {"angle": 0.6, "blur": 0.4, "noise": 0.06, "scale": 1.0},
@@ -73,6 +88,15 @@ def find_cjk_font(explicit: str | None = None) -> Path | None:
     return None
 
 
+def find_font_family(family: str) -> Path | None:
+    return next((Path(p) for p in FONT_FAMILIES.get(family, ()) if Path(p).is_file()), None)
+
+
+def cjk_share(text: str) -> float:
+    chars = [ch for ch in text if not ch.isspace()]
+    return sum(1 for ch in chars if clean_corpus.CJK_RE.match(ch)) / len(chars) if chars else 0.0
+
+
 # ── 合成扫描件 ────────────────────────────────────────────────────────
 
 
@@ -86,20 +110,35 @@ def _wrap(text: str, per_line: int) -> list[str]:
     return lines
 
 
-def render_page(text: str, font: Path | None, *, dpi: int = 200, degrade: str = "none", seed: int = 0) -> bytes:
-    """把一页文字画成 A5 灰度图（PNG 字节）。font 为 None 时用 PIL 内置字体，只供管线测试。"""
+def render_page(text: str, font: Path | None, *, dpi: int = 200, degrade: str = "none", seed: int = 0,
+                layout: str = "horizontal") -> bytes:
+    """把一页文字画成 A5 灰度图（PNG 字节）。font 为 None 时用 PIL 内置字体，只供管线测试。
+
+    layout="vertical" 按竖排书的版式画：一字一格从上往下，列从右往左。放不下就报错——
+    悄悄截断会让真值比图上的字多，CER 跟着失真。"""
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
     width, height = round(148 / 25.4 * dpi), round(210 / 25.4 * dpi)
     size = round(12 / 72 * dpi)
     face = ImageFont.truetype(str(font), size) if font else ImageFont.load_default()
     margin = round(15 / 25.4 * dpi)
+    pitch = round(size * 1.6)
     image = Image.new("L", (width, height), 255)
     draw = ImageDraw.Draw(image)
-    y = margin
-    for line in _wrap(text, max(1, (width - 2 * margin) // size)):
-        draw.text((margin, y), line, fill=0, font=face)
-        y += round(size * 1.6)
+    if layout == "vertical":
+        columns = _wrap(text, max(1, (height - 2 * margin) // size))
+        if len(columns) > (width - 2 * margin) // pitch + 1:
+            raise ValueError(f"竖排一页放不下：{len(columns)} 列")
+        for index, column_text in enumerate(columns):
+            x = width - margin - size - index * pitch
+            for k, ch in enumerate(column_text):
+                draw.text((x, margin + k * size), ch, fill=0, font=face)
+    else:
+        lines = _wrap(text, max(1, (width - 2 * margin) // size))
+        if len(lines) > (height - 2 * margin) // pitch + 1:
+            raise ValueError(f"横排一页放不下：{len(lines)} 行")
+        for index, line in enumerate(lines):
+            draw.text((margin, margin + index * pitch), line, fill=0, font=face)
     spec = DEGRADE[degrade]
     rng = random.Random(seed)
     if spec["scale"] < 1.0:  # 低分辨率扫描：缩小再放大
@@ -194,21 +233,30 @@ def _ocr_stats(pages: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str], dpi: int = 200,
-              backends: list[str] | None = None, workdir: Path | None = None) -> dict[str, Any]:
+              backends: list[str] | None = None, workdir: Path | None = None,
+              fonts: dict[str, Path | None] | None = None, layouts: tuple[str, ...] = ("horizontal",)) -> dict[str, Any]:
+    """fonts 给出 {字体名: 字体文件}（不给就只用 font）；layouts 取 horizontal / vertical。
+    竖排只画中文为主的页：横排的英文页竖着画，现实里没有这种书。"""
     normalize = _normalize()
+    fonts = fonts or {Path(font).stem if font else "builtin": font}
     levels = []
     with tempfile.TemporaryDirectory() as td:
         base = workdir or Path(td)
-        pdfs = {}
-        for level in degrades:  # 同一档的图只画一次，所有引擎读同一份 PDF
-            images = [render_page(text, font, dpi=dpi, degrade=level, seed=i) for i, text in enumerate(truth_pages)]
-            pdfs[level] = build_pdf(images, base / f"synthetic-{level}.pdf", dpi=dpi)
-        for backend, level in ((b, lv) for b in backends or ["auto"] for lv in degrades):
+        conditions = []  # 同一组条件的图只画一次，所有引擎读同一份 PDF
+        for (label, face), layout, level in ((f, ly, lv) for f in fonts.items() for ly in layouts for lv in degrades):
+            pages_here = [t for t in truth_pages if layout == "horizontal" or cjk_share(t) >= 0.5]
+            if not pages_here:
+                continue
+            images = [render_page(text, face, dpi=dpi, degrade=level, seed=i, layout=layout)
+                      for i, text in enumerate(pages_here)]
+            pdf = build_pdf(images, base / f"synthetic-{label}-{layout}-{level}.pdf", dpi=dpi)
+            conditions.append((label, layout, level, pages_here, pdf))
+        for backend, (label, layout, level, pages_here, pdf) in ((b, c) for b in backends or ["auto"] for c in conditions):
             started = time.perf_counter()
-            pages, meta = lsp.extract_pdf_pages(pdfs[level], ocr_backend=backend)
+            pages, meta = lsp.extract_pdf_pages(pdf, ocr_backend=backend)
             seconds = time.perf_counter() - started
             rows = []
-            for truth, page in zip(truth_pages, pages):
+            for truth, page in zip(pages_here, pages):
                 ocr = page.get("ocr") or {}
                 row = page_metrics(truth, ocr.get("text", ""), normalize)
                 row.update(status=ocr.get("status"), backend=ocr.get("backend"), confidence=ocr.get("confidence"),
@@ -219,7 +267,7 @@ def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str],
             chars = sum(r["truth_chars"] for r in rows) or 1
             sentences = sum(r["sentences"] for r in rows)
             levels.append({
-                "engine": backend, "degrade": level,
+                "engine": backend, "font": label, "layout": layout, "degrade": level,
                 "backend_used": sorted({r["backend"] for r in rows if r["backend"]}),
                 "seconds_per_page": round(seconds / max(1, len(pages)), 2),
                 "document_type": meta.get("document_type"),
@@ -230,8 +278,30 @@ def calibrate(truth_pages: list[str], *, font: Path | None, degrades: list[str],
                 "gate_flags": gate.get("flags", []), "gate_reasons": gate.get("reasons", []),
                 "page_rows": rows,
             })
-    return {"schema": "ocr-calibration-v1", "font": str(font) if font else None, "dpi": dpi,
+    return {"schema": "ocr-calibration-v1", "font": str(font) if font else None,
+            "fonts": {k: str(v) if v else None for k, v in fonts.items()}, "dpi": dpi,
+            "truth_pages": len(truth_pages),
+            "truth_sentences": sum(page_metrics(t, t, normalize)["sentences"] for t in truth_pages),
             "low_confidence_threshold": clean_corpus.THRESHOLDS["ocr_low_confidence"], "levels": levels}
+
+
+def summarize_levels(levels: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    """按某个维度（engine / font / layout / degrade）汇总：逐字存活率按句数加权，CER 按字数加权。"""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for lv in levels:
+        name = "/".join(lv.get("backend_used") or []) or lv.get("engine", "auto") if key == "engine" else str(lv.get(key))
+        groups.setdefault(name, []).append(lv)
+    out = []
+    for name, items in groups.items():
+        rows = [r for lv in items for r in lv["page_rows"]]
+        chars = sum(r["truth_chars"] for r in rows) or 1
+        sentences = sum(r["sentences"] for r in rows)
+        out.append({
+            key: name, "runs": len(items),
+            "cer": round(sum(r["cer"] * r["truth_chars"] for r in rows) / chars, 4),
+            "verbatim_survival": round(sum(r["sentences_verbatim"] for r in rows) / sentences, 4) if sentences else None,
+        })
+    return out
 
 
 def parse_pages(spec: str | None, count: int) -> list[int]:
@@ -276,26 +346,101 @@ def scan(pdf: Path, backend: str = "auto", pages_spec: str | None = None, out_di
         "confidence": (p.get("ocr") or {}).get("confidence"), "chars": len(_squash(p.get("text", ""))),
         "preview": _squash((p.get("ocr") or {}).get("text", ""))[:24],
         "layout": (p.get("ocr") or {}).get("layout"),
-        "suspect_lines": int((p.get("ocr") or {}).get("dropped_lines") or 0)
-        + int((p.get("ocr") or {}).get("short_lines") or 0),
+        "suspect_lines": pdf_quality.suspect_count(p.get("ocr") or {}),
     } for p in pages]
     return {"schema": "ocr-scan-v1", "file": str(pdf), "document_type": meta.get("document_type"),
             "pages_in_file": meta.get("page_count"), "out_dir": str(out_dir) if out_dir else None,
             **stats, "gate_flags": gate.get("flags", []), "gate_reasons": gate.get("reasons", []), "pages": rows}
 
 
-def render_calibration(report: dict[str, Any]) -> str:
-    lines = [f"## OCR 校准（字体 {report['font'] or 'PIL 内置'}，{report['dpi']} dpi）", "",
-             "| 引擎 | 退化档 | CER | 逐字存活率 | 平均置信度 | 可疑行 | OCR 成功页 | 秒/页 | 清洗闸门 |",
+def sample_pages(count: int, per_file: int) -> list[int]:
+    """均匀抽 per_file 页（第 1/(n+1)、2/(n+1)… 处），避开封面封底。"""
+    if count <= per_file:
+        return list(range(1, count + 1))
+    return sorted({max(1, min(count, round(count * (k + 1) / (per_file + 1)))) for k in range(per_file)})
+
+
+def survey(target: Path, per_file: int = 3, backend: str = "auto") -> dict[str, Any]:
+    """整批 PDF 抽样体检：每本抽几页走 index 同一条 OCR 路径，估出整本要不要 OCR、OCR 要多久、哪本有问题。
+    在 index 之前跑，人据此决定换版本、换引擎还是照常处理。"""
+    import fitz  # type: ignore
+
+    pdfs = sorted(p for p in target.rglob("*") if p.suffix.lower() == ".pdf") if target.is_dir() else [target]
+    files = []
+    for pdf in pdfs:
+        name = str(pdf.relative_to(target)) if target.is_dir() else pdf.name
+        try:
+            with fitz.open(pdf) as doc:
+                count = len(doc)
+        except Exception as exc:  # noqa: BLE001 - 打不开本身就是体检结论
+            files.append({"file": name, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        picks = sample_pages(count, per_file)
+        started = time.perf_counter()
+        report = scan(pdf, backend, ",".join(map(str, picks)))
+        seconds = time.perf_counter() - started
+        share = report["ocr_required"] / len(picks) if picks else 0.0
+        files.append({
+            "file": name, "pages_in_file": count, "sampled": picks, "document_type": report["document_type"],
+            "ocr_share": round(share, 2), "ocr_ok": report["ocr_ok"], "mean_confidence": report["mean_confidence"],
+            "vertical_pages": report["vertical_pages"], "suspect_lines": report["suspect_lines"],
+            "gate_flags": report["gate_flags"], "gate_reasons": report["gate_reasons"],
+            "est_ocr_minutes": round(count * share * seconds / max(1, len(picks)) / 60, 1),
+        })
+    return {"schema": "ocr-survey-v1", "target": str(target), "per_file": per_file, "files": files}
+
+
+def render_survey(report: dict[str, Any]) -> str:
+    files = report["files"]
+    ocr_files = [f for f in files if f.get("ocr_share")]
+    worry = [f for f in files if f.get("error") or f.get("gate_reasons") or
+             {"low_ocr_confidence", "ocr_lines_dropped"} & set(f.get("gate_flags") or [])]
+    lines = [f"## 扫描件体检：{report['target']}", "",
+             f"{len(files)} 份 PDF，每份抽 {report['per_file']} 页；需要 OCR 的 {len(ocr_files)} 份，"
+             f"整批 OCR 预计 {sum(f.get('est_ocr_minutes') or 0 for f in files):.0f} 分钟；需要人看一眼的 {len(worry)} 份。", "",
+             "| 文件 | 页数 | 抽样页 | 需 OCR | 平均置信度 | 竖排 | 可疑行 | 清洗闸门 | 预计 OCR |",
              "|---|---|---|---|---|---|---|---|---|"]
+    for f in files:
+        if f.get("error"):
+            lines.append(f"| {f['file']} | — | — | — | — | — | — | 打不开：{f['error']} | — |")
+            continue
+        gate = "、".join(f["gate_reasons"] + [g for g in f["gate_flags"] if g != "ocr_text"]) or "通过"
+        conf = "—" if f["mean_confidence"] is None else f"{f['mean_confidence']:.3f}"
+        sampled = ",".join(map(str, f["sampled"]))
+        lines.append(f"| {f['file']} | {f['pages_in_file']} | {sampled} | {f['ocr_share']:.0%} | {conf} "
+                     f"| {f['vertical_pages']} | {f['suspect_lines']} | {gate} | {f['est_ocr_minutes']} 分钟 |")
+    lines += ["", "「需要人看一眼」= 打不开、被清洗退回、平均置信度 <0.9 或有没认出来的行。"
+              "对这些文件用 `mdf ocr scan <pdf> --pages … --out <目录>` 导出页图逐页对照，再决定换版本、换引擎还是照常处理。"]
+    return "\n".join(lines) + "\n"
+
+
+def render_calibration(report: dict[str, Any]) -> str:
+    fonts = "、".join(report.get("fonts") or {}) or (report["font"] or "PIL 内置")
+    sample = f"，真值 {report['truth_pages']} 页 {report['truth_sentences']} 句" if report.get("truth_pages") else ""
+    layout_names = {"vertical": "竖排", "horizontal": "横排"}
+    lines = [f"## OCR 校准（字体 {fonts}，{report['dpi']} dpi{sample}）", "",
+             "| 引擎 | 字体 | 版式 | 退化档 | CER | 逐字存活率 | 平均置信度 | 可疑行 | OCR 成功页 | 秒/页 | 清洗闸门 |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for lv in report["levels"]:
         gate = "、".join(lv["gate_reasons"] + lv["gate_flags"]) or "通过"
         survival = "—" if lv["verbatim_survival"] is None else f"{lv['verbatim_survival']:.0%}"
         conf = "—" if lv["mean_confidence"] is None else f"{lv['mean_confidence']:.3f}"
         engine = "/".join(lv.get("backend_used") or []) or lv.get("engine", "auto")
-        lines.append(f"| {engine} | {lv['degrade']} | {lv['cer']:.2%} | {survival} | {conf} "
+        lines.append(f"| {engine} | {lv.get('font', '—')} | {layout_names.get(lv.get('layout'), '—')} | {lv['degrade']} "
+                     f"| {lv['cer']:.2%} | {survival} | {conf} "
                      f"| {lv.get('suspect_lines', '—')} | {lv['ocr_ok_pages']}/{lv['pages']} "
                      f"| {lv.get('seconds_per_page', '—')} | {gate} |")
+    if len(report["levels"]) > 1:
+        lines += ["", "按维度汇总（逐字存活率按句数加权，CER 按字数加权）：", "",
+                  "| 维度 | 取值 | 运行数 | CER | 逐字存活率 |", "|---|---|---|---|---|"]
+        for key, title in (("engine", "引擎"), ("font", "字体"), ("layout", "版式"), ("degrade", "退化档")):
+            groups = summarize_levels(report["levels"], key)
+            if len(groups) < 2:
+                continue
+            for g in groups:
+                survival = "—" if g["verbatim_survival"] is None else f"{g['verbatim_survival']:.0%}"
+                value = layout_names.get(g[key], g[key])
+                lines.append(f"| {title} | {value} | {g['runs']} | {g['cer']:.2%} | {survival} |")
     lines += ["", f"清洗闸门的低置信阈值：{report['low_confidence_threshold']}。逐字存活率低于 100% 的档位，"
               "其引文必须对照原图核实，不能直接当 high 证据。"]
     lost = [("/".join(lv.get("backend_used") or []) or lv.get("engine", "auto"), lv["degrade"], s)
@@ -337,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--truth", type=Path, default=DEFAULT_TRUTH, help="真值文本，页之间用单独一行 --- 分隔")
     p.add_argument("--degrade", choices=[*DEGRADE, "all"], default="all")
     p.add_argument("--font", help="CJK 字体文件（默认在常见系统路径里找）")
+    p.add_argument("--fonts", help=f"按字体族跑，逗号分隔或 all：{','.join(FONT_FAMILIES)}（找不到的跳过）")
+    p.add_argument("--layout", choices=[*LAYOUTS, "all"], default="horizontal", help="横排、竖排或两者（竖排只画中文页）")
     p.add_argument("--dpi", type=int, default=200)
     p.add_argument("--backend", default="auto", help="auto（与 index 相同）、all（每个装好的引擎各跑一遍）或引擎名")
     p.add_argument("--json", action="store_true")
@@ -344,6 +491,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("pdf", type=Path)
     p.add_argument("--pages", help="只看这些页，如 1-3,40（从 1 起算）")
     p.add_argument("--out", type=Path, help="把每页的图与 OCR 文字成对存到这个目录，供人对照核实")
+    p.add_argument("--backend", default="auto", help="auto 或引擎名")
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("survey", help="index 之前给一批 PDF 抽样体检：要不要 OCR、要多久、哪本有问题")
+    p.add_argument("target", help="人物 slug（读 sources/{slug}/raw/）、目录或单个 PDF")
+    p.add_argument("--per-file", type=int, default=3, help="每份 PDF 抽几页（默认 3）")
     p.add_argument("--backend", default="auto", help="auto 或引擎名")
     p.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -361,13 +513,32 @@ def main(argv: list[str] | None = None) -> int:
         report = scan(args.pdf, "auto" if args.backend == "all" else args.backend, args.pages, args.out)
         print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_scan(report), end="\n" if args.json else "")
         return 0
+    if args.action == "survey":
+        target = Path(args.target)
+        if not target.exists():
+            target = lsp.raw_dir(args.target)
+        if not target.exists():
+            print(f"找不到 {args.target}：给一个人物 slug（sources/{{slug}}/raw/）、目录或 PDF。", file=sys.stderr)
+            return 2
+        report = survey(target, max(1, args.per_file), "auto" if args.backend == "all" else args.backend)
+        print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_survey(report), end="\n" if args.json else "")
+        return 0
     font = find_cjk_font(args.font)
     if font is None:
         print("找不到 CJK 字体：用 --font 指定一个能显示中文的字体文件。", file=sys.stderr)
         return 2
+    fonts = None
+    if args.fonts:
+        wanted = list(FONT_FAMILIES) if args.fonts == "all" else [f.strip() for f in args.fonts.split(",") if f.strip()]
+        fonts = {name: path for name in wanted if (path := find_font_family(name))}
+        if not fonts:
+            print(f"--fonts {args.fonts} 一个都没找到；可选：{', '.join(FONT_FAMILIES)}", file=sys.stderr)
+            return 2
     levels = list(DEGRADE) if args.degrade == "all" else [args.degrade]
     backends = available if args.backend == "all" else [args.backend]
-    report = calibrate(load_truth(args.truth), font=font, degrades=levels, dpi=args.dpi, backends=backends)
+    layouts = LAYOUTS if args.layout == "all" else (args.layout,)
+    report = calibrate(load_truth(args.truth), font=font, degrades=levels, dpi=args.dpi, backends=backends,
+                       fonts=fonts, layouts=layouts)
     print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_calibration(report), end="\n" if args.json else "")
     return 0
 
