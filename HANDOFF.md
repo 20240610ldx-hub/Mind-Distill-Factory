@@ -4,10 +4,10 @@
 
 - 阶段 1（来源与抽样链）：`4dda010`
 - 阶段 2 / P0（发布与校验事务化，M1–M4）：`296b05e` → `861feb8` → `7b5e436` → `655a82f`
-- 阶段 3（流水线自动化，分支 `claude/pipeline-automation`）：`effcb3f` → … → `21334b5` 已经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑合并、文档分支合并与本次提交还不在 main
+- 阶段 3（流水线自动化）：`effcb3f` → … → `21334b5` 经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑、文档分支合并与《熱風》整本 OCR 修正（`66c0537`）经 PR #5 合入；之后的 OCR 提交 `df08946` → `e01044e` → `b829b9f` → 本次在 PR #6（分支 `claude/wonderful-hodgkin-bde0f1`）
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 546 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
+结果：`Ran 563 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
 
 ---
 
@@ -29,9 +29,10 @@
 | `21334b5` | 真实 OCR 校准：rapidocr 3.x（PP-OCRv6）适配、PaddleOCR-json（Umi-OCR 插件）管道引擎、`MDF_OCR_BACKEND` 钉选；按实测把低置信阈值 0.6→0.9，新增 `ocr_garbled` 退回与 `ocr_text` 标记（OCR 页码标 `(OCR)`，引文默认 ≤medium） | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
 | `0ce2f3d` | 真实扫描件抽查后的 OCR 行级后处理：竖排页按列右→左重排、横排页眉页脚归位到页首页尾；识别分 <0.5 被丢的行与只认出一部分的行计为「可疑行」，新增 `ocr_lines_dropped` 标记与 `--- Page n (OCR, k unread) ---` 页码标记；`mdf ocr scan --pages/--out` 抽页并导出页图与识别文字供人对照 | `scripts/pdf_quality.py`、`scripts/ocr_calibrate.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
 | `df08946` | 校准样张扩到 8 页 52 句（加《大學》《孫子》、白话小说、带数字的现代段落、英文），`--fonts` 四种字体族 × `--layout` 横排/竖排，64 次运行重定阈值依据；竖排页从列距推算检测器漏掉的列，计入可疑行；`mdf ocr survey` 整书抽样体检（每个 PDF 均匀抽页，估 OCR 用时、竖排页、可疑行与闸门标记）；P2 归一化补齐全角/竖排标点与全角字母数字（校准里竖排页丢的 23 句有 19 句只是句末全角「？」「！」被认成半角） | `scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`scripts/verify_provenance.py`、`evaluation/fixtures/ocr/sample_zh.txt`、`docs/methodology.md` |
-| 本次 | 明刻本抽查的两处修正：`mdf ocr scan --pages`/`survey` 改在原文件上逐页读（分层压缩扫描件拷进临时 PDF 后渲染不同，置信度与识别文字都变，导出的图也对不上）；被音注撑宽的被丢框按本页字号折算字数，限宽 ≤1.5 字宽且读出 ≥3 个汉字，排除馆藏印章与插图标注 | `scripts/local_source_pipeline.py`、`scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`docs/methodology.md` |
+| `b829b9f` | 明刻本抽查的两处修正：`mdf ocr scan --pages`/`survey` 改在原文件上逐页读（分层压缩扫描件拷进临时 PDF 后渲染不同，置信度与识别文字都变，导出的图也对不上）；被音注撑宽的被丢框按本页字号折算字数，限宽 ≤1.5 字宽且读出 ≥3 个汉字，排除馆藏印章与插图标注 | `scripts/local_source_pipeline.py`、`scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`docs/methodology.md` |
 | `3801fb3` | 墨子试跑的可视化反馈（没有章节标签、叙述没节奏、全是无头脚本）：`mdf run` 把「简报→新进程→心跳→状态变化→阶段检查点→运行记录」收成一条命令（不加 `--yes` 只打印计划）；阶段卡 `mdf next --card`、进度条、自包含可视化面板 `mdf status --html`；编排协议写明三拍叙述与章节工具确切名 `mcp__ccd_session__mark_chapter`，驱动无头进程的会话也算编排者 | `scripts/stage_runner.py`、`scripts/pipeline_status.py`、`commands/distill.md`、`.agents/skills/mdf-distill/SKILL.md`、`config/harnesses.json`、`docs/harnesses.md` |
-| 本次 | 整本扫描书端到端（《熱風》134 页竖排，`mdf index` → `mdf clean`）暴露的两处页眉页脚漏删：字距拉开的页眉拆成单字框插进正文列（竖排页里落在正文列起止线之外的单字框归页首页尾，起止线取四分位）；页码短横认成「一」或丢一边（页边纯数字加横线的行一律按页码计数）。页眉页脚删除 41→171 行，无正文误删；rapidocr 日志降到 error | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`docs/methodology.md` |
+| `66c0537` | 整本扫描书端到端（《熱風》134 页竖排，`mdf index` → `mdf clean`）暴露的两处页眉页脚漏删：字距拉开的页眉拆成单字框插进正文列（竖排页里落在正文列起止线之外的单字框归页首页尾，起止线取四分位）；页码短横认成「一」或丢一边（页边纯数字加横线的行一律按页码计数）。页眉页脚删除 41→171 行，无正文误删；rapidocr 日志降到 error | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`docs/methodology.md` |
+| 本次 | 刻本双行小注：校准台按〔…〕画双行小注（先右后左，跨列续排），新样张 `sample_notes_zh.txt` 量出 rapidocr 逐字存活只有 25%（整列被并成一个框读成乱码，重排救不回）；识别分 <0.7 的长行计为可疑行（`doubtful_lines`），64 次校准里逐字存活 <60% 的运行被标出 28→32 次，体检新增标出的 4 份文件逐条核过都是真认错 | `scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`evaluation/fixtures/ocr/sample_notes_zh.txt`、`docs/methodology.md` |
 
 文档入口：[架构](docs/architecture.md) · [方法论](docs/methodology.md) · [伦理与法律](docs/ethics-and-legal.md) · [harness 适配](docs/harnesses.md)。
 
@@ -121,7 +122,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 ### P4：阶段 3 留下的缺口
 - **Codex / pi 端到端实测**：墨子试跑（`docs/harness-trial-mozi.md`，已合并）用 `claude -p` 新进程把简报路径跑到发布（9 次调用 $6.04，审查 PASS 4.04/5），修了 7 处简报/闸门缺口。Codex、pi 本身仍没跑过：用户 2026-10-18 选择暂不真跑（Codex 按量计费；pi 本机只有 9B 本地模型）。试跑报告「未修、需要决策」第 8–14 条（类目传递通道、发布后 next 仍指向包校验、raw 非递归 glob、reduce 简报未禁网、新进程再派子代理、CRLF、合并小语料步骤）尚未处理
 - `gallery/mozi` 已入库，但 3 篇出处篇名标错（维基文库页眉混入正文，`acquire.py` 已修），包里标了「篇次待核」；要更正需重采 → 重抽取 → 重跑后续阶段
-- ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比，数字与结论见 `docs/methodology.md`「OCR 校准」。真实扫描件已抽查七类页面（民国竖排、明刻本对开、透墨国图本、手稿、横排简体、英文），结论见同节「真实扫描件抽查」。整本端到端也跑过：《熱風》1947 年版 134 页纯图片竖排，`mdf index` 空闲时 80 秒，判 flagged（`ocr_text`、`ocr_lines_dropped`、`ocr_incomplete`），52 页共 70 行可疑行，见同节「整本端到端」。遗留：样张只有 3 页 19 句、只用宋体；没被检测出来的行（透墨、淡印）不计入可疑行；刻本双行小注会与大字交错；CI 不装引擎，真实引擎路径只在本机验证过
+- ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比（8 页 52 句 × 4 字体 × 横竖排 × 4 档退化，64 次运行），数字与结论见 `docs/methodology.md`「OCR 校准」；`mdf ocr survey` 已对本机六个人物的 raw 目录做过整书抽样体检。真实扫描件已抽查七类页面（民国竖排、明刻本对开、透墨国图本、手稿、横排简体、英文），结论见同节「真实扫描件抽查」。整本端到端也跑过：《熱風》1947 年版 134 页纯图片竖排，`mdf index` 空闲时 80 秒，判 flagged（`ocr_text`、`ocr_lines_dropped`、`ocr_incomplete`），52 页共 70 行可疑行，见同节「整本端到端」。遗留：样张仍是系统字体画的合成图，没有真实古籍的纸色、刻工字形与版框；竖排漏检列按列距推算、偏保守，横排漏检的行仍只靠低置信度兜底；刻本双行小注页逐字存活只有约三成，要在识别前切分小注列（未做）；CI 不装引擎，真实引擎路径只在本机验证过
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
 
 ---

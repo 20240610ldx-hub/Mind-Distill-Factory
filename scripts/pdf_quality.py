@@ -197,6 +197,7 @@ SUSPECT_MIN_CELLS = 4     # 至少能放 4 个字的框才算「一行字」，�
 SHORT_LINE_SHARE = 0.5    # 认出的字不到该有字数的一半：只认出了一部分
 WIDENED_MAX = 1.5         # 被丢的框不超过 1.5 个本页字宽，才按本页字号折算字数（见 summarize_lines）
 WIDENED_MIN_HAN = 3       # 而且引擎在框里读出了 ≥3 个汉字：一串字，不是印章上的一两个大字
+DOUBTFUL_SCORE = 0.7      # 留下了但识别分 <0.7 的长行：多半认错（刻本双行小注被并成一行、草书手稿）
 HAN_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
 
 OcrLine = tuple[Any, str, float]  # (四点框, 文字, 分数)
@@ -313,7 +314,7 @@ def summarize_lines(lines: list[OcrLine], keep_score: float = KEEP_SCORE) -> tup
     unit = regular[len(regular) // 2] if regular else 0.0
     texts: list[str] = []
     scores: list[float] = []
-    dropped = short = 0
+    dropped = short = doubtful = 0
     for box, text, score in ordered:
         text, cells = str(text).strip(), _cells(box)
         if float(score) < keep_score or not text:
@@ -327,16 +328,21 @@ def summarize_lines(lines: list[OcrLine], keep_score: float = KEEP_SCORE) -> tup
             continue
         texts.append(text)
         scores.append(float(score))
-        short += cells >= SUSPECT_MIN_CELLS and len("".join(text.split())) < SHORT_LINE_SHARE * cells
+        is_short = cells >= SUSPECT_MIN_CELLS and len("".join(text.split())) < SHORT_LINE_SHARE * cells
+        short += is_short
+        # 认出来了、字数也够，但分数偏低：合成样张上这一档 20 行有 18 行不对，真实扫描（草书手稿、
+        # 插图里的英文、刻本小注列）几乎全错；0.7–0.8 那一档真实页上对错参半，不计
+        doubtful += cells >= SUSPECT_MIN_CELLS and not is_short and float(score) < DOUBTFUL_SCORE
     return "\n".join(texts).strip(), _mean(scores), {
         "layout": layout, "lines": len(texts), "dropped_lines": int(dropped), "short_lines": int(short),
+        "doubtful_lines": int(doubtful),
         "undetected_lines": undetected_columns(lines) if layout == "vertical" else 0,
     }
 
 
 def suspect_count(ocr: dict[str, Any]) -> int:
-    """一页里没认全的行：被丢的 + 只认出一部分的 + 从列距推算的漏检列。"""
-    return sum(int(ocr.get(k) or 0) for k in ("dropped_lines", "short_lines", "undetected_lines"))
+    """一页里没认全或多半认错的行：被丢的 + 只认出一部分的 + 分数偏低的 + 从列距推算的漏检列。"""
+    return sum(int(ocr.get(k) or 0) for k in ("dropped_lines", "short_lines", "doubtful_lines", "undetected_lines"))
 
 
 def _rapidocr_runner() -> OcrRunner:
