@@ -1,0 +1,121 @@
+{
+  "manifest_version": 2,
+  "slug": "mozi",
+  "format_version": 6,
+  "files": {
+    "SKILL.md": "2d2bfe4f7ae693fbe9977e0273eb5dafbfb7c75b8462e07c9c02da8d0b820c30",
+    "references/cases.md": "8ce2850a6fddbafe8b69eb2186a19d32fc5b75e3b1310e2b07ff434aff4ce7e7",
+    "references/evidence.md": "f9dd9c3feefd861f7de24480c1dd86d9e2ed4d3f2f1eabf09eb6455a1ecd0cc6",
+    "references/voice.md": "47403fd9d3b70ae4feae48c2ba99f7ee1691c5d04c76c0ee1f08ac28ff5d0b5d",
+    "人物档案.md": "9bc6279efbb28c2401a7df548a61ccc96689da3fa5e778f782972ce818e0053c"
+  },
+  "clusters": [
+    "cluster_007",
+    "cluster_003",
+    "cluster_009",
+    "cluster_001",
+    "cluster_005",
+    "cluster_004",
+    "cluster_010",
+    "cluster_002",
+    "cluster_006",
+    "cluster_008"
+  ],
+  "attestation": {
+    "p2": {
+      "status": "pass",
+      "hard_errors": 0,
+      "warnings": 0,
+      "evidence_sha256": "f9dd9c3feefd861f7de24480c1dd86d9e2ed4d3f2f1eabf09eb6455a1ecd0cc6",
+      "corpus_fingerprint": "1af9b94dd4366142a9103140df618ff0682766fcd3c2e99767650f33658f53b9",
+      "corpus_files": 13,
+      "rights": {
+        "sources": {
+          "acquired/wikisource/zh-47345069.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          },
+          "acquired/wikisource/zh-2cb13ea1.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 3
+          },
+          "acquired/wikisource/zh-f82d2b02.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 2
+          },
+          "acquired/wikisource/zh-37bf8e0a.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          },
+          "acquired/wikisource/zh-19b03dd2.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          },
+          "acquired/wikisource/zh-88095e88.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 2
+          },
+          "acquired/wikisource/zh-7269ed30.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          },
+          "acquired/wikisource/zh-6a279038.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          },
+          "acquired/wikisource/zh-e749ccc8.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          },
+          "acquired/wikisource/zh-3c0ba5c8.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          },
+          "acquired/wikisource/zh-8ffa62e3.txt": {
+            "rights_status": "cc-by-sa",
+            "rights_review_required": false,
+            "rights_basis": null,
+            "origin": "acquired:wikisource",
+            "evidence_cards": 1
+          }
+        },
+        "unlocated_cards": 0
+      }
+    }
+  },
+  "review": {
+    "verdict": "PASS",
+    "detail": "",
+    "review_sha256": "75afdb1c9d3f10bbc449280cbdc42d535d9b1f53c42ce0fd0b9ca0ff2a467b34"
+  }
+}

@@ -92,6 +92,7 @@ python scripts/task_status.py mark-failed sources/{slug}/processed/local_shards/
   - `modern_annotation`：来源里混有现代注释/译文/评析（如《帝鉴图说》唐暨礼注评）。只有能确认出自本人的原文才能标 `high`；注释者、译者的话不得记在本人名下，最多作为 `analysis`。
   - `low_ocr_confidence` / `ocr_incomplete` / `ocr_mostly_missing`：OCR 文本可能有错字，引文 `confidence` 不高于 `medium`，并在 `worker_notes` 写明。
   - `ocr_text`：这份来源有页面是 OCR 识别出来的。P2 拿引文比对的就是这份 OCR 文字，认错的字它查不出来，所以出自 OCR 页（页码标记写作 `--- Page n (OCR) ---`）的引文默认不高于 `medium`；对照原图逐字核实过的才可标 `high`，并在 `worker_notes` 写明核对的页码。
+  - `ocr_lines_dropped`：OCR 检测到文字行却没认出来（印章、透墨、污渍、手写）。页码标记写作 `--- Page n (OCR, k unread) ---` 的页缺了 k 行：缺的内容不在语料里，缺口两侧的文字在原书中并不相连。不要摘跨越缺口的引文；确需摘时先导出原图对照（`python scripts/mdf.py ocr scan <pdf> --pages n --out <目录>`）。
   - `private_use_glyphs` / `replacement_chars`：含无法识别的字形，涉及这些字的句子不要作逐字引文。
 - 正文里的 `===== PDF_PAGE n =====`、`--- Page n ---`、`≦ n ≧` 是页码标记，写进 `source_detail` 作定位，不要当作原文摘录。
 - 必须保留 `source_detail` 中的文件名、页码/章节或 passage id。

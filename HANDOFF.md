@@ -4,10 +4,10 @@
 
 - 阶段 1（来源与抽样链）：`4dda010`
 - 阶段 2 / P0（发布与校验事务化，M1–M4）：`296b05e` → `861feb8` → `7b5e436` → `655a82f`
-- 阶段 3（流水线自动化，分支 `claude/pipeline-automation`，**未推送、未开 PR**）：`effcb3f` → `e8c7d28` → `050a2b4` → `e91c7c6` → `0069e53` → `8b12577` → 本次文档收敛提交
+- 阶段 3（流水线自动化，分支 `claude/pipeline-automation`）：`effcb3f` → … → `21334b5` 已经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑合并、文档分支合并与本次提交还不在 main
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 505 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
+结果：`Ran 546 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
 
 ---
 
@@ -26,7 +26,10 @@
 | `be4db33` | 负例夹具 10 个 + 阳性对照；回归协议勘误；`distill.md` 规则 4 与 v6 对齐；本文件 | `evaluation/fixtures/negative/`、`evaluation/scripts/check_negative_fixtures.py` |
 | `9f8f0a9` | 采集遵守 W3C TDMRep（站点 JSON → 响应头 → HTML meta，保留即拒） | `scripts/acquire.py`、`config/acquisition_policy.json` |
 | `4d0e927` | OCR 校准台 `mdf ocr calibrate` / `scan`；OCR 引擎每进程只建一次 | `scripts/ocr_calibrate.py`、`evaluation/fixtures/ocr/` |
-| 本次 | 真实 OCR 校准：rapidocr 3.x（PP-OCRv6）适配、PaddleOCR-json（Umi-OCR 插件）管道引擎、`MDF_OCR_BACKEND` 钉选；按实测把低置信阈值 0.6→0.9，新增 `ocr_garbled` 退回与 `ocr_text` 标记（OCR 页码标 `(OCR)`，引文默认 ≤medium） | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
+| `21334b5` | 真实 OCR 校准：rapidocr 3.x（PP-OCRv6）适配、PaddleOCR-json（Umi-OCR 插件）管道引擎、`MDF_OCR_BACKEND` 钉选；按实测把低置信阈值 0.6→0.9，新增 `ocr_garbled` 退回与 `ocr_text` 标记（OCR 页码标 `(OCR)`，引文默认 ≤medium） | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
+| `0ce2f3d` | 真实扫描件抽查后的 OCR 行级后处理：竖排页按列右→左重排、横排页眉页脚归位到页首页尾；识别分 <0.5 被丢的行与只认出一部分的行计为「可疑行」，新增 `ocr_lines_dropped` 标记与 `--- Page n (OCR, k unread) ---` 页码标记；`mdf ocr scan --pages/--out` 抽页并导出页图与识别文字供人对照 | `scripts/pdf_quality.py`、`scripts/ocr_calibrate.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`docs/methodology.md` |
+| `3801fb3` | 墨子试跑的可视化反馈（没有章节标签、叙述没节奏、全是无头脚本）：`mdf run` 把「简报→新进程→心跳→状态变化→阶段检查点→运行记录」收成一条命令（不加 `--yes` 只打印计划）；阶段卡 `mdf next --card`、进度条、自包含可视化面板 `mdf status --html`；编排协议写明三拍叙述与章节工具确切名 `mcp__ccd_session__mark_chapter`，驱动无头进程的会话也算编排者 | `scripts/stage_runner.py`、`scripts/pipeline_status.py`、`commands/distill.md`、`.agents/skills/mdf-distill/SKILL.md`、`config/harnesses.json`、`docs/harnesses.md` |
+| 本次 | 整本扫描书端到端（《熱風》134 页竖排，`mdf index` → `mdf clean`）暴露的两处页眉页脚漏删：字距拉开的页眉拆成单字框插进正文列（竖排页里落在正文列起止线之外的单字框归页首页尾，起止线取四分位）；页码短横认成「一」或丢一边（页边纯数字加横线的行一律按页码计数）。页眉页脚删除 41→171 行，无正文误删；rapidocr 日志降到 error | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`docs/methodology.md` |
 
 文档入口：[架构](docs/architecture.md) · [方法论](docs/methodology.md) · [伦理与法律](docs/ethics-and-legal.md) · [harness 适配](docs/harnesses.md)。
 
@@ -95,7 +98,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **charlie-munger**：按 v5 模板补齐 8 个章节，或重新蒸馏
 - **张居正 v6 过 strict**：缺 review.md（S2/S3），且 manifest 早于 S4、没有权利汇总（`STRICT_NO_RIGHTS_RECORD`）。要过 strict：补做 Stage 5 审查 → 写 `sources/zhang-juzheng-v6/rights.json` → 重跑 `mdf index` → 重新发布
 - **`--install`**：发布时同步装入 `~/.claude/skills`。曾在评审中被**刻意删除**（写仓库外，见 `test_publish_v6.py` 的 `test_install_paths_helper_removed`），恢复需重新拍板。现有替代：`mdf harness plan <slug> --target <harness>` 只打印命令
-- **文档分支** `claude/dreamy-hamilton-3fd992`（`e853e3d`：README/README.en/AGENTS 对齐 v6）未合并；`README.zh.md` 仍过时。**这件事现在更急**：Codex 和 pi 读 `AGENTS.md`，它仍是「双语合一 SKILL.md」的旧规则（`mdf harness` 报 ⚠️；编排 skill 已声明以 CLAUDE.md 为准，只是兜底）
+- ~~文档分支~~ **已合并（2026-10-18，用户批准）**：`claude/dreamy-hamilton-3fd992` 把 README/README.en/AGENTS 对齐 v6，`AGENTS.md` 另补「Running the Pipeline」一节（`mdf` 入口、`mdf run`、三拍叙述）；`mdf harness` 不再报 ⚠️。`README.zh.md` 仍过时
 - **采集联系方式与法域**：`config/acquisition_policy.json` 的 `contact` 为空（用环境变量 `MDF_CONTACT`，建议填项目主页 URL，**不要提交个人邮箱**）；`jurisdiction` 为 null，`public_domain_us` 因此一律待复核
 - **已有语料的权利声明**：所有本地文件默认 `unverified`，strict 发布会拦（S4）。每个人物要由人写 `rights.json`
 
@@ -114,8 +117,9 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - CI 尚未跑 `validate_output.py published` 全量 gallery；要加这一步，需先处理 charlie-munger
 
 ### P4：阶段 3 留下的缺口
-- **Codex / pi 端到端实测**：只验证了适配文件结构（`claude plugin validate` 通过、本机 `--help` 核对参数），没有在 Codex、pi 里真正跑完一个人物
-- ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比，数字与结论见 `docs/methodology.md`「OCR 校准」。遗留：样张只有 3 页 19 句、只用宋体；还没在真实扫描书上跑过 `mdf ocr scan`；CI 不装引擎，真实引擎路径只在本机验证过
+- **Codex / pi 端到端实测**：墨子试跑（`docs/harness-trial-mozi.md`，已合并）用 `claude -p` 新进程把简报路径跑到发布（9 次调用 $6.04，审查 PASS 4.04/5），修了 7 处简报/闸门缺口。Codex、pi 本身仍没跑过：用户 2026-10-18 选择暂不真跑（Codex 按量计费；pi 本机只有 9B 本地模型）。试跑报告「未修、需要决策」第 8–14 条（类目传递通道、发布后 next 仍指向包校验、raw 非递归 glob、reduce 简报未禁网、新进程再派子代理、CRLF、合并小语料步骤）尚未处理
+- `gallery/mozi` 已入库，但 3 篇出处篇名标错（维基文库页眉混入正文，`acquire.py` 已修），包里标了「篇次待核」；要更正需重采 → 重抽取 → 重跑后续阶段
+- ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比，数字与结论见 `docs/methodology.md`「OCR 校准」。真实扫描件已抽查七类页面（民国竖排、明刻本对开、透墨国图本、手稿、横排简体、英文），结论见同节「真实扫描件抽查」。整本端到端也跑过：《熱風》1947 年版 134 页纯图片竖排，`mdf index` 空闲时 80 秒，判 flagged（`ocr_text`、`ocr_lines_dropped`、`ocr_incomplete`），52 页共 70 行可疑行，见同节「整本端到端」。遗留：样张只有 3 页 19 句、只用宋体；没被检测出来的行（透墨、淡印）不计入可疑行；刻本双行小注会与大字交错；CI 不装引擎，真实引擎路径只在本机验证过
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
 
 ---
@@ -170,8 +174,8 @@ claude plugin validate .
 
 ## 六、建议的下一动作顺序
 
-1. 人工决定项：合并文档分支（Codex/pi 读的 AGENTS.md 过时）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式
-2. 本分支开 PR 合入 main（CI 会在 ubuntu + windows 上重跑全部离线单测）
-3. 在 Codex 或 pi 里端到端跑一个公有领域人物（如用 `mdf acquire --wikisource` 取原典），验证简报 + 新进程路径
+1. 人工决定项：charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式
+2. PR #2、#4 已于 2026-10-17 合入 main；之后的提交（OCR 收尾、`mdf run`、墨子试跑与文档分支合并）走新 PR
+3. 处理墨子试跑报告第 8–14 条；用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
 4. P2 runtime `read_reference` + trace + judge schema
 5. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验

@@ -304,8 +304,13 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
     ]
     if step_id in ISOLATED_STEPS:
         lines.append("- 你是独立审查者：没有参与生成，不得沿用生成过程的结论；只依据包内容、语料与审查标准下裁决。")
-    if phase.get("checkpoint"):
-        lines += ["", "## 完成标准", "", f"- 检查点：`{phase['checkpoint'].replace('{slug}', slug)}` 必须通过。"]
+    # 步骤自带的检查点优先：阶段检查点（如 validate sources）要等整个阶段做完才可能通过，
+    # 分片抽取这类中间步骤若被要求先过它，执行者必然报「未通过」。
+    checkpoint = step.get("checkpoint") or phase.get("checkpoint")
+    if checkpoint:
+        lines += ["", "## 完成标准", "", f"- 检查点：`{checkpoint.replace('{slug}', slug)}` 必须通过。"]
+        if step.get("checkpoint_note"):
+            lines.append(f"- 说明：{step['checkpoint_note'].replace('{slug}', slug)}")
     for role in roles:
         body = (code_root / "agents" / f"{role}.md").read_text(encoding="utf-8")
         for placeholder in SLUG_PLACEHOLDERS:

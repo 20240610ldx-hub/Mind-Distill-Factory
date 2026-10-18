@@ -1,7 +1,7 @@
 {
   "schema": "harness-profiles-v1",
   "_comment": "各 harness 怎样加载编排入口、跑子任务、显示进度。scripts/harness.py 与 docs/harnesses.md 读这里；事实以 sources 为准，verified_at 之后的版本变化需重新核对。",
-  "verified_at": "2026-10-17",
+  "verified_at": "2026-10-18",
   "orchestrator_skill": ".agents/skills/mdf-distill/SKILL.md",
   "harnesses": {
     "claude-code": {
@@ -19,10 +19,15 @@
         "native": true,
         "how": "Task 工具调用 agents/*.md；以插件加载时名为 mind-distill-factory:<agent>"
       },
-      "isolated_run": "claude -p --permission-mode acceptEdits \"{prompt}\"",
+      "isolated_run": "claude -p \"{prompt}\" --permission-mode acceptEdits --allowedTools Bash,Read,Write,Edit,Glob,Grep",
+      "_isolated_run_comment": "提示词必须放在 --allowedTools 前面：它是可变参数（<tools...>），后面的位置参数会被当成工具名吞掉。只用 acceptEdits 时 Bash 会被拦（墨子试跑发现 7），检查点命令跑不了",
+      "model_flag": "--model",
+      "usage_flags": ["--output-format", "json"],
+      "usage_parser": "claude-json",
       "chapters": {
         "native": true,
-        "how": "桌面版提供章节工具，按 config/pipeline_stages.json 每阶段调用一次；终端里没有该工具时输出 H2 兜底标题"
+        "tool": "mcp__ccd_session__mark_chapter",
+        "how": "桌面版（Code 标签页）提供章节工具 mcp__ccd_session__mark_chapter，可能列在 deferred 工具里，先用 ToolSearch 的 select: 加载；按 config/pipeline_stages.json 每阶段调用一次，左侧出现可跳转的阶段轨。终端里没有该工具时输出 H2 兜底标题"
       },
       "sources": [
         "https://code.claude.com/docs/en/plugins-reference.md"
@@ -44,6 +49,7 @@
         "how": "官方文档未核实到稳定的子代理接口，流水线不依赖它；需要隔离上下文的步骤用 codex exec 子进程"
       },
       "isolated_run": "codex exec --sandbox workspace-write \"{prompt}\"",
+      "model_flag": "--model",
       "chapters": {
         "native": false,
         "how": "没有可由 agent 调用的章节 API（App 的长线程导航按轮次）；每阶段输出一行 H2 兜底标题"
@@ -69,6 +75,7 @@
         "how": "README 明确不内置子代理；需要隔离上下文的步骤用 pi -p 子进程"
       },
       "isolated_run": "pi -p \"{prompt}\"",
+      "model_flag": "--model",
       "chapters": {
         "native": false,
         "how": "无章节功能；每阶段输出一行 H2 兜底标题"

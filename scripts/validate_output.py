@@ -187,6 +187,7 @@ def validate_sources(slug: str) -> list[str]:
         "corpus_inventory.json",
         "sampling_plan.json",
         "cost_estimate.json",
+        "cleaning_report.json",
     }
     json_files = [p for p in processed_dir.glob("*.json") if p.name not in metadata_names]
     if not json_files:

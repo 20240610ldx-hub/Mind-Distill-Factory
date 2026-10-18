@@ -31,28 +31,48 @@ argument-hint: <人物名/charactor name>
    python scripts/mdf.py stages --json      # phases[].chapter.title / .summary
    python scripts/mdf.py next {slug} --json # next.chapter = 当前该进入的 phase
    ```
-2. harness 提供章节工具（如 Claude 桌面版的 `mark_chapter`；其他 harness 有同类工具同理）就调用它：`title` = `chapter.title`（如「阶段 1 · 素材采集」），`summary` = `chapter.summary`。
+2. harness 提供章节工具就调用它：`title` = `chapter.title`（如「阶段 1 · 素材采集」），`summary` = `chapter.summary`。Claude 桌面版（Code 标签页）的工具名是 `mcp__ccd_session__mark_chapter`；它常列在 deferred 工具里，先用 ToolSearch 的 `select:mcp__ccd_session__mark_chapter` 加载再调用。其他 harness 的情况见 `config/harnesses.json` 的 `chapters`。
 3. 没有章节工具时，在回复里单独输出一行 H2：`## 阶段 1 · 素材采集`（即 `chapter_policy.fallback_heading`）。终端用户也能靠它在滚动记录里定位。
 4. 同一 phase 内的 step（如 1 里的「登记、抽取与分片」「分片抽取」）只更新任务清单，**不再开章节**；Stage 4.5、3A/3B/3C 这类子阶段同样归入所属 phase。
 5. 恢复执行时只为当前 phase 打一次标签，不为已完成的 phase 补打。
-6. 子代理不打章节标签——章节属于编排者的对话界面。
+6. 子代理和 `mdf run` 起的新进程都不打章节标签——章节属于编排者的对话界面。反过来，只要你在驱动流水线（哪怕每一步都交给新进程、自己只是在等），你就是编排者，章节标签由你来打。
+
+**叙述节奏：每个 phase 三拍**
+
+墨子试跑的教训：没有章节、全是底层命令滚动，用户找不到现在在哪、这一步为什么、过没过闸门。每个 phase 都按这三拍说话，全程用中文：
+
+1. **开场**：打章节标签，然后贴阶段卡——`python scripts/mdf.py next {slug} --card` 的输出原样贴出（这一步做什么、怎么做、过哪道闸门、整体进度条）。
+2. **过程**：只更新任务清单。后台命令都写中文描述（如「阶段 1：新进程执行分片抽取」）。不写 `until [ -f … ]; do sleep …` 这类轮询循环：agent 步骤用 `mdf run`，它自己出心跳；等别的后台进程时用 harness 的后台运行与完成通知。中途只在有新信息时开口（产物出来了、失败了、需要用户拍板），每次一两句。
+3. **收尾**：贴一行结果——`mdf run` 最后打印的结果行，或自己写「闸门 `validate …` 通过/未通过 · 产物 … · 下一步 …」——再加 `mdf status {slug}` 末尾那行进度条。
 
 **状态面板（每次进出 phase、以及用户问「到哪了」时）**
 
 ```bash
-python scripts/mdf.py status {slug}            # Markdown 表格 + 下一步
+python scripts/mdf.py status {slug}            # Markdown 表格 + 下一步 + 进度条
 python scripts/mdf.py status {slug} --check    # 同时跑各阶段确定性校验
+python scripts/mdf.py status {slug} --html     # 可视化面板 output/{slug}/status.html
 ```
 
-把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。
+把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。可视化面板的左侧阶段轨与对话里的章节一一对应，右侧逐阶段列出步骤、闸门和下一步，底部是 `mdf run` 的运行记录。每个 phase 收尾时重新生成一次；在 Claude 桌面版里用文件发送工具以渲染方式打开它，其他 harness 告诉用户文件路径。
 
-**没有子代理的 harness（Codex、pi）**
+**没有子代理的 harness（Codex、pi），或要在干净上下文里执行的步骤**
 
 下文「分派给子代理」的每一步，都可以改用任务简报 + 新进程执行，交付物和检查点不变：
 
 ```bash
-python scripts/mdf.py brief {slug} [step]   # 写 output/{slug}/briefs/<step>.md，并打印各 harness 的新进程命令
+python scripts/mdf.py run {slug} [step] --harness <claude-code|codex|pi>         # 先打印阶段卡和计划，不执行
+python scripts/mdf.py run {slug} [step] --harness <claude-code|codex|pi> --yes   # 用户同意后执行
+python scripts/mdf.py brief {slug} [step]   # 只写简报 output/{slug}/briefs/<step>.md，自己启动进程时用
 ```
+
+`mdf run` 依次做这几件事：
+
+1. 生成简报，起新进程，输出写进 `output/{slug}/runs/<step>-<时间>.log`。
+2. 每 30 秒报一行心跳：已用时、日志大小、新产物数、最近一行输出。
+3. 进程结束后报这一步的状态变化；本阶段的步骤全部完成时，再跑阶段检查点。
+4. 把结果追加到 `output/{slug}/runs/runs.jsonl`，可视化面板从这里读运行记录。
+
+新进程按量计费，所以不加 `--yes` 只打印计划。用户同意了这次运行，才加 `--yes`。
 
 Stage 5 审查必须这样做（或用真正的子代理），绝不能在编排者自己的上下文里审。各 harness 的入口与限制见 `docs/harnesses.md`。
 

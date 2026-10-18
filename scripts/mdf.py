@@ -16,6 +16,8 @@
     python scripts/mdf.py manifest backfill <slug> [--corpus-root DIR]
     python scripts/mdf.py harness [list|plan <slug> --target codex]
     python scripts/mdf.py brief <slug> [step] [--harness pi]
+    python scripts/mdf.py run <slug> [step] --harness claude-code --yes   # 新进程执行，过程可读
+    python scripts/mdf.py next <slug> --card     # 阶段卡；status <slug> --html 写可视化面板
 
 数据根目录默认是仓库根；init/status/next/doctor/validate 可用 --root 或环境变量
 MDF_DATA_ROOT 指向另一份数据（例如在 git worktree 里查看主仓库的私有语料）。
@@ -110,10 +112,21 @@ def cmd_status(args: argparse.Namespace) -> int:
     ps = _module("pipeline_status")
     root = _data_root(args.root)
     stages = ps.collect_status(args.slug, root, check=getattr(args, "check", False))
-    if args.json:
+    if args.html:
+        from datetime import datetime
+
+        path = Path(args.html) if args.html != "-" else root / "output" / args.slug / "status.html"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        html = ps.render_html(args.slug, stages, runs=ps.load_runs(root, args.slug),
+                              generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"))
+        path.write_text(html, encoding="utf-8", newline="\n")
+        print(f"[OK] 进度面板已写入 {path}")
+        print(ps.progress_bar(stages))
+    elif args.json:
         _print_json(ps.to_json(args.slug, stages))
     else:
         print(ps.to_markdown(args.slug, stages), end="")
+        print("\n" + ps.progress_bar(stages))
     return 0
 
 
@@ -121,7 +134,9 @@ def cmd_next(args: argparse.Namespace) -> int:
     ps = _module("pipeline_status")
     stages = ps.collect_status(args.slug, _data_root(args.root))
     nxt = ps.next_stage(stages)
-    if args.json:
+    if args.card:
+        print(ps.render_card(args.slug, stages), end="")
+    elif args.json:
         _print_json({"slug": args.slug, "complete": nxt is None, "next": ps.to_json(args.slug, stages)["next"]})
     elif nxt is None:
         print("全部完成。")
@@ -232,6 +247,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--root", help=ROOT_HELP)
         if name == "status":
             p.add_argument("--check", action="store_true", help="同时运行各阶段的确定性校验（较慢）")
+            p.add_argument("--html", nargs="?", const="-", metavar="PATH",
+                           help="写可视化进度面板（默认 output/<slug>/status.html）")
+        else:
+            p.add_argument("--card", action="store_true", help="输出阶段卡（进入阶段时贴给用户）")
         p.set_defaults(func=func)
 
     p = sub.add_parser("doctor", help="环境与可选依赖自检")
@@ -267,6 +286,7 @@ PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
     "ocr": ("ocr_calibrate", [], "OCR 校准（合成扫描件对真值：CER、逐字存活率）与扫描件逐页诊断"),
     "harness": ("harness", [],"harness 适配：检测与核对（list）、安装命令（plan，只打印）"),
     "brief": ("harness", ["brief"], "为 agent 步骤生成自足任务简报，供子代理或新进程执行"),
+    "run": ("stage_runner", [], "把 agent 步骤交给新进程执行：阶段卡、心跳、日志、闸门、运行记录"),
 }
 
 

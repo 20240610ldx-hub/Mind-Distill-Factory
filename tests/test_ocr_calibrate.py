@@ -138,27 +138,41 @@ for line in sys.stdin:
     elif image == b"broken":
         reply = {"code": 203, "data": "image decode failed"}
     else:
-        reply = {"code": 100, "data": [{"box": [[0, 0]], "score": 0.9, "text": "月有考"},
-                                       {"box": [[0, 9]], "score": 0.7, "text": "岁有稽"}]}
+        reply = {"code": 100, "data": [{"box": [[0, 0], [90, 0], [90, 30], [0, 30]], "score": 0.9, "text": "月有考"},
+                                       {"box": [[0, 40], [90, 40], [90, 70], [0, 70]], "score": 0.7, "text": "岁有稽"}]}
     print(json.dumps(reply), flush=True)
 '''
 
 
+def box(x: float, y: float, w: float, h: float) -> list[list[float]]:
+    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+
+
 class EngineAdapterTests(unittest.TestCase):
     def test_rapidocr_v3_output_object(self):
-        out = mock.Mock(txts=("月有考", "岁有稽"), scores=(0.9, 0.7))
+        out = mock.Mock(boxes=[box(0, 0, 90, 30), box(0, 40, 90, 30), box(0, 80, 400, 30)],
+                        txts=("月有考", "岁有稽", "管用"), scores=(0.9, 0.7, 0.36))
         fake = mock.Mock(RapidOCR=mock.Mock(return_value=mock.Mock(return_value=out)))
         with mock.patch.dict(sys.modules, {"rapidocr": fake}):
-            text, conf = oc.pdf_quality._rapidocr_runner()(b"png")
-        self.assertEqual(text, "月有考\n岁有稽")
+            text, conf, details = oc.pdf_quality._rapidocr_runner()(b"png")
+        self.assertEqual(text, "月有考\n岁有稽", "低于 0.5 的行不进文本")
         self.assertAlmostEqual(conf, 0.8)
+        self.assertEqual(details["dropped_lines"], 1, "但要数出来：一整行没认出来")
+        params = fake.RapidOCR.call_args.kwargs["params"]
+        self.assertEqual(params["Global.text_score"], 0.0, "要引擎交回所有行，丢弃由我们计数")
+
+    def test_rapidocr_v3_empty_page(self):
+        fake = mock.Mock(RapidOCR=mock.Mock(return_value=mock.Mock(
+            return_value=mock.Mock(boxes=None, txts=None, scores=None))))
+        with mock.patch.dict(sys.modules, {"rapidocr": fake}):
+            self.assertEqual(oc.pdf_quality._rapidocr_runner()(b"png")[:2], ("", 0.0))
 
     def test_rapidocr_falls_back_to_legacy_package(self):
         legacy = mock.Mock(RapidOCR=mock.Mock(return_value=mock.Mock(
-            return_value=([[[0, 0], "月有考", 0.9], [[0, 9], "岁有稽", "0.7"]], 0.1))))
+            return_value=([[box(0, 0, 90, 30), "月有考", 0.9], [[0, 9], "岁有稽", "0.7"]], 0.1))))
         with mock.patch.dict(sys.modules, {"rapidocr": None, "rapidocr_onnxruntime": legacy}):
-            text, conf = oc.pdf_quality._rapidocr_runner()(b"png")
-        self.assertEqual(text, "月有考\n岁有稽")
+            text, conf, _details = oc.pdf_quality._rapidocr_runner()(b"png")
+        self.assertEqual(text, "月有考\n岁有稽", "坏框（[0, 9]）不影响出字")
         self.assertAlmostEqual(conf, 0.8)
 
     def test_paddleocr_json_pipe_protocol(self):
@@ -167,10 +181,11 @@ class EngineAdapterTests(unittest.TestCase):
             script.write_text(FAKE_PADDLEOCR_JSON, encoding="utf-8")
             pipe = oc.pdf_quality.PaddleOcrJsonPipe([sys.executable, "-I", str(script)], cwd=Path(td))
             try:
-                text, conf = pipe(b"page")
+                text, conf, details = pipe(b"page")
                 self.assertEqual(text, "月有考\n岁有稽")
                 self.assertAlmostEqual(conf, 0.8)
-                self.assertEqual(pipe(b"blank"), ("", 0.0), "code 101 是图里没字，不是错误")
+                self.assertEqual(details["layout"], "horizontal")
+                self.assertEqual(pipe(b"blank")[:2], ("", 0.0), "code 101 是图里没字，不是错误")
                 with self.assertRaises(RuntimeError):
                     pipe(b"broken")
                 self.assertEqual(pipe(b"page")[0], "月有考\n岁有稽", "一次失败之后进程仍可用")
@@ -203,6 +218,123 @@ class EngineAdapterTests(unittest.TestCase):
             oc.pdf_quality.clear_injected_runners()
 
 
+def column(x: float, y: float, text: str, score: float = 0.95, w: float = 40, h: float | None = None):
+    """竖排一列：宽 w，高按字数（每字 w 高）。"""
+    return (box(x, y, w, h if h is not None else w * len(text)), text, score)
+
+
+class LineLayoutTests(unittest.TestCase):
+    """真实扫描抽查（《吶喊》国图本 p61、明刻《四書経筵直解》p12）发现的两类问题。"""
+
+    def texts(self, lines):
+        return [t for _b, t, _s in lines]
+
+    def test_vertical_page_reads_right_to_left(self):
+        # 引擎按框的上边缘排序：起得高的列排前面，与阅读顺序无关
+        engine_order = [column(100, 0, "夜收了旗關門"), column(300, 20, "星期日的早晨"),
+                        column(200, 10, "我的一位前輩"), column(400, 60, "頭髮的故事")]
+        ordered, layout = oc.pdf_quality.order_lines(engine_order)
+        self.assertEqual(layout, "vertical")
+        self.assertEqual(self.texts(ordered), ["頭髮的故事", "星期日的早晨", "我的一位前輩", "夜收了旗關門"])
+
+    def test_column_segments_read_top_to_bottom(self):
+        lines = [column(200, 300, "便很不高興"), column(300, 0, "我說"), column(200, 0, "正走到我的寓裏")]
+        ordered, _ = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(self.texts(ordered), ["我說", "正走到我的寓裏", "便很不高興"])
+
+    def test_two_page_spread_starts_with_right_page(self):
+        lines = [column(350, 0, "學問之精密而"), column(400, 0, "止於信文王之"),
+                 column(850, 0, "件都有始終盡"), column(900, 0, "繼續熙是光明")]
+        ordered, _ = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(self.texts(ordered), ["繼續熙是光明", "件都有始終盡", "止於信文王之", "學問之精密而"])
+
+    def test_running_heads_stay_at_page_edges(self):
+        # 《鲁迅入门读本》p100：横排页眉「第三編 閱讀魯迅(中) 98」曾被并进竖列、插在正文中间
+        lines = [column(300, 100, "全是黑沈沈的"), (box(40, 10, 120, 40), "第三編", 0.99),
+                 column(200, 100, "妹子是被大哥喫了"), (box(200, 10, 200, 40), "閱讀魯迅(中)", 0.99),
+                 (box(330, 10, 60, 40), "98", 0.99), column(100, 100, "在還教人傷心"),
+                 (box(40, 900, 60, 40), "77", 0.9)]
+        ordered, layout = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(layout, "vertical")
+        self.assertEqual(self.texts(ordered),
+                         ["第三編", "閱讀魯迅(中)", "98", "全是黑沈沈的", "妹子是被大哥喫了", "在還教人傷心", "77"])
+
+    def test_spaced_running_head_split_into_single_chars_stays_at_page_top(self):
+        # 《熱風》1947 年版 p41：页眉「熱　風」字距拉开，拆成两个单字框，按 x 插进了正文列之间
+        lines = [column(300, 100, "的奴才的脚底下學得"), (box(215, 20, 40, 40), "熱", 0.99),
+                 column(240, 100, "自然完全不在話下了"), column(190, 100, "但最奇怪的是七年"),
+                 (box(60, 20, 40, 40), "風", 0.99), column(100, 140, "說了這話"),
+                 (box(100, 100, 40, 40), "我", 0.99),  # 列首单字框：没有整个高过列顶，留在列里
+                 column(50, 100, "也未曾經驗開口不得"), (box(100, 900, 80, 30), "-35-", 0.9)]
+        ordered, layout = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(layout, "vertical")
+        self.assertEqual(self.texts(ordered),
+                         ["風", "熱", "的奴才的脚底下學得", "自然完全不在話下了", "但最奇怪的是七年",
+                          "我", "說了這話", "也未曾經驗開口不得", "-35-"])
+
+    def test_running_head_glued_to_a_column_does_not_lift_the_column_top(self):
+        # 《熱風》p37：「風」和最左一列粘成一个框，从页眉高度起；「熱」仍要归到页首
+        lines = [column(300, 100, "這藥原來也已發明"), column(240, 100, "就是科學一味"),
+                 (box(200, 20, 40, 40), "熱", 0.99), column(150, 100, "祇希望那班精神上"),
+                 column(50, 20, "風們成了祖先的時候")]
+        ordered, _ = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(self.texts(ordered)[0], "熱")
+
+    def test_horizontal_page_keeps_engine_order(self):
+        lines = [(box(0, 0, 600, 30), "Photons: Particles of Light", 0.99),
+                 (box(0, 40, 600, 30), "the second line of the page", 0.99),
+                 (box(500, 900, 30, 20), "50", 0.9)]
+        ordered, layout = oc.pdf_quality.order_lines(lines)
+        self.assertEqual(layout, "horizontal")
+        self.assertEqual(ordered, lines)
+
+    def test_dropped_and_short_lines_are_counted_specks_are_not(self):
+        lines = [column(300, 0, "星期日的早晨我揭去一張隔夜的日曆"),
+                 column(250, 0, "一", score=0.495, h=880),       # 整列压在印章上：框在，字没认出来
+                 column(200, 0, "管", score=0.6, h=880),         # 认出了，但只有该有字数的零头
+                 (box(150, 500, 20, 20), "C", 0.3)]              # 斑点：不算一行字
+        text, conf, details = oc.pdf_quality.summarize_lines(lines)
+        self.assertEqual(text, "星期日的早晨我揭去一張隔夜的日曆\n管")
+        self.assertAlmostEqual(conf, (0.95 + 0.6) / 2)
+        self.assertEqual(details, {"layout": "vertical", "lines": 2, "dropped_lines": 1, "short_lines": 1})
+
+    def test_latin_lines_are_not_mistaken_for_short(self):
+        # 拉丁字母比字高窄，一行的字数总多于框的长宽比，不会误报
+        _, _, details = oc.pdf_quality.summarize_lines([(box(0, 0, 600, 30), "Photons: Particles of Light", 0.99)])
+        self.assertEqual(details["short_lines"], 0)
+
+    def test_run_ocr_merges_engine_diagnostics(self):
+        oc.pdf_quality.register_runner("diag", lambda image: ("文字", 0.9, {"layout": "vertical", "dropped_lines": 2}))
+        try:
+            with mock.patch.object(oc.pdf_quality, "_to_image_bytes", return_value=b"png"):
+                result = oc.pdf_quality.run_ocr(object(), "diag")
+        finally:
+            oc.pdf_quality.clear_injected_runners()
+        self.assertEqual((result["status"], result["layout"], result["dropped_lines"]), ("ok", "vertical", 2))
+
+    def test_run_ocr_still_accepts_two_tuples(self):
+        oc.pdf_quality.register_runner("plain", lambda image: ("文字", 0.9))
+        try:
+            with mock.patch.object(oc.pdf_quality, "_to_image_bytes", return_value=b"png"):
+                result = oc.pdf_quality.run_ocr(object(), "plain")
+        finally:
+            oc.pdf_quality.clear_injected_runners()
+        self.assertEqual((result["status"], result["text"], result["confidence"]), ("ok", "文字", 0.9))
+
+    def test_summarize_ocr(self):
+        pages = [
+            {"quality": {"ocr_required": True}, "ocr": {"status": "ok", "confidence": 0.9, "layout": "vertical",
+                                                        "dropped_lines": 2, "short_lines": 1}},
+            {"quality": {"ocr_required": True}, "ocr": {"status": "ok", "confidence": 0.7, "layout": "horizontal"}},
+            {"quality": {"ocr_required": True}, "ocr": {"status": "unavailable"}},
+            {"quality": {"ocr_required": False}, "ocr": None},
+        ]
+        self.assertEqual(oc.pdf_quality.summarize_ocr(pages), {
+            "pages_total": 4, "ocr_required": 3, "ocr_ok": 2, "mean_confidence": 0.8,
+            "vertical_pages": 1, "suspect_lines": 3,
+        })
+
+
 @unittest.skipUnless(HAVE_RENDER, "需要 PyMuPDF 与 Pillow（pip install -e .[pdf,ocr]）")
 class OcrIntoIndexTests(unittest.TestCase):
     def tearDown(self):
@@ -231,6 +363,23 @@ class OcrIntoIndexTests(unittest.TestCase):
         self.assertIn("--- Page 1 (OCR) ---", text)
         self.assertTrue(all("ocr_text" in s.quality_flags for s in segments))
         self.assertTrue(oc.clean_corpus.PAGE_MARKER_RE.match("--- Page 1 (OCR) ---"), "清洗规则不得删掉 OCR 页码标记")
+
+    def test_unread_lines_reach_the_shard_and_the_gate(self):
+        def leaky(image):
+            return "子曰學而時習之", 0.95, {"layout": "vertical", "lines": 1, "dropped_lines": 2, "short_lines": 0}
+
+        oc.pdf_quality.register_runner("leaky", leaky)
+        with tempfile.TemporaryDirectory() as td:
+            raw = Path(td) / "sources" / "ocr-demo" / "raw"
+            raw.mkdir(parents=True)
+            pdf = oc.build_pdf([oc.render_page(TRUTH[0], None)], raw / "scan.pdf")
+            report = oc.scan(pdf)
+            with mock.patch.dict("os.environ", {"MDF_DATA_ROOT": td}):
+                segments, _files = oc.lsp.collect_segments("ocr-demo")
+        self.assertIn("--- Page 1 (OCR, 2 unread) ---", segments[0].text)
+        self.assertIn("ocr_lines_dropped", segments[0].quality_flags)
+        self.assertEqual((report["suspect_lines"], report["vertical_pages"]), (2, 1))
+        self.assertIn("| 竖排 |", oc.render_scan(report))
 
 
 class CliTests(unittest.TestCase):

@@ -185,41 +185,136 @@ def _mean(scores: list[float]) -> float:
     return sum(scores) / len(scores) if scores else 0.0
 
 
-def _rapidocr_runner() -> Callable[[bytes], tuple[str, float]]:
-    try:  # rapidocr ≥3（支持 Python 3.13）：返回 RapidOCROutput，文本与分数在 txts / scores
+# ── 行级后处理：竖排阅读顺序与漏行 ─────────────────────────────────────
+# 真实扫描件抽查（mdf ocr scan --out）发现两件事，置信度都看不出来：
+# 1. 引擎按框的上边缘排序，竖排书（民国排印本、刻本）的列序全乱。乱序不只是难读：语料里
+#    相邻的两段在原书里并不相邻，拼起来的「引文」照样能过 P2 逐字核对。
+# 2. 压在印章、透墨、污渍上的整列，检测框出来了，识别分低于 0.5 被引擎默默丢掉。
+#    框的长宽比约等于这一行该有的字数（CJK 字近似方块），据此可以数出没认出来的行。
+KEEP_SCORE = 0.5          # 与 rapidocr text_score、PaddleOCR drop_score 的默认值一致
+VERTICAL_RATIO = 1.5      # 高 > 1.5 × 宽 的框算竖排列
+SUSPECT_MIN_CELLS = 4     # 至少能放 4 个字的框才算「一行字」，排除斑点、页码
+SHORT_LINE_SHARE = 0.5    # 认出的字不到该有字数的一半：只认出了一部分
+
+OcrLine = tuple[Any, str, float]  # (四点框, 文字, 分数)
+# 引擎：图片字节 → (文本, 平均置信度) 或 (文本, 平均置信度, 诊断)；诊断字段见 summarize_lines
+OcrRunner = Callable[[bytes], tuple]
+
+
+def _extent(box: Any) -> tuple[float, float, float, float]:
+    try:
+        xs = [float(p[0]) for p in box]
+        ys = [float(p[1]) for p in box]
+        return min(xs), min(ys), max(xs), max(ys)
+    except (TypeError, ValueError, IndexError):  # 没有可用的框：不参与版式判断与漏行计数
+        return 0.0, 0.0, 0.0, 0.0
+
+
+def _cells(box: Any) -> float:
+    """框能放下的方块字数：长边 / 短边。"""
+    x0, y0, x1, y1 = _extent(box)
+    short = min(x1 - x0, y1 - y0)
+    return max(x1 - x0, y1 - y0) / short if short > 0 else 0.0
+
+
+def order_lines(lines: list[OcrLine]) -> tuple[list[OcrLine], str]:
+    """竖排页按列从右往左、列内从上往下排；横排页保留引擎原顺序。"""
+    def shape(line: OcrLine, tall: bool) -> bool:
+        x0, y0, x1, y1 = _extent(line[0])
+        w, h = x1 - x0, y1 - y0
+        return len(str(line[1]).strip()) >= 2 and (h > VERTICAL_RATIO * w if tall else w > VERTICAL_RATIO * h)
+
+    tall = [i for i, ln in enumerate(lines) if shape(ln, True)]
+    wide = {i for i, ln in enumerate(lines) if shape(ln, False)}
+    if len(tall) <= len(wide):
+        return list(lines), "horizontal"
+    ext = [_extent(ln[0]) for ln in lines]
+    # 横排的页眉、页码、馆藏水印不并进竖列：并进去会插在正文中间，清洗闸门按页首页尾删页眉也就删不掉了。
+    # 中心高于正文列顶（中位数）的放页首，其余放页尾，各自按从上到下、从左到右。
+    body_top = sorted(ext[i][1] for i in tall)[len(tall) // 2]
+    # 字距拉开的横排页眉会拆成单字框（《熱風》1947 年版每页顶上的「熱　風」），既不算竖也不算横。
+    # 整个框落在正文列的起始线之上或结束线之下，同样是页眉页脚。起止线取四分位而不取极值：
+    # 页眉字常和下面那一列粘成一个框（p37「風們成了祖先……」），极值会被这个框拉到页眉的高度。
+    tops, bottoms = sorted(ext[i][1] for i in tall), sorted(ext[i][3] for i in tall)
+    col_top, col_bottom = tops[len(tops) // 4], bottoms[(3 * len(bottoms)) // 4]
+    tall_set = set(tall)
+    margin = {i for i, (x0, y0, x1, y1) in enumerate(ext)
+              if i not in tall_set and x1 > x0 and (y1 <= col_top or y0 >= col_bottom)}
+    wide |= margin
+    by_position = sorted(wide, key=lambda k: (ext[k][1], ext[k][0]))
+    header = [i for i in by_position if (ext[i][1] + ext[i][3]) / 2 < body_top]
+    footer = [i for i in by_position if i not in header]
+    columns: list[list[Any]] = []  # [x0, x1, 行号...]
+    for i in sorted((k for k in range(len(lines)) if k not in wide), key=lambda k: -(ext[k][0] + ext[k][2])):
+        x0, _, x1, _ = ext[i]
+        for col in columns:
+            overlap = min(x1, col[1]) - max(x0, col[0])
+            if overlap > 0.5 * min(x1 - x0, col[1] - col[0]):
+                col[0], col[1] = min(x0, col[0]), max(x1, col[1])
+                col.append(i)
+                break
+        else:
+            columns.append([x0, x1, i])
+    order = header + [i for col in columns for i in sorted(col[2:], key=lambda k: ext[k][1])] + footer
+    return [lines[i] for i in order], "vertical"
+
+
+def summarize_lines(lines: list[OcrLine], keep_score: float = KEEP_SCORE) -> tuple[str, float, dict[str, Any]]:
+    """把引擎的逐行结果变成 (文本, 平均置信度, 诊断)。低于 keep_score 的行不进文本，但要数出来。"""
+    ordered, layout = order_lines(lines)
+    texts: list[str] = []
+    scores: list[float] = []
+    dropped = short = 0
+    for box, text, score in ordered:
+        text, cells = str(text).strip(), _cells(box)
+        if float(score) < keep_score or not text:
+            dropped += cells >= SUSPECT_MIN_CELLS
+            continue
+        texts.append(text)
+        scores.append(float(score))
+        short += cells >= SUSPECT_MIN_CELLS and len("".join(text.split())) < SHORT_LINE_SHARE * cells
+    return "\n".join(texts).strip(), _mean(scores), {
+        "layout": layout, "lines": len(texts), "dropped_lines": int(dropped), "short_lines": int(short),
+    }
+
+
+def _rapidocr_runner() -> OcrRunner:
+    try:  # rapidocr ≥3（支持 Python 3.13）：返回 RapidOCROutput，框、文本、分数在 boxes / txts / scores
         from rapidocr import RapidOCR as RapidOCRv3  # type: ignore
     except ImportError:
         return _rapidocr_legacy_runner()
-    engine_v3 = RapidOCRv3(params={"Global.log_level": "warning"})
+    # text_score=0：让引擎把所有检测到的行都交回来，由 summarize_lines 按 KEEP_SCORE 过滤并计数。
+    # log_level=error：空白页的「检测结果为空」警告刷屏；空页已经算进 summarize_ocr 的 ocr_ok 与清洗闸门
+    engine_v3 = RapidOCRv3(params={"Global.log_level": "error", "Global.text_score": 0.0})
 
-    def run_v3(image: bytes) -> tuple[str, float]:
+    def run_v3(image: bytes) -> tuple[str, float, dict[str, Any]]:
         out = engine_v3(image)
-        texts = [str(t) for t in (getattr(out, "txts", None) or ())]
-        scores = [float(s) for s in (getattr(out, "scores", None) or ())]
-        return "\n".join(texts).strip(), _mean(scores)
+        boxes = getattr(out, "boxes", None)
+        texts = getattr(out, "txts", None) or ()
+        scores = getattr(out, "scores", None) or ()
+        if boxes is None or len(texts) == 0:
+            return "", 0.0, {}
+        return summarize_lines([(b, str(t), float(s)) for b, t, s in zip(boxes, texts, scores)])
 
     return run_v3
 
 
-def _rapidocr_legacy_runner() -> Callable[[bytes], tuple[str, float]]:
+def _score(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _rapidocr_legacy_runner() -> OcrRunner:
     from rapidocr_onnxruntime import RapidOCR  # type: ignore  # 旧包，只支持 Python <3.13
 
     engine = RapidOCR()
 
-    def run(image: bytes) -> tuple[str, float]:
+    def run(image: bytes) -> tuple[str, float, dict[str, Any]]:
         result, _elapsed = engine(image)
-        if not result:
-            return "", 0.0
-        lines: list[str] = []
-        scores: list[float] = []
-        for item in result:
-            if len(item) >= 3:
-                lines.append(str(item[1]))
-                try:
-                    scores.append(float(item[2]))
-                except (TypeError, ValueError):
-                    pass
-        return "\n".join(lines).strip(), _mean(scores)
+        lines = [(item[0], str(item[1]), _score(item[2])) for item in result or [] if len(item) >= 3]
+        return summarize_lines(lines) if lines else ("", 0.0, {})
 
     return run
 
@@ -277,13 +372,12 @@ class PaddleOcrJsonPipe:
         reply = json.loads(self.proc.stdout.readline().decode("utf-8", errors="replace") or "{}")
         code = reply.get("code")
         if code == 101:
-            return "", 0.0
+            return "", 0.0, {}
         if code != 100:
             raise RuntimeError(f"PaddleOCR-json code {code}: {reply.get('data')}")
-        items = [d for d in reply.get("data") or [] if isinstance(d, dict)]
-        texts = [str(d.get("text", "")) for d in items]
-        scores = [float(d["score"]) for d in items if isinstance(d.get("score"), (int, float))]
-        return "\n".join(texts).strip(), _mean(scores)
+        lines = [(d.get("box") or [], str(d.get("text", "")), _score(d.get("score")))
+                 for d in reply.get("data") or [] if isinstance(d, dict)]
+        return summarize_lines(lines)
 
     def close(self) -> None:
         if self.proc.poll() is None:
@@ -302,7 +396,7 @@ class PaddleOcrJsonPipe:
                 pass
 
 
-def _paddleocr_json_runner() -> Callable[[bytes], tuple[str, float]]:
+def _paddleocr_json_runner() -> OcrRunner:
     exe = paddleocr_json_exe()
     if exe is None:
         raise ImportError(f"set {PADDLEOCR_JSON_ENV} to PaddleOCR-json.exe or its folder")
@@ -311,7 +405,7 @@ def _paddleocr_json_runner() -> Callable[[bytes], tuple[str, float]]:
     return PaddleOcrJsonPipe([str(exe), *args], cwd=exe.parent)
 
 
-def _paddleocr_runner() -> Callable[[bytes], tuple[str, float]]:
+def _paddleocr_runner() -> OcrRunner:
     from paddleocr import PaddleOCR  # type: ignore
 
     try:
@@ -347,7 +441,7 @@ def _paddleocr_runner() -> Callable[[bytes], tuple[str, float]]:
     return run
 
 
-RUNNER_FACTORIES: dict[str, Callable[[], Callable[[bytes], tuple[str, float]]]] = {
+RUNNER_FACTORIES: dict[str, Callable[[], OcrRunner]] = {
     "rapidocr": _rapidocr_runner,
     "paddleocr_json": _paddleocr_json_runner,
     "paddleocr": _paddleocr_runner,
@@ -355,11 +449,11 @@ RUNNER_FACTORIES: dict[str, Callable[[], Callable[[bytes], tuple[str, float]]]] 
 OCR_BACKEND_ENV = "MDF_OCR_BACKEND"
 # 引擎加载很慢（ONNX / Paddle 模型），每个进程每个引擎只建一次——过去每页都新建一次，
 # 600 页的扫描件要加载 600 次模型。缺依赖（ImportError）不缓存，装上后同一进程可重试。
-_RUNNERS: dict[str, Callable[[bytes], tuple[str, float]]] = {}
+_RUNNERS: dict[str, OcrRunner] = {}
 _INJECTED: list[str] = []
 
 
-def get_runner(name: str) -> Callable[[bytes], tuple[str, float]]:
+def get_runner(name: str) -> OcrRunner:
     if name not in _RUNNERS:
         if name not in RUNNER_FACTORIES:
             raise ImportError(f"unknown OCR backend {name!r}")
@@ -367,7 +461,7 @@ def get_runner(name: str) -> Callable[[bytes], tuple[str, float]]:
     return _RUNNERS[name]
 
 
-def register_runner(name: str, runner: Callable[[bytes], tuple[str, float]]) -> None:
+def register_runner(name: str, runner: OcrRunner) -> None:
     """注入一个引擎并让 auto 优先用它（OCR 校准与测试用）。"""
     _RUNNERS[name] = runner
     if name not in _INJECTED:
@@ -378,6 +472,20 @@ def clear_injected_runners() -> None:
     for name in _INJECTED:
         _RUNNERS.pop(name, None)
     _INJECTED.clear()
+
+
+def summarize_ocr(pages: list[dict[str, Any]]) -> dict[str, Any]:
+    """一份 PDF 的 OCR 汇总，交给清洗闸门（index 与 mdf ocr 共用，免得两处口径不一）。"""
+    ok = [p.get("ocr") or {} for p in pages if (p.get("ocr") or {}).get("status") == "ok"]
+    conf = [float(o.get("confidence") or 0) for o in ok]
+    return {
+        "pages_total": len(pages),
+        "ocr_required": sum(1 for p in pages if p.get("quality", {}).get("ocr_required")),
+        "ocr_ok": len(ok),
+        "mean_confidence": round(sum(conf) / len(conf), 4) if conf else None,
+        "vertical_pages": sum(1 for o in ok if o.get("layout") == "vertical"),
+        "suspect_lines": sum(int(o.get("dropped_lines") or 0) + int(o.get("short_lines") or 0) for o in ok),
+    }
 
 
 def ocr_candidates(backend: str = "auto") -> list[str]:
@@ -402,13 +510,15 @@ def run_ocr(page: Any, backend: str = "auto", *, dpi: int = 150) -> dict[str, An
     for candidate in candidates:
         try:
             runner = get_runner(candidate)
-            text, confidence = runner(image)
+            # 引擎返回 (文本, 置信度) 或 (文本, 置信度, 诊断)；诊断见 summarize_lines
+            text, confidence, *rest = runner(image)
             if text:
                 return {
                     "status": "ok",
                     "backend": candidate,
                     "text": text,
                     "confidence": round(confidence, 4),
+                    **(rest[0] if rest and isinstance(rest[0], dict) else {}),
                 }
             errors.append(f"{candidate}:empty")
         except ImportError:

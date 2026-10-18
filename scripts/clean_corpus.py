@@ -72,7 +72,7 @@ GOOGLE_DISCLAIMER_MARKERS = (
 
 # 显式页码标记是引用定位的依据（「语料位置」），任何规则都不得删除。
 PAGE_MARKER_RE = re.compile(
-    r"^\s*(?:≦\s*\d+\s*≧|=+\s*(?:PDF_)?PAGE\s*\d+\s*=+|-{2,}\s*Page\s+\d+(?:\s*\(OCR\))?\s*-{2,})\s*$", re.I
+    r"^\s*(?:≦\s*\d+\s*≧|=+\s*(?:PDF_)?PAGE\s*\d+\s*=+|-{2,}\s*Page\s+\d+(?:\s*\(OCR[^)]*\))?\s*-{2,})\s*$", re.I
 )
 PAGE_NUMBER_RE = re.compile(
     r"^\s*(?:[-–—]\s*\d{1,4}\s*[-–—]|\d{1,4}(?:\s+\d{1,4})?|第\s*\d{1,4}\s*页|page\s+\d{1,4}|\d{1,4}\s*/\s*\d{1,4})\s*$",
@@ -101,6 +101,15 @@ def _non_space(text: str) -> int:
 
 def _norm_line(line: str) -> str:
     return re.sub(r"\d+", "#", line.strip())
+
+
+# OCR 常把页码两边的短横认成「一」或认丢一边（《熱風》：「-28一」「13-」「一81一」），
+# 逐字比较时这些变体各自凑不够页数。页边行只有数字和横线时，一律按「页码」计数。
+PDF_PAGE_NO_RE = re.compile(r"^[\s\-–—一_.·]*\d{1,4}[\s\-–—一_.·]*$")
+
+
+def _head_key(line: str) -> str:
+    return "#页码" if PDF_PAGE_NO_RE.match(line) else _norm_line(line)
 
 
 def text_metrics(text: str) -> dict[str, Any]:
@@ -354,7 +363,7 @@ def clean_pdf_pages(pages: list[str], ocr: dict[str, Any] | None = None) -> tupl
     with_text = [lines for lines in page_lines if any(ln.strip() for ln in lines)]
     counts: dict[str, int] = {}
     for lines in with_text:
-        for key in {_norm_line(ln) for ln in edges(lines) if len(_norm_line(ln)) <= 60}:
+        for key in {_head_key(ln) for ln in edges(lines) if len(_norm_line(ln)) <= 60}:
             counts[key] = counts.get(key, 0) + 1
     floor = max(t["pdf_head_min_pages"], t["pdf_head_share"] * len(with_text))
     heads = {k for k, n in counts.items() if n >= floor}
@@ -363,7 +372,7 @@ def clean_pdf_pages(pages: list[str], ocr: dict[str, Any] | None = None) -> tupl
             edge_set = set(edges(lines))
             kept = []
             for ln in lines:
-                if ln in edge_set and _norm_line(ln) in heads:
+                if ln in edge_set and _head_key(ln) in heads:
                     cleaner.record("pdf_running_head_lines", [ln])
                 else:
                     kept.append(ln)
@@ -395,6 +404,9 @@ def clean_pdf_pages(pages: list[str], ocr: dict[str, Any] | None = None) -> tupl
     if ok:
         # 闸门 P2 拿引文去比对的正是这份 OCR 文字，认错的字它查不出来——所以只要用了 OCR 就要标出来
         flags.append("ocr_text")
+    if ok and int(ocr.get("suspect_lines") or 0):
+        # 检测到文字行却没认出来（印章、透墨、污渍、手写）：缺的行不在语料里，缺口两侧在原书中并不相连
+        flags.append("ocr_lines_dropped")
     if ok and confidence is not None and float(confidence) < t["ocr_low_confidence"]:
         if float(confidence) < t["ocr_garbled_reject"] and total and ok * 2 > total:
             reasons.append("ocr_garbled")
@@ -503,6 +515,7 @@ FLAG_HINTS = {
     "ocr_mostly_missing": "过半页需要 OCR 但未取得文字，覆盖面不完整",
     "low_ocr_confidence": "OCR 平均置信度 <0.9（校准实测此档逐字存活率 ≤26%），引文必须对照原图",
     "ocr_text": "含 OCR 识别文字：最好的引擎在无退化样张上仍约 5% 的句子不能逐字还原，引文对照原图后才能标 high",
+    "ocr_lines_dropped": "OCR 检测到文字行却没认出来（印章、透墨、污渍、手写）：这些行不在语料里，缺口两侧在原书中并不相连，跨行引文必须对照原图（页码标记写明每页漏几行）",
     "very_short": "文本很短",
     "replacement_chars": "少量 U+FFFD",
     "private_use_glyphs": "少量私用区字形",

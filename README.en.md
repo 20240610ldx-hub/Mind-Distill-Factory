@@ -6,7 +6,7 @@
 
 Mind Distill Factory turns the sources, judgment habits, expressive texture, value orientation, and failure modes of important thinkers into installable **Codex Skills**.
 
-It is not a quote collection. It is not a biography generator. It is not theatrical roleplay. The goal is to build a small cognitive instrument: a `SKILL.md` that can respond from inside a thinker's way of seeing while remaining source-traceable, practically useful, and honest about its own limits.
+It is not a quote collection. It is not a biography generator. It is not theatrical roleplay. The goal is to build a small cognitive instrument: a Skill package that can respond from inside a thinker's way of seeing while remaining source-traceable, practically useful, and honest about its own limits.
 
 [中文说明](README.zh.md) · [Main README](README.md)
 
@@ -29,7 +29,22 @@ A good Skill should feel less like reading a report about a thinker and more lik
   <img src="docs/assets/readme/skill-anatomy.svg" alt="Anatomy of a distilled SKILL.md" width="100%">
 </p>
 
-Codex discovers Skills by looking for exactly one file named `SKILL.md`. Because of that hard platform constraint, the final deliverable is a single file. Chinese and English frameworks are still synthesized independently, then assembled into language-aware sections inside that one discoverable artifact.
+Skill discovery looks for exactly one file named `SKILL.md` per skill directory. Files such as `SKILL.zh.md` or `README.md` are invisible to the loader, but a skill directory may also hold sub-files that the model reads on demand through relative paths written into `SKILL.md`. Format v6 uses that: a distilled Skill ships as a **package**.
+
+```text
+{slug}-wisdom/
+├── SKILL.md              # always loaded: Chinese-only, format_version: 6, self-sufficient, ≤500 lines
+└── references/           # read on demand
+    ├── cases.md          # worked cases, ≥2 per principle cluster, ≥1 counter-case
+    ├── evidence.md       # verbatim source excerpts, machine-checked against the corpus
+    └── voice.md          # ≥20 annotated voice samples
+```
+
+`SKILL.md` is never a dispatcher: deleting `references/` must still leave a complete, working framework (gate P6). The case *index* lives in `SKILL.md`, so the model always knows what exists; only case bodies live in `references/cases.md`. A human-readable dossier, `人物档案.md`, is written to `output/` and `gallery/` but is never copied into the install directory, because a third-person dossier inside the skill would pull the voice out of first person.
+
+**Chinese is the default and only language of the v6 package.** There is no `## English` block and no language-detection header. After the Chinese package is installed, `/distill` asks whether to also build an English version. Only on a yes does it run the English branch: it reuses the language-neutral `framework_core.json`, reconstructs the English framework independently (not a translation of the Chinese one), and publishes it as a **separate** skill directory, `{slug}-wisdom-en`. That English Skill is currently a legacy-format single file: it has no `references/` and does not go through gates P1–P6.
+
+The table below lists what the Chinese core contains.
 
 | Component | Purpose |
 | --- | --- |
@@ -50,13 +65,14 @@ Codex discovers Skills by looking for exactly one file named `SKILL.md`. Because
 
 The pipeline is gated because a beautiful answer is not enough. Each stage produces reviewable artifacts, and `scripts/validate_output.py` enforces structural checks between stages.
 
-1. Clarify the thinker, slug, target language, taxonomy category, and source availability.
+1. Clarify the thinker, slug, taxonomy category, and source availability.
 2. Collect primary and secondary sources, including user-provided local files when present.
-3. Shard large local corpora through an indexer, bounded workers, and a reducer.
+3. Index large local corpora, then process them through bounded worker batches and a reducer.
 4. Extract principles, quotes, reasoning patterns, blind spots, and evidence anchors.
-5. Build a shared evidence core, then synthesize Chinese and English frameworks independently.
-6. Assemble the final `SKILL.md`.
-7. Run quality review, validation, gallery sync, and optional runtime evaluation.
+5. Build a language-neutral framework core, then synthesize the Chinese framework from it.
+6. Assemble the Chinese `SKILL.md` core, then generate `references/` and the dossier.
+7. Pass the package gates (P1–P6), quality review, publish to `gallery/`, and install.
+8. Optionally build the separate English Skill `{slug}-wisdom-en`.
 
 The stable local-source contract is:
 
@@ -66,20 +82,37 @@ sources/{slug}/processed/           # structured intermediate artifacts
 sources/{slug}/processed/user_sources.json
 ```
 
+### Local Source Pipeline
+
+Full details live in [sources/README.md](sources/README.md). In short:
+
+- **Source registry.** Indexing (`python scripts/local_source_pipeline.py index <slug>`) accepts `.txt`, `.md`, `.markdown`, and `.pdf`, including nested folders, and writes `processed/source_registry.json`, binding each file to its path, media type, size, SHA-256, role, origin, rights status, and duplicates.
+- **PDF page classification.** Each PDF page and document is classified as pure text, mixed text/image, pure image, or empty/unreadable. Only information-rich image pages, or pages with poor text quality, become OCR candidates. Native text and OCR text are kept as separate provenance layers.
+- **Optional extras.** PDF and OCR backends are opt-in `pyproject.toml` extras: `pdf` (PyMuPDF, pypdf), `ocr` (RapidOCR, CPU default), and `ocr-high-accuracy` (PaddleOCR escalation).
+
+  ```powershell
+  pip install -e ".[pdf,ocr]"
+  ```
+
+- **Deterministic sampling.** Large corpora get a `sampling_plan.json` with a stable seed, strata, selected units, token coverage, and omitted strata, plus a `dispatch_plan.json` of bounded worker batches.
+- **Budget gate.** `cost_estimate.json` gives token, request, and OCR-page ranges (or `cost_unknown` when pricing is not configured; it never invents a currency amount). If the upper bound exceeds the configured budget, the orchestrator must ask whether to process exhaustively, sample, reduce scope, or cancel **before** any expensive LLM workers or network supplementation start.
+
 ### Artifact Flow
 
 | Stage | Question | Typical artifacts |
 | --- | --- | --- |
-| Stage 0 | Who is being distilled, and what kind of wisdom is this? | slug, taxonomy category, source plan, target language |
+| Stage 0 | Who is being distilled, and what kind of wisdom is this? | slug, taxonomy category, source plan |
 | Stage 1 | Are the materials reliable enough? | primary and secondary source findings, quote candidates |
-| Stage 1A | How do we process a large local corpus without overloading one context? | shard manifest, worker outputs, `user_sources.json` |
+| Stage 1A | How do we process a large local corpus without overloading one context? | source registry, shard manifest, sampling/dispatch plans, cost estimate, worker outputs, `user_sources.json` |
 | Stage 2 | Which claims are executable judgment rules? | principles, reasoning patterns, quotes, blind spots |
-| Stage 3 | How do the evidence anchors become a full cognitive framework? | framework core, `frameworks.zh.json`, `frameworks.en.json` |
-| Stage 4 | Can Codex discover and use it? | one final `SKILL.md` |
+| Stage 3 | How do the evidence anchors become a full cognitive framework? | `framework_core.json`, `frameworks.zh.json` |
+| Stage 4 | Is the always-loaded core complete on its own? | Chinese `SKILL.md` (`format_version: 6`) |
+| Stage 4.5 | Are the on-demand attachments built and indexed? | `references/{cases,evidence,voice}.md`, `人物档案.md`; package gates P1–P6 |
 | Stage 5 | Does it sound, reason, and self-limit correctly? | quality review and repair notes |
-| Stage 6 | Is the released copy the same artifact that passed review? | `gallery/{slug}/SKILL.md`, `gallery/index.json` |
+| Stage 6 | Is the released copy the same artifact that passed review? | `gallery/{slug}/` package, `gallery/index.json`, install |
+| Stage 6.5 | Does the user want an English version? (opt-in) | `frameworks.en.json`, separate `{slug}-wisdom-en` Skill |
 
-This makes repair local. If the voice is strong but evidence is weak, return to Stage 2. If evidence is good but output shape is formulaic, repair Stage 4 or Stage 5. If Chinese and English versions feel cognitively mismatched, return to Stage 3 rather than translating one into the other.
+This makes repair local. If the voice is strong but evidence is weak, return to Stage 2. If evidence is good but output shape is formulaic, repair Stage 4 or Stage 5. If a package gate fails, repair the attachment or index it names. If the English branch feels cognitively mismatched with the Chinese one, rebuild it from the shared core rather than translating one into the other.
 
 ## Anti-Formula Design
 
@@ -114,7 +147,8 @@ Before a Skill enters `gallery/`, it must pass checks for:
 | Source traceability | Principles and quotes point to named materials. Web-only quotes cannot be high confidence. |
 | Uniqueness | The method must survive a de-name test, evidence-anchor test, and methodology-level test. |
 | Decision framework | Steps must be filter-type yes/no gates, not open-ended prompts. |
-| Bilingual cognition | Chinese and English frameworks are independently framed, not mechanically translated. |
+| Package gates | `validate_output.py package` passes P1–P6 (see Usage). |
+| Bilingual cognition | Only when the English branch was requested: the `-wisdom-en` Skill is independently framed, not mechanically translated, and reviewed for cultural-cognitive accuracy. |
 | Blind spots | Each failure mode includes mitigation advice and "when not to use" guidance. |
 | Expression DNA | The voice profile must distinguish this thinker from generic analytical prose. |
 | Structural naturalness | Anti-template response-shape rules must be present and complete. |
@@ -186,8 +220,22 @@ python scripts\validate_output.py sources charlie-munger
 python scripts\validate_output.py principles mao-zedong
 python scripts\validate_output.py frameworks mao-zedong
 python scripts\validate_output.py skill mao-zedong
+python scripts\validate_output.py package <person-slug>
 python scripts\validate_output.py gallery mao-zedong
 ```
+
+`package` runs the v6 gates. All six are rule-based (no LLM scoring), because an LLM reviewer once graded quotes "EXACT" that were not verbatim:
+
+| Gate | Check |
+| --- | --- |
+| P1 | Every quote in `SKILL.md` appears verbatim in some card in `references/evidence.md`. |
+| P2 | Every verbatim excerpt in `evidence.md` appears verbatim in the source corpus. |
+| P3 | Every backticked path in `SKILL.md` resolves to a real file. |
+| P4 | `cases.md` has ≥2 cases per principle cluster and ≥1 counter-case overall. |
+| P5 | The case index in `SKILL.md` and the `case_id`s in `cases.md` match one-to-one. |
+| P6 | The core is self-sufficient: ≤500 lines, all required sections present and substantive, enough core principles. |
+
+The `skill` stage dispatches by frontmatter: a `SKILL.md` with `format_version: 6` is validated as a package; one without it (older gallery Skills, and the English `-wisdom-en` branch) keeps the legacy single-file validation path.
 
 Configure runtime evaluation:
 
@@ -218,13 +266,15 @@ Common runtime settings:
 | `MIND_DISTILL_EVAL_MODEL` | Example default is `deepseek-v4-pro`. |
 | `MIND_DISTILL_EVAL_REASONING_EFFORT` | Forwarded to compatible model APIs. |
 
-When installing a Skill, keep the final filename as `SKILL.md`. A common Codex layout is:
+`/distill` publishes a Skill with `python scripts\publish_skill.py --slug <person-slug>`, re-checks it with the `gallery` stage (per-file hash comparison of `output/` and `gallery/`, including `references/`), and only then installs it. The install directory receives only `SKILL.md` and `references/`:
 
 ```text
-~/.codex/skills/{person-slug}-wisdom/SKILL.md
+~/.claude/skills/{person-slug}-wisdom/SKILL.md
+~/.claude/skills/{person-slug}-wisdom/references/{cases,evidence,voice}.md
+~/.claude/skills/{person-slug}-wisdom-en/SKILL.md     # only if the English branch was requested
 ```
 
-Do not install `SKILL.zh.md`, `README.md`, or draft files as the final Skill. Codex will not discover those as the active Skill entrypoint.
+Copy the whole package, not just `SKILL.md`, or the on-demand attachments will be missing. Do not install `人物档案.md`, `SKILL.zh.md`, `README.md`, or draft files; the loader will not treat them as the Skill entrypoint, and the dossier belongs only in `gallery/`.
 
 ## Debate Arena
 
@@ -251,6 +301,9 @@ The public gallery currently includes:
 | Sun Tzu | Competitive strategy, positioning, deception, timing, force economy. |
 | Wang Yangming | Innate knowing, unity of knowledge and action, moral self-cultivation. |
 | Zeng Guofan | Self-discipline, talent judgment, resilience, strategic patience. |
+| Zhang Juzheng (`zhang-juzheng-v6`) | Performance accountability, executive follow-through, fiscal discipline. The reference v6 package (`SKILL.md` + `references/` + `人物档案.md`). |
+
+The other seven gallery entries predate v6 and are legacy bilingual single-file Skills.
 
 ## Public Release Boundary
 
@@ -271,8 +324,8 @@ config/         Taxonomy and defaults
 debate_arena/   Two-Skill debate runner
 docs/assets/    Public README and project images
 evaluation/     Standalone SkillEval-MDF evaluator
-gallery/        Released installable Skills
-scripts/        Validators, source processing, and utility scripts
+gallery/        Released installable Skills (v6 packages and legacy single files)
+scripts/        Validators, package gates, source registry/PDF/sampling, and utility scripts
 sources/        Public placeholder plus local-source contract
 templates/      Skill templates and hand-crafted examples
 tests/          Regression tests

@@ -215,6 +215,19 @@ class CleanPdfTests(unittest.TestCase):
         for raw, kept in zip(self.pages(), cleaned):
             assert_subtractive(self, raw, kept)
 
+    def test_ocr_misread_folios_count_as_one_running_head(self):
+        # 《熱風》整本 OCR：页码认成「-28一」「13-」「一81一」，逐字比较时每种都凑不够 30% 的页
+        folios = ["-28一", "13-", "一81一", "-35-", "4", "46一", "30-", "-57一", "--9-", "12"]
+        # 页边比较时阿拉伯数字归一，所以各页正文用天干区分
+        pages = [f"三十{num}\n{PROSE}{stem}\n{folio}" for num, stem, folio in zip("一二三四五六七八九十", "甲乙丙丁戊己庚辛壬癸", folios)]
+        cleaned, entry = cc.clean_pdf_pages(pages)
+        for page, stem, folio in zip(cleaned, "甲乙丙丁戊己庚辛壬癸", folios):
+            self.assertFalse(page.endswith(folio), folio)
+            self.assertIn(f"{PROSE}{stem}", page)
+        self.assertEqual(entry["actions"]["pdf_running_head_lines"], 10)
+        # 章节号「三十一」之类的汉字数字不算页码
+        self.assertTrue(all(page.startswith("三十") for page in cleaned))
+
     def test_index_page_dropped(self):
         index_page = "\n".join(f"Virtue{i}, {i}, {i + 40}" for i in range(15))
         cleaned, entry = cc.clean_pdf_pages([*self.pages(3), index_page])
@@ -247,6 +260,16 @@ class CleanPdfTests(unittest.TestCase):
         self.assertIn("ocr_garbled", garbled["reasons"])
         self.assertNotEqual(gate(1, 0.5)["verdict"], "rejected")
         self.assertIn("low_ocr_confidence", gate(1, 0.5)["flags"])
+
+    def test_unread_ocr_lines_are_flagged(self):
+        def gate(suspect):
+            return cc.clean_pdf_pages(self.pages(4), {"pages_total": 4, "ocr_required": 2, "ocr_ok": 2,
+                                                       "mean_confidence": 0.95, "suspect_lines": suspect})[1]
+        # 《吶喊》国图本：两整列压在印章上，置信度 0.92 照样「通过」——只有行数对不上才看得出来
+        self.assertIn("ocr_lines_dropped", gate(2)["flags"])
+        self.assertNotIn("ocr_lines_dropped", gate(0)["flags"])
+        self.assertNotEqual(gate(2)["verdict"], "rejected", "漏行只标不退：其余文字仍可用")
+        self.assertTrue(cc.PAGE_MARKER_RE.match("--- Page 61 (OCR, 2 unread) ---"), "清洗规则不得删掉带漏行数的页码标记")
 
 
 class NearDuplicateTests(unittest.TestCase):
