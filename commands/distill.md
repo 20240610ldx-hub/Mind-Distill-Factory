@@ -55,6 +55,15 @@ python scripts/mdf.py status {slug} --html     # 可视化面板 output/{slug}/s
 
 把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。可视化面板的左侧阶段轨与对话里的章节一一对应，右侧逐阶段列出步骤、闸门和下一步，底部是 `mdf run` 的运行记录。每个 phase 收尾时重新生成一次；在 Claude 桌面版里用文件发送工具以渲染方式打开它，其他 harness 告诉用户文件路径。
 
+**Agent 工具里没有该角色时（Claude 桌面 GUI）**
+
+先查 Agent 工具列出的类型里有没有角色名（插件加载时是 `mind-distill-factory:<角色>`，项目加载时是 `<角色>`）。2026-10-18 在桌面 GUI 里验收时，项目 `.claude/agents/` 下的角色没有出现在 Agent 工具里；同一目录下 `claude -p` 却能识别。没有该角色时，不要让通用子代理凭记忆去「扮演」它，改用简报：
+
+1. `python scripts/mdf.py brief {slug} <step>`：写出 `output/{slug}/briefs/<step>.md`，里面附了该步骤所有角色定义的全文与检查点。
+2. 用 Agent 工具起一个 `general-purpose` 子代理，提示词只写：「读取 output/{slug}/briefs/<step>.md 并严格按其执行，完成后报告检查点结果。」并行的分片抽取，每个分片起一个，提示词里注明分片编号。
+
+子代理的上下文仍然与你隔离，Stage 5 审查也可以这样做。
+
 **没有子代理的 harness（Codex、pi），或要在干净上下文里执行的步骤**
 
 下文「分派给子代理」的每一步，都可以改用任务简报 + 新进程执行，交付物和检查点不变：
