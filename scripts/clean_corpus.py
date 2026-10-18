@@ -527,6 +527,28 @@ FLAG_HINTS = {
 }
 
 
+def flag_label(flag: str, ocr: dict[str, Any] | None = None) -> str:
+    """表格单元格里的短标签，带上这份来源自己的数字；长说明（FLAG_HINTS）放在表格下方，每种只写一次。"""
+    ocr = ocr or {}
+    missing = int(ocr.get("ocr_required") or 0) - int(ocr.get("ocr_ok") or 0)
+    labels = {
+        "ocr_incomplete": f"{missing} 页没取得 OCR 文字" if missing > 0 else "部分页没取得 OCR 文字",
+        "ocr_mostly_missing": f"过半页没取得 OCR 文字（{missing}/{ocr.get('ocr_required')}）" if missing > 0
+        else "过半页没取得 OCR 文字",
+        "low_ocr_confidence": f"OCR 平均置信度 {float(ocr['mean_confidence']):.2f}" if ocr.get("mean_confidence")
+        else "OCR 置信度低",
+        "ocr_text": "含 OCR 文字（引文封顶 medium）",
+        "ocr_lines_dropped": f"{ocr['suspect_lines']} 行 OCR 没认全" if ocr.get("suspect_lines") else "OCR 有没认全的行",
+        "modern_annotation": "含现代注释",
+        "heavy_removal": "删除超过 10%",
+        "very_short": "文本很短",
+        "replacement_chars": "少量 U+FFFD",
+        "private_use_glyphs": "少量私用区字形",
+        "control_chars": "含控制字符",
+    }
+    return labels.get(flag, flag)
+
+
 def render_report(slug: str, report: dict[str, Any]) -> str:
     lines = [f"## 清洗报告：{slug}", "", f"共 {report['source_count']} 个来源："
              f"✅ {len(report['accepted_sources'])} 通过 · ⚠️ {len(report['flagged_sources'])} 待复核 · "
@@ -537,11 +559,15 @@ def render_report(slug: str, report: dict[str, Any]) -> str:
             hint = "；".join(REASON_HINTS.get(r, r) for r in item["reasons"])
             lines.append(f"| {item['file']} | ❌ 被拒 | {hint} |")
         for item in report["flagged_sources"]:
-            hint = "；".join(FLAG_HINTS.get(f, f) for f in item["flags"])
+            ocr = (report.get("sources", {}).get(item["file"]) or {}).get("ocr")
+            hint = " · ".join(flag_label(f, ocr) for f in item["flags"])
             lines.append(f"| {item['file']} | ⚠️ 待复核 | {hint} |")
         for item in report.get("duplicate_sources", []):
             lines.append(f"| {item['file']} | ➖ 重复 | 与 {item.get('duplicate_of')} {item.get('relation', '')} {item.get('score', '')} |")
         lines.append("")
+        flags = list(dict.fromkeys(f for item in report["flagged_sources"] for f in item["flags"] if f in FLAG_HINTS))
+        if flags:
+            lines += ["**标记说明**", "", *[f"- `{f}`：{FLAG_HINTS[f]}" for f in flags], ""]
     removed: dict[str, int] = {}
     for entry in report["sources"].values():
         for action, n in entry.get("actions", {}).items():
