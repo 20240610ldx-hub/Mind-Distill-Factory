@@ -4,7 +4,7 @@
 
 - 阶段 1（来源与抽样链）：`4dda010`
 - 阶段 2 / P0（发布与校验事务化，M1–M4）：`296b05e` → `861feb8` → `7b5e436` → `655a82f`
-- 阶段 3（流水线自动化，分支 `claude/pipeline-automation`）：`effcb3f` → … → `21334b5` 已经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑合并、文档分支合并与本次提交还不在 main
+- 阶段 3（流水线自动化，分支 `claude/pipeline-automation`）：`effcb3f` → … → `21334b5` 已经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑合并、文档分支合并、`66c0537` 及之后的提交在 PR #5。OCR 后续分支 `claude/wonderful-hodgkin-bde0f1` 在 PR #6；两者试合并只有 HANDOFF.md、methodology.md 文本冲突，合并树 559 个测试通过，后合的那个解决冲突
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
 结果：`Ran 546 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
@@ -31,7 +31,7 @@
 | `df08946` | 校准样张扩到 8 页 52 句（加《大學》《孫子》、白话小说、带数字的现代段落、英文），`--fonts` 四种字体族 × `--layout` 横排/竖排，64 次运行重定阈值依据；竖排页从列距推算检测器漏掉的列，计入可疑行；`mdf ocr survey` 整书抽样体检（每个 PDF 均匀抽页，估 OCR 用时、竖排页、可疑行与闸门标记）；P2 归一化补齐全角/竖排标点与全角字母数字（校准里竖排页丢的 23 句有 19 句只是句末全角「？」「！」被认成半角） | `scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`scripts/verify_provenance.py`、`evaluation/fixtures/ocr/sample_zh.txt`、`docs/methodology.md` |
 | 本次 | 明刻本抽查的两处修正：`mdf ocr scan --pages`/`survey` 改在原文件上逐页读（分层压缩扫描件拷进临时 PDF 后渲染不同，置信度与识别文字都变，导出的图也对不上）；被音注撑宽的被丢框按本页字号折算字数，限宽 ≤1.5 字宽且读出 ≥3 个汉字，排除馆藏印章与插图标注 | `scripts/local_source_pipeline.py`、`scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`docs/methodology.md` |
 | `3801fb3` | 墨子试跑的可视化反馈（没有章节标签、叙述没节奏、全是无头脚本）：`mdf run` 把「简报→新进程→心跳→状态变化→阶段检查点→运行记录」收成一条命令（不加 `--yes` 只打印计划）；阶段卡 `mdf next --card`、进度条、自包含可视化面板 `mdf status --html`；编排协议写明三拍叙述与章节工具确切名 `mcp__ccd_session__mark_chapter`，驱动无头进程的会话也算编排者 | `scripts/stage_runner.py`、`scripts/pipeline_status.py`、`commands/distill.md`、`.agents/skills/mdf-distill/SKILL.md`、`config/harnesses.json`、`docs/harnesses.md` |
-| 本次 | 整本扫描书端到端（《熱風》134 页竖排，`mdf index` → `mdf clean`）暴露的两处页眉页脚漏删：字距拉开的页眉拆成单字框插进正文列（竖排页里落在正文列起止线之外的单字框归页首页尾，起止线取四分位）；页码短横认成「一」或丢一边（页边纯数字加横线的行一律按页码计数）。页眉页脚删除 41→171 行，无正文误删；rapidocr 日志降到 error | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`docs/methodology.md` |
+| `66c0537` | 整本扫描书端到端（《熱風》134 页竖排，`mdf index` → `mdf clean`）暴露的两处页眉页脚漏删：字距拉开的页眉拆成单字框插进正文列（竖排页里落在正文列起止线之外的单字框归页首页尾，起止线取四分位）；页码短横认成「一」或丢一边（页边纯数字加横线的行一律按页码计数）。页眉页脚删除 41→171 行，无正文误删；rapidocr 日志降到 error。另 8 本竖排书各抽 8 页审计：被归到页边的 44 个单字框全是页眉页码，没有正文 | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`docs/methodology.md` |
 
 文档入口：[架构](docs/architecture.md) · [方法论](docs/methodology.md) · [伦理与法律](docs/ethics-and-legal.md) · [harness 适配](docs/harnesses.md)。
 
