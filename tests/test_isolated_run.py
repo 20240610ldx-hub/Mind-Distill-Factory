@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import harness  # noqa: E402
 import stage_runner as sr  # noqa: E402
+from workspace import Workspace  # noqa: E402
 
 PROMPT = "读取 output/demo/briefs/extract.md 并严格按其执行，完成后报告检查点结果。"
 
@@ -67,12 +68,14 @@ class IsolatedArgvTests(unittest.TestCase):
 class CheckpointCommandTests(unittest.TestCase):
     def test_checkpoint_argv_uses_repo_scripts_and_given_python(self):
         argv = harness.checkpoint_argv("python scripts/task_status.py summary sources/{slug}/x.json", "demo",
-                                       code_root=Path("C:/repo"), python="py")
-        self.assertEqual(argv, ["py", "C:/repo/scripts/task_status.py", "summary", "sources/demo/x.json"])
+                                       code_root=ROOT, python="py")
+        self.assertEqual(argv, ["py", f"{ROOT.as_posix()}/scripts/task_status.py", "summary", "sources/demo/x.json"])
 
     def test_runner_checkpoint_uses_the_shared_rendering(self):
-        with tempfile.TemporaryDirectory() as td, mock.patch.object(harness, "checkpoint_argv",
-                                                                    wraps=harness.checkpoint_argv) as spy:
+        # 简报里给执行者的命令与 mdf run 自己跑的检查点，都由工作区的同一个方法改写
+        original = Workspace.checkpoint_argv
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(Workspace, "checkpoint_argv", autospec=True,
+                                                                    side_effect=original) as spy:
             sr._checkpoint("python scripts/mdf.py stages", "demo", Path(td))
         spy.assert_called_once()
 

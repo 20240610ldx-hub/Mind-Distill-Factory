@@ -22,6 +22,10 @@ from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
+    sys.path.insert(0, _SCRIPTS_DIR)
+from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 try:
     from pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr
@@ -108,8 +112,8 @@ class Segment:
 
 
 def repo_root() -> Path:
-    """数据根目录：环境变量 MDF_DATA_ROOT 优先（mdf 的 --root 与测试用），否则仓库根。"""
-    return Path(os.environ.get("MDF_DATA_ROOT") or Path(__file__).resolve().parents[1])
+    """数据根目录：MDF_DATA_ROOT 优先（mdf 的 --root 与测试用），否则仓库根（规则见 workspace.py）。"""
+    return data_root()
 
 
 def raw_dir(slug: str) -> Path:

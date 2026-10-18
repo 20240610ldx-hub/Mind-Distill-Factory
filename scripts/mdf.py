@@ -34,6 +34,10 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Any, Callable
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
+    sys.path.insert(0, _SCRIPTS_DIR)
+from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -73,7 +77,7 @@ def _delegate(module: str, argv: list[str], cwd: Path | None = None) -> int:
 
 
 def _data_root(arg: str | None) -> Path:
-    return Path(arg or os.environ.get("MDF_DATA_ROOT") or CODE_ROOT).resolve()
+    return data_root(arg)
 
 
 def _print_json(data: Any) -> None:

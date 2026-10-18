@@ -22,6 +22,10 @@ import sys
 import zlib
 from pathlib import Path
 from typing import Any, Iterable
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
+    sys.path.insert(0, _SCRIPTS_DIR)
+from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 SCHEMA = "cleaning-report-v1"
 CODE_ROOT = Path(__file__).resolve().parent.parent
@@ -574,7 +578,7 @@ def main(argv: list[str] | None = None) -> int:
               f"{args.path.name}: {entry['verdict']} {entry['reasons'] or entry['flags'] or ''} 编码 {entry['encoding']}")
         return 1 if entry["verdict"] == "rejected" else 0
 
-    root = Path(args.root or os.environ.get("MDF_DATA_ROOT") or CODE_ROOT).resolve()
+    root = data_root(args.root)
     path = root / "sources" / args.slug / "processed" / "cleaning_report.json"
     if not path.exists():
         print(f"还没有清洗报告：先运行 python scripts/mdf.py index {args.slug}", file=sys.stderr)

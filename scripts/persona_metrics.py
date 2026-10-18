@@ -25,6 +25,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
+    sys.path.insert(0, _SCRIPTS_DIR)
+from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
 LEDGER_SCHEMA = "claim-ledger-v1"
@@ -548,7 +552,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fail-on-flags", action="store_true", help="有关注项时返回 1（给 CI 用）")
     args = parser.parse_args(argv)
 
-    root = Path(args.root or os.environ.get("MDF_DATA_ROOT") or CODE_ROOT).resolve()
+    root = data_root(args.root)
     package_dir = root / ("gallery" if args.published else "output") / args.slug
     if not (package_dir / "SKILL.md").exists():
         print(f"找不到 {package_dir / 'SKILL.md'}", file=sys.stderr)
