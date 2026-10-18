@@ -162,8 +162,9 @@ flowchart LR
 | 加载 | 仓库根目录 `claude --plugin-dir .` | 仓库根目录启动，自动扫描 `.agents/skills` | 同 Codex |
 | 编排入口 | `/mind-distill-factory:distill <人物>` | `$mdf-distill <人物>` | `/skill:mdf-distill <人物>` |
 | 规则来源 | `CLAUDE.md` | `AGENTS.md`（编排 skill 声明以 `CLAUDE.md` 为准） | `AGENTS.md` + `CLAUDE.md` |
-| agent 步骤 | 原生子代理（`agents/*.md`） | `mdf brief` + `codex exec` 新进程 | `mdf brief` + `pi -p` 新进程 |
-| 进度标签 | 桌面版章节工具 | H2 兜底标题 | H2 兜底标题 |
+| agent 步骤 | 原生子代理（`agents/*.md`），或 `mdf run --harness claude-code` | `mdf run --harness codex`（`codex exec` 新进程） | `mdf run --harness pi`（`pi -p` 新进程） |
+| 进度标签 | 桌面版章节工具 `mcp__ccd_session__mark_chapter` | H2 兜底标题 | H2 兜底标题 |
+| 叙述与面板 | 阶段卡 `mdf next --card`、进度条、`mdf status --html` 面板 | 同左 | 同左 |
 
 完整说明、核对来源与已知限制见 [harness 适配](harnesses.md)；`python scripts/mdf.py harness` 现场检测本机装了哪些 harness、适配文件是否就位。
 
@@ -173,11 +174,12 @@ agent 步骤在不同 harness 里走不同的路，交付物却一样：
 flowchart LR
     N["mdf status / next<br/><small>下一步是 agent 步骤</small>"] --> Q{"harness 有子代理？"}
     Q -- 有 --> SA["子代理执行<br/><small>agents/&lt;role&gt;.md</small>"]
-    Q -- 没有 --> B["mdf brief &lt;slug&gt;<br/><small>写 output/&lt;slug&gt;/briefs/&lt;step&gt;.md</small>"]
-    B --> P["新进程执行简报<br/><small>codex exec / pi -p / claude -p</small>"]
+    Q -- 没有 --> B["mdf run &lt;slug&gt; --harness …<br/><small>阶段卡 → 计划；--yes 后写简报</small>"]
+    B --> P["新进程执行简报<br/><small>codex exec / pi -p / claude -p · 心跳 · 日志</small>"]
     SA --> F["产物写入 output/ 或 processed/"]
     P --> F
     F --> V["mdf validate &lt;stage&gt;<br/><small>检查点</small>"]
+    V --> R["结果行 + 进度条<br/><small>runs.jsonl → mdf status --html</small>"]
 ```
 
 简报自足：角色定义全文、slug、当前状态、规则、检查点都在一个文件里，新进程不需要任何对话历史。这也是 Stage 5「不得自审」在没有子代理的 harness 里也能做到的原因：审查在一个从没见过生成过程的进程里进行。

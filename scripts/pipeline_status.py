@@ -315,7 +315,7 @@ def _stage_attachments(ctx: "Ctx") -> StageStatus:
     else:
         status.state = "in_progress" if present else "pending"
         status.detail = "缺少 " + "、".join(n for n in REQUIRED_REFS if n not in present)
-        status.next_action = "派发 case-builder / evidence-carder（Stage 4.5）"
+        status.next_action = "派发 case-builder / evidence-carder，再由 skill-assembler 续写 voice.md 并回写案例索引（Stage 4.5）"
     return status
 
 
@@ -511,6 +511,154 @@ def to_markdown(slug: str, stages: list[StageStatus], tree: dict | None = None) 
     else:
         lines.append(f"**下一步（{nxt.chapter.get('title', '')} / {nxt.title}）：** {nxt.next_action or nxt.detail}")
     return "\n".join(lines) + "\n"
+
+
+# ── 叙述节奏：进度条、阶段卡、可视化面板 ──────────────────────────────
+# 试跑反馈：只有底层命令滚动，用户找不到「现在在哪一阶段、这一步为什么、过没过闸门」。
+# 编排者在每个阶段开头贴阶段卡、结尾贴进度条；面板给阶段边界做全局视图。
+
+PROGRESS_MARKS = {"done": "▰", "in_progress": "◐", "failed": "✖", "blocked": "⛔"}
+
+
+def progress_bar(stages: list[StageStatus], tree: dict | None = None) -> str:
+    """一行进度：▶ 当前阶段、▰ 完成、◐ 部分完成、✖ 未通过、⛔ 受阻、▱ 未开始。"""
+    phases = phase_states(stages, tree)
+    nxt = next_stage(stages)
+    bar = "".join("▶" if nxt and p["id"] == nxt.phase and p["state"] not in ("failed", "blocked")
+                  else PROGRESS_MARKS.get(p["state"], "▱") for p in phases)
+    done = sum(p["state"] == "done" for p in phases)
+    return f"{bar} {done}/{len(phases)} · " + (nxt.chapter.get("title", "") if nxt else "全部完成")
+
+
+def render_card(slug: str, stages: list[StageStatus], tree: dict | None = None, step_key: str | None = None) -> str:
+    """阶段卡：进入一个阶段时贴给用户的几行——这一步做什么、怎么做、过哪道闸门、整体走到哪。"""
+    tree = tree or load_stage_tree()
+    target = next((s for s in stages if s.key == step_key), None) if step_key else next_stage(stages)
+    if target is None:
+        return f"**{slug}：全部完成。** {progress_bar(stages, tree)}\n"
+    phase = next(p for p in tree["phases"] if p["id"] == target.phase)
+    step = next(s for s in phase["steps"] if s["id"] == target.key)
+    who = "、".join(EXECUTOR_LABELS.get(e, e) for e in step["executor"].split("|"))
+    how = (f"`{step['command'].replace('{slug}', slug)}`" if step.get("command") else
+           f"agent：{step.get('agent', '')}（交给子代理；没有子代理的 harness 用 "
+           f"`python scripts/mdf.py run {slug} {step['id']} --harness <名称> --yes` 交给新进程）")
+    gate = step.get("checkpoint") or phase.get("checkpoint")  # 步骤自带的检查点优先
+    lines = [
+        tree["chapter_policy"]["fallback_heading"].format(order=phase["order"], title=phase["title"]),
+        "",
+        f"> {phase['chapter']['summary']}",
+        "",
+        f"- **这一步**：{step['title']}（{who}）——{target.next_action or target.detail or '按阶段树执行'}",
+        f"- **怎么做**：{how}",
+        f"- **闸门**：" + (f"`{gate.replace('{slug}', slug)}`" if gate else "本阶段没有确定性检查点，靠独立审查"),
+        f"- **进度**：{progress_bar(stages, tree)}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+HTML_STATE = {"done": ("完成", "ok"), "in_progress": ("进行中", "run"), "pending": ("待办", "todo"),
+              "failed": ("未通过", "bad"), "blocked": ("受阻", "bad"), "skipped": ("跳过", "skip")}
+
+
+def load_runs(root: Path, slug: str, limit: int = 20) -> list[dict[str, Any]]:
+    """mdf run 写下的运行记录（output/{slug}/runs/runs.jsonl），新的在前。"""
+    path = root / "output" / slug / "runs" / "runs.jsonl"
+    runs = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                runs.append(json.loads(line))
+            except ValueError:
+                continue
+    except OSError:
+        return []
+    return runs[::-1][:limit]
+
+
+def _cost(record: dict[str, Any]) -> str:
+    cost, turns = record.get("cost_usd"), record.get("turns")
+    parts = [f"${cost:.2f}" if isinstance(cost, (int, float)) else "", f"{turns} 轮" if turns else ""]
+    return " · ".join(p for p in parts if p) or "—"
+
+
+def render_html(slug: str, stages: list[StageStatus], tree: dict | None = None,
+                runs: list[dict[str, Any]] | None = None, generated_at: str = "") -> str:
+    """自包含的进度面板（mdf status --html）：左侧阶段轨对应对话里的章节，右侧逐阶段展开步骤、
+    闸门与下一步，底部是 mdf run 的运行记录。不引用任何外部资源，离线可开。"""
+    from html import escape
+
+    tree = tree or load_stage_tree()
+    phases = phase_states(stages, tree)
+    nxt = next_stage(stages)
+    done = sum(p["state"] == "done" for p in phases)
+    rail, sections = [], []
+    for phase, cfg in zip(phases, tree["phases"]):
+        label, cls = HTML_STATE.get(phase["state"], (phase["state"], "todo"))
+        current = " current" if nxt and nxt.phase == phase["id"] else ""
+        rail.append(f'<li class="{cls}{current}"><a href="#{phase["id"]}"><span class="dot"></span>'
+                    f'<span>{escape(phase["chapter"]["title"])}</span><em>{label}</em></a></li>')
+        rows = []
+        for s in (s for s in stages if s.phase == phase["id"]):
+            s_label, s_cls = HTML_STATE.get(s.state, (s.state, "todo"))
+            todo = f'<div class="next">下一步：{escape(s.next_action)}</div>' if s.next_action and s.state not in FINISHED else ""
+            rows.append(f'<tr><td>{escape(s.title)}</td><td><span class="badge {s_cls}">{s_label}</span></td>'
+                        f'<td>{escape(s.detail)}{todo}</td></tr>')
+        gate = cfg.get("checkpoint")
+        gate_html = f'<p class="gate">闸门：<code>{escape(gate.replace("{slug}", slug))}</code></p>' if gate else ""
+        sections.append(f'<section id="{phase["id"]}" class="{cls}{current}"><h2>{escape(phase["chapter"]["title"])}'
+                        f'<span class="badge {cls}">{label}</span></h2><p class="summary">{escape(phase["chapter"]["summary"])}</p>'
+                        f'<table><thead><tr><th>步骤</th><th>状态</th><th>说明</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
+                        f'{gate_html}</section>')
+    segments = "".join(f'<span class="seg {HTML_STATE.get(p["state"], ("", "todo"))[1]}" title="{escape(p["chapter"]["title"])}"></span>'
+                       for p in phases)
+    callout = (f'<div class="callout"><strong>下一步 · {escape(nxt.chapter.get("title", ""))} / {escape(nxt.title)}</strong>'
+               f'<p>{escape(nxt.next_action or nxt.detail)}</p></div>') if nxt else '<div class="callout ok"><strong>全部完成</strong></div>'
+    run_rows = "".join(
+        f'<tr><td>{escape(str(r.get("started_at", "")))}</td><td>{escape(str(r.get("step", "")))}</td>'
+        f'<td>{escape(str(r.get("harness", "")))}</td><td>{escape(str(r.get("seconds", "")))} 秒</td>'
+        f'<td>{escape(_cost(r))}</td>'
+        f'<td><span class="badge {"ok" if r.get("ok") else "bad"}">{"通过" if r.get("ok") else "未通过"}</span></td>'
+        f'<td>{escape(str(r.get("summary", "")))}</td></tr>' for r in runs or [])
+    runs_html = (f'<section><h2>运行记录（mdf run）</h2><table><thead><tr><th>开始</th><th>步骤</th><th>harness</th>'
+                 f'<th>用时</th><th>费用</th><th>结果</th><th>摘要</th></tr></thead><tbody>{run_rows}</tbody></table></section>') if run_rows else ""
+    rail_html, sections_html = "".join(rail), "".join(sections)
+    return f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escape(slug)} 流水线进度</title>
+<style>
+:root{{--bg:#f7f6f2;--card:#fff;--ink:#1f2328;--muted:#6a6f76;--line:#e3e1da;--ok:#2f7d4f;--run:#2c62c9;--bad:#b3392f;--todo:#b9b6ad;--skip:#8d8a82}}
+@media (prefers-color-scheme: dark){{:root:not([data-theme="light"]){{--bg:#16181c;--card:#1f2228;--ink:#e8e6e1;--muted:#9a9ea6;--line:#30343b;--ok:#5cb57f;--run:#6f9cf0;--bad:#e06c62;--todo:#545861;--skip:#7d8088}}}}
+:root[data-theme="dark"]{{--bg:#16181c;--card:#1f2228;--ink:#e8e6e1;--muted:#9a9ea6;--line:#30343b;--ok:#5cb57f;--run:#6f9cf0;--bad:#e06c62;--todo:#545861;--skip:#7d8088}}
+*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,"PingFang SC","Microsoft YaHei",sans-serif}}
+header{{padding:20px 16px 8px;max-width:1100px;margin:auto}}h1{{font-size:20px;margin:0 0 8px}}
+.bar{{display:flex;gap:4px;margin:6px 0}}.seg{{flex:1;height:8px;border-radius:4px;background:var(--todo)}}
+.seg.ok{{background:var(--ok)}}.seg.run{{background:var(--run)}}.seg.bad{{background:var(--bad)}}.seg.skip{{background:var(--skip)}}
+.meta{{color:var(--muted);font-size:13px}}
+.layout{{display:grid;grid-template-columns:220px 1fr;gap:20px;max-width:1100px;margin:auto;padding:8px 16px 40px}}
+nav ol{{list-style:none;margin:0;padding:0;position:sticky;top:12px;border-left:2px solid var(--line)}}
+nav li a{{display:flex;align-items:center;gap:8px;padding:6px 10px;color:inherit;text-decoration:none;font-size:14px}}
+nav li em{{margin-left:auto;font-style:normal;color:var(--muted);font-size:12px}}
+.dot{{width:10px;height:10px;border-radius:50%;background:var(--todo);margin-left:-16px;flex:none;border:2px solid var(--bg)}}
+li.ok .dot{{background:var(--ok)}}li.run .dot{{background:var(--run)}}li.bad .dot{{background:var(--bad)}}li.skip .dot{{background:var(--skip)}}
+li.current a{{font-weight:600}}
+section{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}}
+section.current{{border-color:var(--run)}}h2{{font-size:16px;margin:0 0 4px;display:flex;gap:8px;align-items:center}}
+.summary{{color:var(--muted);margin:0 0 8px;font-size:13px}}
+table{{width:100%;border-collapse:collapse;font-size:14px}}th,td{{text-align:left;padding:6px 4px;border-top:1px solid var(--line);vertical-align:top}}
+th{{color:var(--muted);font-weight:500}}td:first-child{{white-space:nowrap}}
+.badge{{font-size:12px;padding:1px 8px;border-radius:10px;background:var(--todo);color:#fff;white-space:nowrap}}
+.badge.ok{{background:var(--ok)}}.badge.run{{background:var(--run)}}.badge.bad{{background:var(--bad)}}.badge.skip{{background:var(--skip)}}
+.next{{color:var(--run);font-size:13px;margin-top:2px}}.gate{{font-size:13px;color:var(--muted);margin:8px 0 0}}
+code{{font-size:12px;background:var(--bg);padding:1px 4px;border-radius:4px;word-break:break-all}}
+.callout{{border-left:4px solid var(--run);background:var(--card);padding:10px 14px;border-radius:6px;margin:10px 0}}
+.callout.ok{{border-color:var(--ok)}}.callout p{{margin:4px 0 0}}
+@media (max-width:720px){{.layout{{grid-template-columns:1fr}}nav ol{{position:static}}td:first-child{{white-space:normal}}}}
+</style></head><body>
+<header><h1>{escape(slug)} · 流水线进度</h1><div class="bar">{segments}</div>
+<div class="meta">{done}/{len(phases)} 个阶段完成 · {escape(generated_at)} · 由 python scripts/mdf.py status {escape(slug)} --html 生成</div>{callout}</header>
+<div class="layout"><nav><ol>{rail_html}</ol></nav><main>{sections_html}{runs_html}</main></div>
+</body></html>
+"""
 
 
 def render_tree(tree: dict | None = None) -> str:

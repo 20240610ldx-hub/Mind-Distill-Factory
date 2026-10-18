@@ -18,17 +18,18 @@ description: >-
 
 ## 每个阶段
 
-- **进入新阶段先打标签。** harness 有章节工具就调用；没有就输出一行 H2，例如 `## 阶段 2 · 原则提取`（`python scripts/mdf.py stages` 列出全部阶段）。同一阶段内不再重复。
-- **脚本步骤**：照 `python scripts/mdf.py next <slug>` 给出的命令执行。
-- **agent 步骤**：先跑 `python scripts/mdf.py brief <slug>`，生成任务简报（角色定义、输入输出、检查点），再：
-  - harness 有子代理，就把简报交给子代理；
-  - 没有子代理，就用新进程执行，命令由 `brief` 打印出来，例如 Codex 用 `codex exec --sandbox workspace-write "读取 <简报> 并严格按其执行…"`，pi 用 `pi -p "…"`；
-  - 分片抽取这类可以拆开的活，可以同时起多个进程。
-- **检查点**：每个阶段结束都跑 `python scripts/mdf.py validate <stage> <slug>`；不通过就不进入下一阶段，修好再跑。
+每个阶段按三拍说话，全程中文（细则见 `commands/distill.md`「叙述节奏」）：
+
+1. **开场**：先打章节标签。harness 有章节工具就调用；没有就输出一行 H2，例如 `## 阶段 2 · 原则提取`。然后把 `python scripts/mdf.py next <slug> --card` 的阶段卡原样贴给用户。同一阶段内不再重复。
+2. **过程**：
+   - **脚本步骤**：照阶段卡或 `python scripts/mdf.py next <slug>` 给出的命令执行。
+   - **agent 步骤**：harness 有子代理，就把 `python scripts/mdf.py brief <slug>` 生成的简报交给子代理。没有子代理，就用 `python scripts/mdf.py run <slug> --harness <codex|pi>` 交给新进程：它先打印计划，用户同意后加 `--yes` 执行，运行中自带心跳和日志，不要自己写轮询循环。分片抽取这类可以拆开的活，可以同时起多个进程。
+   - 只在有新信息时开口，每次一两句。
+3. **收尾**：每个阶段结束都跑 `python scripts/mdf.py validate <stage> <slug>`，不通过就不进入下一阶段，修好再跑。然后贴一行结果（闸门、产物、下一步）和进度条。`python scripts/mdf.py status <slug> --html` 生成可视化面板，把路径告诉用户。
 
 ## 不可违反
 
-- Stage 5 审查必须在独立上下文里做（子代理或新进程跑 `mdf brief <slug> review`），编排者不得自己审自己。
+- Stage 5 审查必须在独立上下文里做（子代理，或 `python scripts/mdf.py run <slug> review --harness <名称> --yes`），编排者不得自己审自己。
 - 权利声明（`sources/<slug>/rights.json`）、在世人物是否蒸馏、是否发布，都要问用户，不能替用户决定。依据见 `docs/ethics-and-legal.md`。
 - 不要自己爬网页：采集原典只用 `python scripts/mdf.py acquire`。
 - 不往仓库外写文件。发布用 `python scripts/mdf.py publish`；要装进 harness 的技能目录，用 `python scripts/mdf.py harness plan <slug> --target <harness>` 打印命令，交给用户执行。

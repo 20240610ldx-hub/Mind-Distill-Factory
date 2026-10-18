@@ -103,6 +103,15 @@ def _norm_line(line: str) -> str:
     return re.sub(r"\d+", "#", line.strip())
 
 
+# OCR 常把页码两边的短横认成「一」或认丢一边（《熱風》：「-28一」「13-」「一81一」），
+# 逐字比较时这些变体各自凑不够页数。页边行只有数字和横线时，一律按「页码」计数。
+PDF_PAGE_NO_RE = re.compile(r"^[\s\-–—一_.·]*\d{1,4}[\s\-–—一_.·]*$")
+
+
+def _head_key(line: str) -> str:
+    return "#页码" if PDF_PAGE_NO_RE.match(line) else _norm_line(line)
+
+
 def text_metrics(text: str) -> dict[str, Any]:
     chars = _non_space(text)
     cjk = len(CJK_RE.findall(text))
@@ -354,7 +363,7 @@ def clean_pdf_pages(pages: list[str], ocr: dict[str, Any] | None = None) -> tupl
     with_text = [lines for lines in page_lines if any(ln.strip() for ln in lines)]
     counts: dict[str, int] = {}
     for lines in with_text:
-        for key in {_norm_line(ln) for ln in edges(lines) if len(_norm_line(ln)) <= 60}:
+        for key in {_head_key(ln) for ln in edges(lines) if len(_norm_line(ln)) <= 60}:
             counts[key] = counts.get(key, 0) + 1
     floor = max(t["pdf_head_min_pages"], t["pdf_head_share"] * len(with_text))
     heads = {k for k, n in counts.items() if n >= floor}
@@ -363,7 +372,7 @@ def clean_pdf_pages(pages: list[str], ocr: dict[str, Any] | None = None) -> tupl
             edge_set = set(edges(lines))
             kept = []
             for ln in lines:
-                if ln in edge_set and _norm_line(ln) in heads:
+                if ln in edge_set and _head_key(ln) in heads:
                     cleaner.record("pdf_running_head_lines", [ln])
                 else:
                     kept.append(ln)
