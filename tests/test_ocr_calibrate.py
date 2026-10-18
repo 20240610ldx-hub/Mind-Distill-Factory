@@ -55,10 +55,21 @@ class MetricTests(unittest.TestCase):
         self.assertLess(row["sentences_verbatim"], row["sentences"])
         self.assertTrue(row["lost_sentences"])
 
+    def test_sample_pages_avoid_covers(self):
+        self.assertEqual(oc.sample_pages(100, 3), [25, 50, 75])
+        self.assertEqual(oc.sample_pages(2, 3), [1, 2])
+        self.assertEqual(oc.sample_pages(5, 1), [2])
+
     def test_truth_file_splits_pages(self):
         pages = oc.load_truth()
-        self.assertEqual(len(pages), 3)
+        self.assertEqual(len(pages), 8)
         self.assertTrue(all(pages))
+        sentences = sum(oc.page_metrics(p, p)["sentences"] for p in pages)
+        self.assertGreaterEqual(sentences, 50, "样张太小，阈值就是在三五句话上调出来的")
+
+    def test_english_sentences_split_on_full_stop_not_decimals(self):
+        row = oc.page_metrics("Version 2.0 lists 3.32M tokens. We are met on a great field.", "")
+        self.assertEqual(row["sentences"], 2)
 
 
 class EngineCacheTests(unittest.TestCase):
@@ -120,6 +131,34 @@ class SyntheticScanTests(unittest.TestCase):
         self.assertEqual(report["ocr_ok"], 2)
         self.assertEqual([r["ocr_status"] for r in report["pages"]], ["ok", "ok"])
         self.assertEqual({r["backend"] for r in report["pages"]}, {"fake"})
+
+    def test_scan_reads_selected_pages_from_the_original_file(self):
+        # 拷进临时 PDF 再渲染，分层压缩的扫描件会变图：抽页必须在原文件上读，导出的图就是 OCR 读的那张
+        seen: list[bytes] = []
+        oc.pdf_quality.register_runner("fake", lambda image: (seen.append(image), ("文字", 0.97))[1])
+        calls = []
+        real = oc.lsp.extract_pdf_pages
+
+        def spy(path, **kwargs):
+            calls.append((Path(path), kwargs.get("page_numbers")))
+            return real(path, **kwargs)
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(oc.lsp, "extract_pdf_pages", spy):
+            pdf = oc.build_pdf([oc.render_page(t, None) for t in TRUTH + TRUTH[:1]], Path(td) / "scan.pdf")
+            report = oc.scan(pdf, "fake", "2", Path(td) / "out")
+            exported = (Path(td) / "out" / "p0002.png").read_bytes()
+        self.assertEqual(calls, [(pdf, [2])])
+        self.assertEqual([r["page"] for r in report["pages"]], [2])
+        self.assertEqual(report["pages_in_file"], 3)
+        self.assertEqual(seen, [exported])
+
+    def test_extract_pdf_pages_subset_keeps_page_numbers(self):
+        oc.pdf_quality.register_runner("fake", lambda image: ("文字", 0.97))
+        with tempfile.TemporaryDirectory() as td:
+            pdf = oc.build_pdf([oc.render_page(t, None) for t in TRUTH + TRUTH[:1]], Path(td) / "scan.pdf")
+            pages, meta = oc.lsp.extract_pdf_pages(pdf, ocr_backend="fake", page_numbers=[3, 1, 9])
+        self.assertEqual([p["page_number"] for p in pages], [3, 1])
+        self.assertEqual((meta["page_count"], meta["ocr_page_count"]), (3, 2))
 
     def test_degrade_levels_render(self):
         for level in oc.DEGRADE:
@@ -296,7 +335,37 @@ class LineLayoutTests(unittest.TestCase):
         text, conf, details = oc.pdf_quality.summarize_lines(lines)
         self.assertEqual(text, "星期日的早晨我揭去一張隔夜的日曆\n管")
         self.assertAlmostEqual(conf, (0.95 + 0.6) / 2)
-        self.assertEqual(details, {"layout": "vertical", "lines": 2, "dropped_lines": 1, "short_lines": 1})
+        self.assertEqual(details, {"layout": "vertical", "lines": 2, "dropped_lines": 1, "short_lines": 1,
+                                   "undetected_lines": 0})
+
+    def test_dropped_box_widened_by_glosses_counts_by_page_glyph_size(self):
+        # 《四書経筵直解》p12：経文夹小字音注，框被撑到 1.4 倍宽，按自身短边只有 3.9 字，按本页字号是 5.5 字
+        body = [column(1000 - 50 * k, 0, "繼續熙是光明敬止是無不敬而安所") for k in range(4)]
+        widened = (box(760, 0, 56, 220), "洪結竹猗猗", 0.475)
+        title = column(640, 0, "大學", w=120)                     # 大字号章题：2 字占 2 格，不算只认出一半
+        seal = (box(560, 300, 72, 210), "高表", 0.34)               # 《吶喊》p141 的「圖書」馆藏印：1.8 字宽，不是正文
+        stamp = (box(520, 900, 49, 165), "CDI", 0.35)               # 《吶喊》p61 的「國家」印：只 1.2 字宽，但读不出汉字
+        _text, _conf, details = oc.pdf_quality.summarize_lines(body + [widened, title, seal, stamp])
+        self.assertEqual((details["dropped_lines"], details["short_lines"]), (1, 0))
+
+    def test_undetected_columns_are_inferred_from_column_gaps(self):
+        # 《大學中庸》国图本 p20：透墨的列根本没被框出来，只能从列距推
+        pitch = 50
+        detected = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in (0, 1, 2, 9, 10)]
+        self.assertEqual(oc.pdf_quality.undetected_columns(detected), 6, "第 2 与第 9 列之间缺 6 列")
+        regular = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in range(6)]
+        self.assertEqual(oc.pdf_quality.undetected_columns(regular), 0)
+        blank = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in (0, 1, 3, 4)]
+        self.assertEqual(oc.pdf_quality.undetected_columns(blank), 0, "单个空列是分段或章题，不算漏检")
+        self.assertEqual(oc.pdf_quality.undetected_columns(detected[:2]), 0, "少于 3 列不推算")
+        # 《鲁迅入门读本》p100：章题「十一」前后各空一列，短框也占位，不算漏检
+        heading = [column(1000 - pitch * k, 0, "君子之道費而隱夫婦之愚") for k in (0, 1, 2, 6, 7, 8)]
+        heading.append(column(1000 - pitch * 4, 0, "十一"))
+        self.assertEqual(oc.pdf_quality.undetected_columns(heading), 0)
+        heading.append((box(700, -60, 200, 30), "第三編 閱讀魯迅", 0.99))  # 横排页眉不占列位
+        self.assertEqual(oc.pdf_quality.undetected_columns(heading), 0)
+        page = oc.pdf_quality.summarize_lines(detected)[2]
+        self.assertEqual((page["undetected_lines"], oc.pdf_quality.suspect_count(page)), (6, 6))
 
     def test_latin_lines_are_not_mistaken_for_short(self):
         # 拉丁字母比字高窄，一行的字数总多于框的长宽比，不会误报
@@ -349,7 +418,7 @@ class OcrIntoIndexTests(unittest.TestCase):
         self.assertEqual(by_engine["good"]["verbatim_survival"], 1.0)
         self.assertLess(by_engine["bad"]["verbatim_survival"], 1.0)
         self.assertIn("ocr_garbled", by_engine["bad"]["gate_reasons"])
-        self.assertIn("| bad | none |", oc.render_calibration(report))
+        self.assertIn("| bad | builtin | 横排 | none |", oc.render_calibration(report))
 
     def test_ocr_pages_are_marked_in_shards(self):
         oc.pdf_quality.register_runner("fake", fake_engine(TRUTH))
@@ -363,6 +432,38 @@ class OcrIntoIndexTests(unittest.TestCase):
         self.assertIn("--- Page 1 (OCR) ---", text)
         self.assertTrue(all("ocr_text" in s.quality_flags for s in segments))
         self.assertTrue(oc.clean_corpus.PAGE_MARKER_RE.match("--- Page 1 (OCR) ---"), "清洗规则不得删掉 OCR 页码标记")
+
+    def test_vertical_layout_only_renders_cjk_pages(self):
+        oc.pdf_quality.register_runner("fake", lambda image: ("文", 0.97))
+        truth = [TRUTH[1], "Version 2.0 of the index lists 13 files and 86 shards."]
+        report = oc.calibrate(truth, font=None, degrades=["none"], fonts={"builtin": None},
+                              layouts=("horizontal", "vertical"))
+        pages = {lv["layout"]: lv["pages"] for lv in report["levels"]}
+        self.assertEqual(pages, {"horizontal": 2, "vertical": 1}, "英文页不竖排")
+        self.assertEqual({g["layout"] for g in oc.summarize_levels(report["levels"], "layout")},
+                         {"horizontal", "vertical"})
+
+    def test_vertical_render_and_overflow(self):
+        self.assertTrue(oc.render_page(TRUTH[0], None, layout="vertical").startswith(b"\x89PNG"))
+        with self.assertRaises(ValueError, msg="放不下就报错，不能悄悄截断真值"):
+            oc.render_page("字" * 5000, None, layout="vertical")
+        with self.assertRaises(ValueError):
+            oc.render_page("字" * 5000, None)
+
+    def test_survey_samples_each_pdf_and_reports_problems(self):
+        oc.pdf_quality.register_runner("fake", fake_engine(TRUTH, confidence=0.8))
+        with tempfile.TemporaryDirectory() as td:
+            oc.build_pdf([oc.render_page(t, None) for t in TRUTH * 3], Path(td) / "book.pdf")
+            (Path(td) / "broken.pdf").write_bytes(b"not a pdf")
+            report = oc.survey(Path(td), per_file=2)
+        by_file = {f["file"]: f for f in report["files"]}
+        self.assertIn("error", by_file["broken.pdf"])
+        book = by_file["book.pdf"]
+        self.assertEqual((book["pages_in_file"], book["sampled"], book["ocr_share"]), (6, [2, 4], 1.0))
+        self.assertIn("low_ocr_confidence", book["gate_flags"])
+        text = oc.render_survey(report)
+        self.assertIn("需要人看一眼的 2 份", text)
+        self.assertIn("打不开", text)
 
     def test_unread_lines_reach_the_shard_and_the_gate(self):
         def leaky(image):

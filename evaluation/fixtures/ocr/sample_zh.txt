@@ -12,3 +12,20 @@
 《张太岳集》卷三十八收录了相关奏疏，其中第12篇讨论驿递，第27篇讨论边备。
 Version 2.0 of the index lists 13 files, 86 shards and about 3.32M tokens.
 引文须与原图逐字核对：「天下之事，不难于立法，而难于法之必行。」
+---
+大學之道，在明明德，在親民，在止於至善。知止而後有定，定而後能靜，靜而後能安，安而後能慮，慮而後能得。物有本末，事有終始，知所先後，則近道矣。
+古之欲明明德於天下者，先治其國；欲治其國者，先齊其家；欲齊其家者，先脩其身；欲脩其身者，先正其心；欲正其心者，先誠其意；欲誠其意者，先致其知。致知在格物。
+---
+孫子曰：兵者，國之大事，死生之地，存亡之道，不可不察也。
+故經之以五事，校之以計，而索其情：一曰道，二曰天，三曰地，四曰將，五曰法。
+道者，令民與上同意也，故可以與之死，可以與之生，而不畏危。天者，陰陽、寒暑、時制也。地者，遠近、險易、廣狹、死生也。將者，智、信、仁、勇、嚴也。法者，曲制、官道、主用也。
+---
+今天晚上，很好的月光。我不见他，已是三十多年；今天见了，精神分外爽快。才知道以前的三十多年，全是发昏；然而须十分小心。不然，那赵家的狗，何以看我两眼呢？我怕得有理。
+今天全没月光，我知道不妙。早上小心出门，赵贵翁的眼色便怪：似乎怕我，似乎想害我。还有七八个人，交头接耳的议论我，又怕我看见。一路上的人，都是如此。
+---
+2023年第三季度，样本库共收录扫描书籍412种，其中竖排本占37.5%，影印古籍占12.1%。
+抽检的1280页中，有96页因印章、透墨或污渍漏掉了整列文字；这些页的平均置信度仍在0.9以上。
+第4章第2节的结论是：置信度不能代替逐字核对，抽样页必须导出原图，由人对照确认。
+---
+Four score and seven years ago our fathers brought forth on this continent, a new nation, conceived in Liberty, and dedicated to the proposition that all men are created equal.
+Now we are engaged in a great civil war, testing whether that nation, or any nation so conceived and so dedicated, can long endure. We are met on a great battle-field of that war.
