@@ -47,13 +47,23 @@ python scripts/mdf.py run <slug> [step] --harness codex          # 阶段卡 + �
 python scripts/mdf.py run <slug> [step] --harness codex --yes    # 用户同意后执行
 ```
 
-它先打印阶段卡，再生成简报、按 `config/harnesses.json` 的 `isolated_run` 起新进程（不经过 shell，提示词作为一个参数；`--model` 按各 harness 的 `model_flag` 传入）。运行中每 30 秒一行心跳：
+它先打印阶段卡，再生成简报，然后按 `config/harnesses.json` 的 `isolated_run` 起新进程。命令不经过 shell，提示词作为一个参数传入。`--model`、`--effort` 按各 harness 档案声明的参数传入（`model_flag`、`effort_flag`），都插在提示词前面：
+
+| | Claude Code | Codex | pi |
+|---|---|---|---|
+| 模型 | `--model` | `--model`（放在 `exec` 子命令里） | `--model` |
+| 推理强度 `--effort` | `--effort low…max` | 没有对应参数，指定了就报错 | `--thinking off…xhigh` |
+| 授权数据根 | `--add-dir`（放在命令末尾） | `--add-dir` | 不需要（没有目录沙箱） |
+
+数据根不在仓库里时（worktree 里没有私有语料，`MDF_DATA_ROOT` 指向别处），新进程的工作目录仍是仓库，额外授权它读写数据根。Claude Code 的 `--add-dir` 和 `--allowedTools` 一样是可变参数，所以放在末尾，不会吞掉提示词。简报这时多一条「路径约定」：`sources/…`、`output/…` 在数据根下，`scripts/…` 在仓库里。另附一条在本机能直接运行的检查点命令（先 cd 到数据根，脚本用仓库里的绝对路径）。`mdf run` 自己跑检查点时用的是同一套改写。
+
+运行中每 30 秒一行心跳：
 
 ```
   … 1分30秒 · 日志 12.4 KB · 新产物 3 个 · 最近输出：已写 shard_004_extracts.json
 ```
 
-结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`，例如审查步骤是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。Claude Code 的无头进程用 `--output-format json` 输出结果对象，结果行和运行记录里带上费用、轮数和缓存读取 token（墨子试跑 9 次调用合计 $6.04，大头是缓存读）；Codex、pi 的用量格式没有核实，不解析。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`，例如审查步骤是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-json 必须带 `--verbose`）。每行一个事件，心跳里的「最近」就是最后一次工具调用（如「Read shard_001.json」）。结束时的结果对象给出费用、轮数、缓存读取 token 和被拒的工具调用数，都写进结果行和运行记录。2026-10-18 用 Sonnet 5.5 实测时发现两点：一是改用流式之前，只用 `json` 要到进程结束才输出，心跳一直是「日志 0.0 KB」；二是结果对象的字段顺序不固定，以 `duration_api_ms` 起头，按 `{"type":"result"` 前缀去找会丢掉费用。所以现在逐行解析。墨子试跑 9 次调用合计 $6.04，大头是缓存读。Codex、pi 的用量格式没有核实，不解析。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
 
 ### 2. 章节标签与 H2 兜底：左侧的阶段轨
 

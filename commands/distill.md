@@ -72,7 +72,7 @@ python scripts/mdf.py brief {slug} [step]   # 只写简报 output/{slug}/briefs/
 3. 进程结束后报这一步的状态变化；本阶段的步骤全部完成时，再跑阶段检查点。
 4. 把结果追加到 `output/{slug}/runs/runs.jsonl`，可视化面板从这里读运行记录。
 
-新进程按量计费，所以不加 `--yes` 只打印计划。用户同意了这次运行，才加 `--yes`。
+新进程按量计费，所以不加 `--yes` 只打印计划。用户同意了这次运行，才加 `--yes`。用户指定了模型或推理强度时，加 `--model <模型>`、`--effort <强度>`（Codex 不支持 `--effort`，指定了会直接报错）。数据根不在仓库里时（`MDF_DATA_ROOT`），`mdf run` 会自动授权新进程访问数据根。
 
 Stage 5 审查必须这样做（或用真正的子代理），绝不能在编排者自己的上下文里审。各 harness 的入口与限制见 `docs/harnesses.md`。
 

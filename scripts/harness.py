@@ -22,10 +22,11 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
 PROFILES_SCHEMA = "harness-profiles-v1"
@@ -295,6 +296,14 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
         f"- 当前状态：{status.detail or '（无）'}",
         f"- 待办：{status.next_action or '按角色定义完成本步骤'}",
         f"- 依次扮演的角色：{'、'.join(roles)}（定义全文附在后面）",
+    ]
+    separate = root.resolve() != code_root.resolve()
+    if separate:  # worktree 里没有私有语料：数据根经 MDF_DATA_ROOT 指向别处
+        data, code = root.resolve().as_posix(), code_root.resolve().as_posix()
+        lines.append(f"- 路径约定：下文的 `sources/…`、`output/…` 都在数据根目录 `{data}` 下；"
+                     f"`scripts/…`、`agents/…`、`config/…` 在仓库 `{code}` 下。"
+                     "读写语料与产物用数据根下的绝对路径；跑命令先 cd 到数据根目录，脚本写仓库里的绝对路径。")
+    lines += [
         "",
         "## 规则",
         "",
@@ -309,6 +318,9 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
     checkpoint = step.get("checkpoint") or phase.get("checkpoint")
     if checkpoint:
         lines += ["", "## 完成标准", "", f"- 检查点：`{checkpoint.replace('{slug}', slug)}` 必须通过。"]
+        if separate:
+            runnable = shlex.join(checkpoint_argv(checkpoint, slug, code_root.resolve(), python="python"))
+            lines.append(f"- 在本机这样跑：`cd '{root.resolve().as_posix()}' && {runnable}`")
         if step.get("checkpoint_note"):
             lines.append(f"- 说明：{step['checkpoint_note'].replace('{slug}', slug)}")
     for role in roles:
@@ -326,10 +338,66 @@ def write_brief(slug: str, step_id: str, text: str, root: Path) -> Path:
     return path
 
 
-def launch_commands(brief_path: str, profiles: dict[str, Any], only: str | None = None) -> dict[str, str]:
-    prompt = f"读取 {brief_path} 并严格按其执行，完成后报告检查点结果。"
-    return {name: p["isolated_run"].replace("{prompt}", prompt)
-            for name, p in profiles["harnesses"].items() if only in (None, name)}
+def brief_prompt(brief_path: str) -> str:
+    return f"读取 {brief_path} 并严格按其执行，完成后报告检查点结果。"
+
+
+def _declared_flag(profile: dict[str, Any], key: str, what: str) -> str:
+    flag = profile.get(key)
+    if not flag:
+        raise SystemExit(f"{profile.get('label', '该 harness')} 没有配置 {key}，不能指定{what}")
+    return flag
+
+
+def isolated_argv(profile: dict[str, Any], executable: str, prompt: str, *, model: str | None = None,
+                  effort: str | None = None, data_dirs: Iterable[str] = (), usage: bool = False) -> list[str]:
+    """把 isolated_run 模板拆成新进程的 argv（不经过 shell，提示词原样作为一个参数）。
+
+    - 模型、推理强度是单值选项，插在提示词前面：codex 的 --model 在 exec 子命令里核实过，放到子命令前面没核实；
+    - 目录授权放在模板末尾：claude 的 --add-dir 与 --allowedTools 一样是可变参数，排在提示词前面会把它吞掉；
+      档案没有 data_dir_flag（pi 没有目录沙箱）就不加；
+    - usage=True 时追加 usage_flags（机器可读的结果与用量）。
+    """
+    tokens = shlex.split(profile["isolated_run"])
+    options: list[str] = []
+    if model:
+        options += [_declared_flag(profile, "model_flag", "模型"), model]
+    if effort:
+        options += [_declared_flag(profile, "effort_flag", "推理强度（effort）"), effort]
+    at = tokens.index("{prompt}")
+    argv = [executable, *tokens[1:at], *options, prompt, *tokens[at + 1:]]
+    if profile.get("data_dir_flag"):
+        for directory in data_dirs:
+            argv += [profile["data_dir_flag"], str(directory)]
+    if usage:
+        argv += list(profile.get("usage_flags") or [])
+    return argv
+
+
+def _quote(arg: str) -> str:
+    return arg if re.fullmatch(r"[\w@%+=:,./-]+", arg) else f'"{arg}"'
+
+
+def launch_commands(brief_path: str, profiles: dict[str, Any], only: str | None = None,
+                    data_dirs: Iterable[str] = ()) -> dict[str, str]:
+    """给人看、可复制的启动命令（bash、PowerShell 都认双引号）。"""
+    prompt = brief_prompt(brief_path)
+    commands = {}
+    for name, profile in profiles["harnesses"].items():
+        if only in (None, name):
+            executable = shlex.split(profile["isolated_run"])[0]
+            argv = isolated_argv(profile, executable, prompt, data_dirs=data_dirs)
+            commands[name] = " ".join(_quote(a) for a in argv)
+    return commands
+
+
+def checkpoint_argv(command: str, slug: str, code_root: Path = CODE_ROOT, python: str = sys.executable) -> list[str]:
+    """阶段树里写的检查点命令（相对仓库根）变成在数据根目录下可直接执行的 argv：
+    `python` 换成给定解释器，`scripts/*.py` 换成仓库里的绝对路径，其余参数（sources/… output/…）留给数据根解析。"""
+    tokens = shlex.split(command.replace("{slug}", slug))
+    if tokens and tokens[0] in ("python", "python3"):
+        tokens[0] = python
+    return [(code_root / t).as_posix() if t.startswith("scripts/") and t.endswith(".py") else t for t in tokens]
 
 
 # ── CLI ───────────────────────────────────────────────────────────────
@@ -377,7 +445,8 @@ def main(argv: list[str] | None = None) -> int:
     path = _display_path(write_brief(args.slug, step_id, text, root), CODE_ROOT)
     print(f"[OK] 简报已写入 {path}")
     print("在有子代理的 harness 里交给子代理执行；否则在新进程里执行（各 harness 的命令）：")
-    for name, command in launch_commands(path, load_profiles(), args.harness).items():
+    data_dirs = () if root == CODE_ROOT.resolve() else (root.as_posix(),)
+    for name, command in launch_commands(path, load_profiles(), args.harness, data_dirs).items():
         print(f"  {name}: {command}")
     return 0
 
