@@ -345,13 +345,13 @@ def validate_principles(slug: str) -> list[str]:
     if not output_dir.exists():
         return [f"MISSING_DIR: {output_dir}"]
 
-    principle_files = list(output_dir.glob("principles_*.json"))
+    principle_files = sorted(output_dir.glob("principles_*.json"))  # 排序：输出与目录顺序无关
     if not principle_files:
         return [f"NO_PRINCIPLES: {output_dir} (no principles_*.json)"]
 
     # 原则数以前没有下限，「少」不会被看见（鲁迅验收发现 8）。素材薄时宁少勿凑，所以只提醒；一条都没有才报错
     is_commentary = _load_sibling("build_framework_core").is_commentary
-    lo = PRINCIPLE_SCHEMA["target_per_file"][0]
+    target_lo = PRINCIPLE_SCHEMA["target_per_file"][0]
     total = thinker_total = 0
     for pf in principle_files:
         try:
@@ -360,8 +360,8 @@ def validate_principles(slug: str) -> list[str]:
             total += count
             if not is_commentary(data.get("source_type") or pf.stem.replace("principles_", "")):
                 thinker_total += count
-                if 0 < count < lo:
-                    errors.append(f"WARNING: [原则候选偏少] {pf}: {count} 条 < 目标下限 {lo}（素材薄时宁少勿凑；确认不是漏提）")
+                if 0 < count < target_lo:
+                    errors.append(f"WARNING: [原则候选偏少] {pf}: {count} 条 < 目标下限 {target_lo}（素材薄时宁少勿凑；确认不是漏提）")
             for i, p in enumerate(data.get("principles", [])):
                 for field in PRINCIPLE_SCHEMA["required_fields"]:
                     if field not in p:

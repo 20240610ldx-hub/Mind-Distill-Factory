@@ -121,6 +121,8 @@ class PrincipleCount(InDataRoot):
         thin = [e for e in errors if "原则候选" in e]
         self.assertTrue(any("本人来源 6 条" in e and "8" in e for e in thin), errors)
         self.assertTrue(any("principles_primary_sources.json" in e and "2 条" in e for e in thin), errors)
+        # 每个偏少的文件都要报，与 glob 顺序无关（CI 上 Linux 与 Windows 的目录顺序不同，曾只报第一个）
+        self.assertTrue(any("principles_user_sources.json" in e and "4 条" in e for e in thin), errors)
         self.assertTrue(all(e.startswith("WARNING") for e in thin), "宁少勿凑：只提醒，不拦")
 
     def test_enough_candidates_are_quiet(self):
