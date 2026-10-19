@@ -90,6 +90,32 @@ class FrontmatterTests(unittest.TestCase):
         self.assertEqual(harness.parse_frontmatter("# 标题\n"), {})
 
 
+class ProgressSurfaceTests(unittest.TestCase):
+    """进度靠章节 + harness 原生任务清单；2026-10-19 GUI 验收时每阶段发一次 status.html，用户反馈多余。"""
+
+    PROTOCOL = ["commands/distill.md", ".agents/skills/mdf-distill/SKILL.md", "AGENTS.md"]
+
+    def test_protocol_does_not_ask_for_the_html_board(self):
+        for rel in self.PROTOCOL:
+            with self.subTest(file=rel):
+                self.assertNotIn("--html", (ROOT / rel).read_text(encoding="utf-8"))
+
+    def test_every_harness_declares_its_task_list(self):
+        profiles = harness.load_profiles()["harnesses"]
+        for name, profile in profiles.items():
+            with self.subTest(harness=name):
+                self.assertIsInstance(profile["tasks"]["native"], bool)
+                self.assertTrue(profile["tasks"]["how"])
+        self.assertEqual(profiles["claude-code"]["tasks"]["tools"], ["TaskCreate", "TaskUpdate"])
+
+    def test_orchestrators_name_the_task_tools(self):
+        distill = (ROOT / "commands" / "distill.md").read_text(encoding="utf-8")
+        for tool in ("TaskCreate", "TaskUpdate", "config/harnesses.json"):
+            self.assertIn(tool, distill)
+        skill = (ROOT / ".agents" / "skills" / "mdf-distill" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("任务清单", skill)
+
+
 class AdapterFileTests(unittest.TestCase):
     def test_repository_adapters_pass(self):
         checks = harness.adapter_checks()

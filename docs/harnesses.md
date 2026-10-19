@@ -65,7 +65,7 @@ python scripts/mdf.py run <slug> [step] --harness codex --yes    # 用户同意�
 
 结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`：分片抽取是 `task_status.py summary … --strict`，审查是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
 
-Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-json 必须带 `--verbose`）。每行一个事件，心跳里的「最近」就是最后一次工具调用（如「Read shard_001.json」）。结束时的结果对象给出费用、轮数、token、新进程是否又派了子代理、被拒的工具调用数，写进运行记录的 `usage` 字段；结果行和 `status --html` 的运行记录表都会显示，面板上还有合计费用。2026-10-18 用 Sonnet 5.5 实测时发现两点：一是改用流式之前，只用 `json` 要到进程结束才输出，心跳一直是「日志 0.0 KB」；二是结果对象的字段顺序不固定，以 `duration_api_ms` 起头，按 `{"type":"result"` 前缀去找会丢掉费用。所以现在逐行解析。墨子试跑 9 次调用合计 $6.04，大头是缓存读。Codex、pi 的用量格式没有核实，取不到就留空，不猜。
+Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-json 必须带 `--verbose`）。每行一个事件，心跳里的「最近」就是最后一次工具调用（如「Read shard_001.json」）。结束时的结果对象给出费用、轮数、token、新进程是否又派了子代理、被拒的工具调用数，写进运行记录的 `usage` 字段，结果行会显示（手动生成的 `status --html` 面板另有运行记录表和合计费用）。2026-10-18 用 Sonnet 5.5 实测时发现两点：一是改用流式之前，只用 `json` 要到进程结束才输出，心跳一直是「日志 0.0 KB」；二是结果对象的字段顺序不固定，以 `duration_api_ms` 起头，按 `{"type":"result"` 前缀去找会丢掉费用。所以现在逐行解析。墨子试跑 9 次调用合计 $6.04，大头是缓存读。Codex、pi 的用量格式没有核实，取不到就留空，不猜。
 
 **简报里还会带上的东西**（都来自 `config/pipeline_stages.json` 的步骤字段）：
 
@@ -77,20 +77,15 @@ Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-
 
 章节规则写在 `config/pipeline_stages.json` 的 `chapter_policy`：每进入一个阶段打一次标签。Claude 桌面版的章节工具是 `mcp__ccd_session__mark_chapter`（常列在 deferred 工具里，先用 ToolSearch 加载），调用后左侧出现可跳转的「阶段 N · 标题」；Codex、pi、终端输出同名的 H2 标题（如 `## 阶段 2 · 原则提取`），在长对话里可以搜索。Codex App 的长线程导航是按轮次跳转的，H2 标题落在对应那一轮里，同样能用。
 
-章节由编排者打。只要在驱动流水线，就算每一步都交给新进程、自己只是在等，也算编排者。墨子试跑没有打标签，原因是驱动会话把自己当成了「测试脚本」。现在 `commands/distill.md` 写明了这一点，还规定了每个阶段的三拍叙述：开场贴阶段卡（`mdf next <slug> --card`），过程只在有新信息时开口，收尾贴结果行和进度条。
+章节由编排者打。只要在驱动流水线，就算每一步都交给新进程、自己只是在等，也算编排者。墨子试跑没有打标签，原因是驱动会话把自己当成了「测试脚本」。现在 `commands/distill.md` 写明了这一点，还规定了每个阶段的三拍叙述：开场贴阶段卡（`mdf next <slug> --card`），过程只在有新信息时开口，收尾贴结果行。
 
-### 3. 状态面板 `mdf status`：不靠对话记忆
+**任务清单**：开场按阶段树每个 phase 建一项（标题与章节同名），进入时置进行中，闸门通过置完成。用的是 harness 原生的任务工具，写在 `config/harnesses.json` 的 `tasks`：Claude Code 是 `TaskCreate` / `TaskUpdate`（桌面版画在消息下方）；Codex 用自带的计划工具（工具名未在本机核实）；pi 没有核实到任务工具，每阶段收尾贴进度条代替。2026-10-19 的 GUI 验收里，编排者每个阶段收尾都发一次 HTML 面板，用户反馈多余：任务清单已经能显示进度。所以协议里不再生成、不再发送面板。
 
-`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度，表格末尾附一行进度条（▶ 当前、▰ 完成、◐ 部分完成、✖ 未通过、▱ 未开始）。`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读。中断后换一个 harness 接着做，进度不丢。
+### 3. 状态表 `mdf status`：不靠对话记忆
 
-`--html` 生成自包含的可视化面板 `output/<slug>/status.html`，不引用任何外部资源，离线可开，深浅色、手机宽度都适配。面板内容：
+`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度，表格末尾附一行进度条（▶ 当前、▰ 完成、◐ 部分完成、✖ 未通过、▱ 未开始）。`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读，恢复执行时编排者用它重建任务清单。中断后换一个 harness 接着做，进度不丢。
 
-- 左侧是阶段轨，与对话里的章节一一对应；
-- 右侧逐阶段列出步骤状态、说明、下一步和闸门命令；
-- 当前阶段高亮；
-- 底部是 `mdf run` 的运行记录。
-
-在 Claude 桌面版里，编排者用文件发送工具以渲染方式打开它；其他 harness 给出文件路径即可。
+`--html` 仍可手动生成自包含的离线面板 `output/<slug>/status.html`（阶段轨、步骤与闸门、`mdf run` 运行记录与合计费用），适合发给不在对话里的人看。它不在编排流程里。
 
 ## 安装已发布的技能
 

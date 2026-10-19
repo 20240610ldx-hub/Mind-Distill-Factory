@@ -20,9 +20,16 @@ argument-hint: <人物名/charactor name>
 
 ---
 
-## 进度可见性：章节标签与状态面板
+## 进度可见性：章节标签与任务清单
 
-阶段划分的唯一来源是 `config/pipeline_stages.json`（下文的 Stage 0–6 与其中的 phase 一一对应）。用户靠两样东西掌握进度：对话界面左侧的**章节**，和随时可调的**状态面板**。
+阶段划分的唯一来源是 `config/pipeline_stages.json`（下文的 Stage 0–6 与其中的 phase 一一对应）。用户靠两样东西掌握进度：对话界面左侧的**章节**，和 harness 原生的**任务清单**。不另做 HTML 面板，也不往对话里发进度文件：2026-10-19 的 GUI 验收里，每个阶段收尾都发一次 `status.html`，用户反馈多余，任务清单本身就能显示进度。
+
+**任务清单（开场建一次，之后只更新）**
+
+1. 开场、阶段 0 之前，按阶段树建清单：每个 phase 一项，标题用 `chapter.title`（与章节同名）。phase 列表与各自的状态取自 `python scripts/mdf.py status {slug} --json`，已完成的直接标为完成。
+2. 用 harness 原生的任务工具。Claude Code 是 `TaskCreate` 建项、`TaskUpdate` 改状态；桌面版（Code 标签页）如果在系统提示里给了自己的任务清单工具，就用那个，它画在消息下方。其他 harness 见 `config/harnesses.json` 的 `tasks`：Codex 用自带的计划工具；pi 没有任务工具，每阶段收尾贴 `mdf status {slug}` 末尾的进度条代替。
+3. 进入 phase 时置为进行中，闸门通过后置为完成。闸门不过就保持进行中，在该项描述里写清卡在哪。同一时刻只有一项进行中。
+4. phase 内的 step（分片抽取、3A/3B/3C 等）需要时作为子项追加，不另开章节。
 
 **章节标签（每个 phase 一次）**
 
@@ -41,19 +48,18 @@ argument-hint: <人物名/charactor name>
 
 墨子试跑的教训：没有章节、全是底层命令滚动，用户找不到现在在哪、这一步为什么、过没过闸门。每个 phase 都按这三拍说话，全程用中文：
 
-1. **开场**：打章节标签，然后贴阶段卡——`python scripts/mdf.py next {slug} --card` 的输出原样贴出（这一步做什么、怎么做、过哪道闸门、整体进度条）。
+1. **开场**：打章节标签，把任务清单里这一项置为进行中，然后贴阶段卡——`python scripts/mdf.py next {slug} --card` 的输出原样贴出（这一步做什么、怎么做、过哪道闸门、整体进度条）。
 2. **过程**：只更新任务清单。后台命令都写中文描述（如「阶段 1：新进程执行分片抽取」）。不写 `until [ -f … ]; do sleep …` 这类轮询循环：agent 步骤用 `mdf run`，它自己出心跳；等别的后台进程时用 harness 的后台运行与完成通知。中途只在有新信息时开口（产物出来了、失败了、需要用户拍板），每次一两句。
-3. **收尾**：贴一行结果——`mdf run` 最后打印的结果行，或自己写「闸门 `validate …` 通过/未通过 · 产物 … · 下一步 …」——再加 `mdf status {slug}` 末尾那行进度条。
+3. **收尾**：贴一行结果——`mdf run` 最后打印的结果行，或自己写「闸门 `validate …` 通过/未通过 · 产物 … · 下一步 …」——闸门通过就把任务清单里这一项置为完成。没有任务清单的 harness 再贴 `mdf status {slug}` 末尾那行进度条。
 
-**状态面板（每次进出 phase、以及用户问「到哪了」时）**
+**状态表（用户问「到哪了」、或恢复执行时）**
 
 ```bash
 python scripts/mdf.py status {slug}            # Markdown 表格 + 下一步 + 进度条
 python scripts/mdf.py status {slug} --check    # 同时跑各阶段确定性校验
-python scripts/mdf.py status {slug} --html     # 可视化面板 output/{slug}/status.html
 ```
 
-把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。可视化面板的左侧阶段轨与对话里的章节一一对应，右侧逐阶段列出步骤、闸门和下一步，底部是 `mdf run` 的运行记录。每个 phase 收尾时重新生成一次；在 Claude 桌面版里用文件发送工具以渲染方式打开它，其他 harness 告诉用户文件路径。
+用户问起时把 Markdown 表格贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。恢复执行时用它重建任务清单。
 
 **Agent 工具里没有该角色时（Claude 桌面 GUI）**
 

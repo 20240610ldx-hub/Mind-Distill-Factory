@@ -21,12 +21,13 @@ description: >-
 
 每个阶段按三拍说话，全程中文（细则见 `commands/distill.md`「叙述节奏」）：
 
-1. **开场**：先打章节标签。harness 有章节工具就调用；没有就输出一行 H2，例如 `## 阶段 2 · 原则提取`。然后把 `python scripts/mdf.py next <slug> --card` 的阶段卡原样贴给用户。同一阶段内不再重复。
+0. **整条流水线开始时**：用 harness 自带的任务清单工具（Codex 是计划工具）建一份阶段清单，每个阶段一项，标题与章节同名，取自 `python scripts/mdf.py status <slug> --json`。之后只更新它：进入阶段置进行中，闸门通过置完成。没有任务清单工具时，每阶段收尾贴进度条代替。
+1. **开场**：先打章节标签。harness 有章节工具就调用；没有就输出一行 H2，例如 `## 阶段 2 · 原则提取`。任务清单里这一项置为进行中。然后把 `python scripts/mdf.py next <slug> --card` 的阶段卡原样贴给用户。同一阶段内不再重复。
 2. **过程**：
    - **脚本步骤**：照阶段卡或 `python scripts/mdf.py next <slug>` 给出的命令执行。
    - **agent 步骤**：harness 有子代理，就把 `python scripts/mdf.py brief <slug>` 生成的简报交给子代理。没有子代理，就用 `python scripts/mdf.py run <slug> --harness <codex|pi>` 交给新进程：它先打印计划，用户同意后加 `--yes` 执行，运行中自带心跳和日志，不要自己写轮询循环。分片抽取这类可以拆开的活，可以同时起多个进程。
    - 只在有新信息时开口，每次一两句。
-3. **收尾**：每个阶段结束都跑 `python scripts/mdf.py validate <stage> <slug>`，不通过就不进入下一阶段，修好再跑。然后贴一行结果（闸门、产物、下一步）和进度条。`python scripts/mdf.py status <slug> --html` 生成可视化面板，把路径告诉用户。
+3. **收尾**：每个阶段结束都跑 `python scripts/mdf.py validate <stage> <slug>`，不通过就不进入下一阶段，修好再跑。然后贴一行结果（闸门、产物、下一步），把任务清单里这一项置为完成。不另做 HTML 面板。
 
 ## 不可违反
 
