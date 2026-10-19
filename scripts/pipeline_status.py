@@ -14,6 +14,7 @@
 import functools
 import importlib.util
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -369,24 +370,41 @@ def _stage_gates(ctx: "Ctx") -> StageStatus:
         status.detail = "legacy 包走 skill 阶段校验" if status.state == "skipped" else "等待核心层"
         return status
     if not ctx.check:
-        current = _sibling("gate_records").package_gate_current(ctx.root / "output" / ctx.slug)
+        records = _sibling("gate_records")
+        current = records.package_gate_current(ctx.root / "output" / ctx.slug)
         if current:
             status.state = "done"
-            status.detail = "上次校验通过，产物未改动（加 --check 重新校验）"
+            status.detail = ("上次校验通过，产物未改动（加 --check 重新校验）"
+                             + _coverage_hint(records.package_gate_notes(ctx.root / "output" / ctx.slug)))
             return status
         status.detail = ("上次校验后产物改过，需要重新校验" if current is False
                          else "未检查（加 --check 运行确定性闸门）")
         status.next_action = _cmd("validate", "package", ctx.slug)
         return status
-    errors = _hard(_validator().validate_package, ctx)
+    findings = _run(_validator().validate_package, ctx)
+    errors = [e for e in findings if not e.startswith("WARNING:")]
     if errors:
         status.state = "failed"
         status.detail = f"{len(errors)} 个错误：{errors[0][:80]}"
         status.next_action = _cmd("validate", "package", ctx.slug)
     else:
         status.state = "done"
-        status.detail = "P1–P6 与 M4 加固规则全部通过"
+        status.detail = "P1–P6 与 M4 加固规则全部通过" + _coverage_hint(findings)
     return status
+
+
+COVERAGE_RE = re.compile(r"P2_COVERAGE:.*?(\d+)/(\d+) 张证据卡")
+
+
+def _coverage_hint(lines: list[str]) -> str:
+    """P2 只逐字核对了部分证据卡时，在阶段卡上一直挂着（鲁迅验收发现 11）。不挡路：语料外的卡已封顶 medium。"""
+    for line in lines:
+        match = COVERAGE_RE.search(line)
+        if match:
+            verified, total = int(match.group(1)), int(match.group(2))
+            return (f"；但逐字核对只覆盖 {verified}/{total} 张证据卡，{total - verified} 张靠 textual_note 放行"
+                    "——征得用户同意后用 mdf acquire 把原典采进 raw/，再让 evidence-carder 改卡")
+    return ""
 
 
 def _stage_review(ctx: "Ctx") -> StageStatus:
@@ -430,6 +448,10 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
     review = (manifest.get("review") or {}).get("verdict", "无记录")
     status.state = "done"
     status.detail = f"已发布（manifest v{manifest.get('manifest_version')}，审查记录 {review}）"
+    p2 = (manifest.get("attestation") or {}).get("p2") or {}
+    verified, total = p2.get("cards_verified"), p2.get("cards_total")
+    if isinstance(verified, int) and isinstance(total, int) and verified < total:
+        status.detail += f"；逐字核对覆盖 {verified}/{total} 张证据卡，其余语料外、最高 medium"
     if ctx.check:
         hard = [e for e in _validator().validate_published(ctx.slug, ctx.root) if not e.startswith("WARNING:")]
         if hard:
@@ -470,16 +492,19 @@ def _validator() -> Any:
     return _sibling("validate_output")
 
 
-def _hard(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
-    """validate_output 的阶段函数按 cwd 解析路径，这里临时切到数据根目录。"""
+def _run(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
+    """validate_output 的阶段函数按 cwd 解析路径，这里临时切到数据根目录。返回错误与警告。"""
     import os
     cwd = os.getcwd()
     try:
         os.chdir(ctx.root)
-        errors = func(ctx.slug)
+        return func(ctx.slug)
     finally:
         os.chdir(cwd)
-    return [e for e in errors if not e.startswith("WARNING:")]
+
+
+def _hard(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
+    return [e for e in _run(func, ctx) if not e.startswith("WARNING:")]
 
 
 # ── 汇总与渲染 ────────────────────────────────────────────────────────

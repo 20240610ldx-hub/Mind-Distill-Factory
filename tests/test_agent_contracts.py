@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -216,6 +217,55 @@ class PrincipleCountConsistencyTests(unittest.TestCase):
             with self.subTest(agent=path.name):
                 self.assertIn("9-11", targets, f"{path.name}: no explicit 9-11 target statement found")
                 self.assertNotIn("5-8", targets, f"{path.name}: still states a 5-8 target")
+
+
+class PipelineWiringTests(unittest.TestCase):
+    """鲁迅验收修复要落到管线每个入口，而不只是校验器多一条警告。
+
+    `mdf run` / Codex / pi 的简报只拼角色定义（agents/*.md）和阶段树的 checkpoint_note，不读 distill.md；
+    Claude Code 编排者读 distill.md。两条路都得知道遇到这些信号该怎么走。
+    """
+
+    def setUp(self) -> None:
+        self.orchestrator = (ROOT / "commands" / "distill.md").read_text(encoding="utf-8")
+        self.carder = (ROOT / "agents" / "evidence-carder.md").read_text(encoding="utf-8")
+        self.reviewer = (ROOT / "agents" / "quality-reviewer.md").read_text(encoding="utf-8")
+        tree = json.loads((ROOT / "config" / "pipeline_stages.json").read_text(encoding="utf-8"))
+        self.steps = {s["id"]: s for phase in tree["phases"] for s in phase["steps"]}
+
+    def _section(self, heading: str) -> str:
+        match = re.search(rf"^### ✓ {heading}.*?(?=^## |^### )", self.orchestrator, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(match, heading)
+        return match.group(0)
+
+    def test_evidence_carder_knows_the_off_corpus_cap(self) -> None:
+        for code in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE"):
+            self.assertIn(code, self.carder)
+
+    def test_reviewer_reports_p2_coverage(self) -> None:
+        self.assertIn("P2_COVERAGE", self.reviewer)
+
+    def test_checkpoint_4_routes_the_new_signals(self) -> None:
+        section = self._section("检查点 4")
+        for code in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE"):
+            self.assertIn(code, section)
+        self.assertIn("合并", section)  # P6_TOO_LONG 先合并案例索引的行，再考虑减原则
+
+    def test_checkpoint_1_routes_fixable_shortfalls(self) -> None:
+        section = self._section("检查点 1")
+        self.assertIn("[可改善]", section)
+        self.assertIn("[不可改善]", section)
+
+    def test_checkpoint_2_routes_too_few_principles(self) -> None:
+        section = self._section("检查点 2")
+        self.assertIn("原则候选不足", section)
+
+    def test_briefs_carry_the_routing_for_each_harness(self) -> None:
+        self.assertIn("[可改善]", self.steps["reduce"].get("checkpoint_note", ""))
+        self.assertIn("原则候选不足", self.steps["principles"].get("checkpoint_note", ""))
+        note = self.steps["attachments"].get("checkpoint_note", "")
+        for needle in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE", "500"):
+            self.assertIn(needle, note)
 
 
 if __name__ == "__main__":

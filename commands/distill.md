@@ -350,6 +350,13 @@ python scripts/validate_output.py sources {slug}
 
 通过后进入 Stage 2。失败则检查子代理输出的 JSON 格式并修复。
 
+reduce 与本检查点的「语料偏薄」警告会带标签，按标签走：
+
+- `[可改善]`：还有分片没抽、只做了分层抽样，或有既非网络也非 OCR 的条目没标 high。先补——回子代理 A
+  把剩下的分片抽完，或复核这些条目的 confidence——再重跑本检查点。
+- `[不可改善]`：语料已经抽完，或条目按规则 6（网络来源）/ OCR 文本封顶 medium。这不是错误，不要为了消警告
+  去改 confidence。在阶段汇报里说一句这份语料的上限，列出能用 `mdf acquire` 补采的原典，由用户决定。
+
 ---
 
 ## Stage 2：原则提取
@@ -371,7 +378,13 @@ python scripts/validate_output.py sources {slug}
 python scripts/validate_output.py principles {slug}
 ```
 
-通过后进入 Stage 3。
+通过后进入 Stage 3。两类警告要先处理再走：
+
+- `[原则候选偏少]`：单个文件不到 6 条。先看这个文件的素材是不是本来就薄。
+- `[原则候选不足]`：本人来源的候选合计不到 8 条（评论者观点不计），Stage 3 拼不出 9–11 条原则。回看检查点 1
+  的标签：`[可改善]` 就回 Stage 1A 补抽；`[不可改善]` 就问用户要不要用 `mdf acquire` 补采原典。两条路都走不通，
+  才带着缺口进 Stage 3，并把理由写进 `output/{slug}/framework_alignment_review.md`。**不要拿评论者观点凑数**——
+  它们本来就不计入本人来源，凑进去只会让框架失真。
 
 ---
 
@@ -504,9 +517,11 @@ python scripts/validate_output.py package {slug}
 | 报错 | 处置 |
 |---|---|
 | `P2_NOT_IN_CORPUS` | 回 evidence-carder 改逐字引文；确属底本讹字则加 `textual_note` |
+| `P2_UNVERIFIED_HIGH` | 引文不在 `raw/`、只靠 textual_note 放行的卡标了 high：改成 medium（规则 6）；要保留 high，就征得用户同意后用 `mdf acquire` 把原典采进 `raw/`，再让 evidence-carder 改卡 |
+| `P2_COVERAGE`（警告） | 不挡路，`mdf status` 的包校验一行会一直显示覆盖率。在 Stage 6.1 的成品摘要里写明「逐字核对覆盖 X/Y 张」，并问用户要不要补采这些原典 |
 | `P4_TOO_FEW_CASES` | 回 case-builder 补该 cluster 的案例 |
 | `P5_INDEX_ORPHAN` / `P5_CASE_NOT_INDEXED` | 同步核心层索引与 cases.md |
-| `P6_TOO_LONG` | 减原则条数，不压深度 |
+| `P6_TOO_LONG` | 先把案例索引按原则合并成一行（见上方 Stage 4.5 的行数预算），仍超限再减原则条数，不压深度 |
 
 ---
 
@@ -548,7 +563,8 @@ python scripts/validate_output.py package {slug}
 
 - 人物基本信息（时代、门类）
 - 提取到的核心原则清单（仅标题）
-- 质量审查结论
+- 质量审查结论，以及 `distill_confidence`（低于 3 的进不了 gallery，见 `scripts/publish_skill.py` 的置信度门）
+- 逐字证据覆盖：包校验有 `P2_COVERAGE` 时写明「逐字核对覆盖 X/Y 张证据卡」，其余是语料外的卡，最高 medium
 - `output/{slug}/SKILL.md` 核心层预览（前 50 行）+ `references/` 下三个附件的文件清单
 
 ### 6.2 询问操作选择

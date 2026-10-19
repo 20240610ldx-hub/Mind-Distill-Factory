@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import sys
 import tempfile
@@ -72,6 +73,14 @@ class ValidateWritesTheRecord(PackageFixture):
         self.assertEqual(self.run_validate(["WARNING: 只是警告"]), 0)
         self.assertTrue(gr.package_gate_current(self.out))
 
+    def test_record_carries_the_coverage_line_forward(self):
+        # 发现 11 落到管线：覆盖率不能只在校验器输出里闪一下，状态表和阶段卡要一直看得见
+        coverage = "WARNING: P2_COVERAGE: evidence.md: 逐字核对覆盖 12/28 张证据卡；16 张…"
+        self.assertEqual(self.run_validate(["WARNING: 只是警告", coverage]), 0)
+        self.assertEqual(gr.package_gate_notes(self.out), [coverage.removeprefix("WARNING: ")])
+        (self.out / "SKILL.md").write_text(V6_SKILL + "改了\n", encoding="utf-8")
+        self.assertEqual(gr.package_gate_notes(self.out), [], "记录作废，附注一起作废")
+
 
 class StatusReadsTheRecord(PackageFixture):
     def gates(self):
@@ -88,6 +97,45 @@ class StatusReadsTheRecord(PackageFixture):
         self.assertEqual(step.state, "pending")
         self.assertIn("改过", step.detail)
         self.assertIn("validate package demo", step.next_action)
+
+    def test_status_shows_partial_coverage_without_check(self):
+        gr.record_package_gate(self.out, notes=["P2_COVERAGE: evidence.md: 逐字核对覆盖 12/28 张证据卡；…"])
+        step = self.gates()
+        self.assertEqual(step.state, "done", "覆盖不全是警告，不挡路")
+        self.assertIn("12/28", step.detail)
+        self.assertIn("mdf acquire", step.detail)
+
+    def test_status_shows_partial_coverage_with_check(self):
+        coverage = "WARNING: P2_COVERAGE: evidence.md: 逐字核对覆盖 3/5 张证据卡；…"
+        ctx = ps.Ctx(slug="demo", root=self.root, check=True)
+        ctx.is_v6 = True
+        with mock.patch.object(ps, "_validator") as validator:
+            validator.return_value.validate_package = lambda slug: [coverage]
+            step = ps._stage_gates(ctx)
+        self.assertEqual(step.state, "done")
+        self.assertIn("3/5", step.detail)
+
+
+class PublishShowsCoverage(PackageFixture):
+    """发布后看 gallery 那份包：manifest 的 P2 证明记着逐字覆盖几张，状态表的发布一行要说出来。"""
+
+    def publish_row(self, p2: dict):
+        gallery = self.root / "gallery" / "demo"
+        gallery.mkdir(parents=True)
+        pm = ps._sibling("package_manifest")
+        (gallery / pm.MANIFEST_NAME).write_text(json.dumps({
+            "manifest_version": pm.MANIFEST_VERSION, "attestation": {"p2": p2},
+            "review": {"verdict": "PASS"}}), encoding="utf-8")
+        return next(s for s in ps.collect_status("demo", self.root) if s.key == "publish")
+
+    def test_partial_coverage_is_named(self):
+        row = self.publish_row({"status": "pass", "cards_verified": 12, "cards_total": 28})
+        self.assertEqual(row.state, "done")
+        self.assertIn("12/28", row.detail)
+
+    def test_full_coverage_stays_quiet(self):
+        row = self.publish_row({"status": "pass", "cards_verified": 5, "cards_total": 5})
+        self.assertNotIn("逐字", row.detail)
 
 
 if __name__ == "__main__":

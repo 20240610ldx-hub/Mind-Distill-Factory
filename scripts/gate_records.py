@@ -18,6 +18,13 @@ from pathlib import Path
 
 RECORD_DIR = ".gates"
 PACKAGE_GATE = "package"
+# 闸门通过后仍要一路带到状态表、阶段卡的警告：P2 的逐字覆盖率（鲁迅验收发现 11——28 张卡只核对了 12 张，
+# 闸门却只说「通过」）。其余警告看校验器输出即可。
+CARRIED_CODES = ("P2_COVERAGE",)
+
+
+def carried_notes(warnings: list[str]) -> list[str]:
+    return [w.removeprefix("WARNING: ") for w in warnings if any(code in w for code in CARRIED_CODES)]
 
 
 def package_files(output_dir: Path) -> list[Path]:
@@ -38,7 +45,7 @@ def _record_path(output_dir: Path, gate: str) -> Path:
     return output_dir / RECORD_DIR / f"{gate}.json"
 
 
-def record_package_gate(output_dir: Path) -> Path:
+def record_package_gate(output_dir: Path, notes: list[str] | tuple[str, ...] = ()) -> Path:
     path = _record_path(output_dir, PACKAGE_GATE)
     path.parent.mkdir(parents=True, exist_ok=True)
     files = package_files(output_dir)
@@ -47,14 +54,30 @@ def record_package_gate(output_dir: Path) -> Path:
         "fingerprint": fingerprint(output_dir, files),
         "files": len(files),
         "passed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "notes": list(notes),
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     return path
 
 
-def package_gate_current(output_dir: Path) -> bool | None:
-    """None：没有通过记录；True：通过后产物没改过；False：通过后产物改过，要重新校验。"""
+def _current_record(output_dir: Path) -> dict | None:
     try:
         data = json.loads(_record_path(output_dir, PACKAGE_GATE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return isinstance(data, dict) and data.get("fingerprint") == fingerprint(output_dir, package_files(output_dir))
+    if not isinstance(data, dict) or data.get("fingerprint") != fingerprint(output_dir, package_files(output_dir)):
+        return None
+    return data
+
+
+def package_gate_current(output_dir: Path) -> bool | None:
+    """None：没有通过记录；True：通过后产物没改过；False：通过后产物改过，要重新校验。"""
+    if not _record_path(output_dir, PACKAGE_GATE).exists():
+        return None
+    return _current_record(output_dir) is not None
+
+
+def package_gate_notes(output_dir: Path) -> list[str]:
+    """通过记录带下来的附注；记录不存在或已作废时为空。"""
+    record = _current_record(output_dir)
+    notes = record.get("notes", []) if record else []
+    return [n for n in notes if isinstance(n, str)]

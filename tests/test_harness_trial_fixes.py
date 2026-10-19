@@ -80,8 +80,15 @@ class StepLevelCheckpoint(unittest.TestCase):
         self.assertIn("MISSING references/*", text)
 
     def test_steps_without_note_have_no_note_line(self):
-        _, text = harness.build_brief("demo", "reduce", self.root)
+        _, text = harness.build_brief("demo", "extract", self.root)
         self.assertNotIn("- 说明：", text)
+
+    def test_reduce_brief_routes_thin_corpus_labels(self):
+        # 鲁迅验收发现 6 落到管线：Codex / pi / 无头进程只看简报，[可改善] 与 [不可改善] 怎么走得写在简报里
+        _, text = harness.build_brief("demo", "reduce", self.root)
+        self.assertIn("- 说明：", text)
+        self.assertIn("[可改善]", text)
+        self.assertIn("[不可改善]", text)
 
     def test_attachments_brief_covers_voice_and_index_backfill(self):
         # voice.md 与案例索引回写由 skill-assembler 续写完成；简报里没有这个角色，附件阶段永远过不了 P3/P5。
