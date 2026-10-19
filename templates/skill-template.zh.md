@@ -221,5 +221,4 @@ AI 生成内容最大的特征不在单句，而在整体结构的机械均匀�
 {/repeat_block}
 
 蒸馏日期：{distill_date}
-质量审查：{review_status}
 门类：{primary_category_zh}，{secondary_categories_zh}

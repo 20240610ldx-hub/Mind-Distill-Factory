@@ -446,6 +446,7 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
         status.next_action = _cmd("publish", "--slug", ctx.slug)
         if not gallery.exists():
             status.detail = "尚未发布"
+            _confidence_gate_ahead(ctx, status)
         elif errors and errors[0].startswith("MANIFEST_OUTDATED"):
             status.state = "failed"
             status.detail = "已发布但 manifest 是旧版 v1（无构建期证明）"
@@ -469,6 +470,21 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
             status.detail = f"发布包校验 {len(hard)} 个错误：{hard[0][:80]}"
             status.next_action = _cmd("validate", "published", ctx.slug)
     return status
+
+
+def _confidence_gate_ahead(ctx: "Ctx", status: StageStatus) -> None:
+    """发布前就亮出置信度门（鲁迅 GUI 复验问题 2）：以前要等 mdf publish 报 BLOCKED 才知道，
+    可「补素材 / 接受不入 gallery / --force」是该先问用户的决定。门槛与判定都用 publish_skill 的那一份。"""
+    publisher = _sibling("publish_skill")
+    score = publisher.read_distill_confidence(ctx.root / "output" / ctx.slug)
+    allowed, _ = publisher.confidence_gate(score, False, "PASS")
+    if allowed or score is None:  # 读不到分数时，框架阶段还没做完，留给前面的阶段报
+        return
+    status.state = "blocked"
+    status.detail = f"尚未发布；distill_confidence={score} 低于质量门 3，发布会被拒（BLOCKED_LOW_CONFIDENCE）"
+    status.next_action = ("先用 AskUserQuestion 让用户选：补一手素材重跑 / 接受不入 gallery / "
+                          f"加 --force 发布（审查状态记 FORCED_LOW_CONFIDENCE，不算 PASS）——选了才运行 "
+                          f"{_cmd('publish', '--slug', ctx.slug)}")
 
 
 CHECKS: dict[str, Callable[["Ctx"], StageStatus]] = {

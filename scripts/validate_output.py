@@ -1118,6 +1118,21 @@ def check_line_endings(output_dir: Path) -> list[str]:
     return errors
 
 
+REVIEW_STATUS_LINE_RE = re.compile(r"^(?:质量审查|Quality review)\s*[:：].*$", re.MULTILINE)
+
+
+def check_review_status_line(skill_md: Path) -> list[str]:
+    """技能正文不带流水线状态：「质量审查：…」在 Stage 4 写下、审查在 Stage 5，这行生来过期
+    （鲁迅 GUI 复验问题 3；gallery 里已有「Pending」「待审」）。审查结论以 manifest / index.json 为准。"""
+    if not skill_md.exists():
+        return []
+    match = REVIEW_STATUS_LINE_RE.search(skill_md.read_text(encoding="utf-8"))
+    if not match:
+        return []
+    return [f"WARNING: PKG_REVIEW_STATUS_LINE: {skill_md}: 「{match.group(0)[:40]}」——审查在 Stage 5 才有结论，"
+            f"这行写在技能里必然过期；删掉，审查结论以 manifest 与 gallery/index.json 为准"]
+
+
 def validate_package(slug: str, strict: bool = False) -> list[str]:
     """构建期 v6 包校验（output/{slug}/）：结构 + P1–P6，P2 现场比对语料。
 
@@ -1153,6 +1168,7 @@ def validate_package(slug: str, strict: bool = False) -> list[str]:
 
     errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
     errors.extend(check_line_endings(output_dir))
+    errors.extend(check_review_status_line(skill_md))
     card = _load_sibling("publish_skill").extract_v6_metadata(skill_md)
     errors.extend(check_classification(slug, root, card["primary_category"], card["secondary_categories"],
                                        skill_md, where="身份卡"))
