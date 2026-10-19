@@ -67,6 +67,30 @@ class MetricTests(unittest.TestCase):
         sentences = sum(oc.page_metrics(p, p)["sentences"] for p in pages)
         self.assertGreaterEqual(sentences, 50, "样张太小，阈值就是在三五句话上调出来的")
 
+    def test_double_line_notes_lay_out_right_then_left(self):
+        # 刻本双行小注：大字读到小注处，先读右小列再读左小列，一列放不下接到下一列，仍是先右后左
+        self.assertEqual(oc.layout_vertical("甲乙〔一二三四五〕丙", rows=4), [
+            (0, 0, 0, "甲"), (0, 1, 0, "乙"),
+            (0, 2.0, 1, "一"), (0, 2.5, 1, "二"), (0, 3.0, 1, "三"), (0, 2.0, 2, "四"), (0, 2.5, 2, "五"),
+            (1, 0, 0, "丙")])
+        self.assertEqual(oc.layout_vertical("甲〔一二三四五六七〕", rows=2), [
+            (0, 0, 0, "甲"), (0, 1.0, 1, "一"), (0, 1.5, 1, "二"), (0, 1.0, 2, "三"), (0, 1.5, 2, "四"),
+            (1, 0.0, 1, "五"), (1, 0.5, 1, "六"), (1, 0.0, 2, "七")])
+        plain = "學而時習之不亦說乎\n有朋自遠方來"
+        self.assertEqual([(c, r, ch) for c, r, _sub, ch in oc.layout_vertical(plain, rows=4)],
+                         [(c, r, ch) for c, col in enumerate(oc._wrap(plain, 4)) for r, ch in enumerate(col)],
+                         "没有小注的页与原来一字一格的排法完全相同")
+
+    def test_note_markers_are_not_truth(self):
+        self.assertEqual(oc.strip_notes("學而時習之〔習，鳥數飛也。〕不亦說乎"), "學而時習之習，鳥數飛也。不亦說乎")
+        row = oc.page_metrics("學而時習之，不亦說乎〔說，音悅。學之為言效也。〕", "學而時習之，不亦說乎說，音悅。學之為言效也。")
+        self.assertEqual((row["cer"], row["sentences"], row["sentences_verbatim"]), (0.0, 2, 2))
+
+    def test_notes_truth_file(self):
+        pages = oc.load_truth(oc.DEFAULT_TRUTH.with_name("sample_notes_zh.txt"))
+        self.assertEqual(len(pages), 3)
+        self.assertTrue(all(oc.NOTE_RE.search(p) for p in pages), "每页都要有双行小注")
+
     def test_english_sentences_split_on_full_stop_not_decimals(self):
         row = oc.page_metrics("Version 2.0 lists 3.32M tokens. We are met on a great field.", "")
         self.assertEqual(row["sentences"], 2)
@@ -336,7 +360,18 @@ class LineLayoutTests(unittest.TestCase):
         self.assertEqual(text, "星期日的早晨我揭去一張隔夜的日曆\n管")
         self.assertAlmostEqual(conf, (0.95 + 0.6) / 2)
         self.assertEqual(details, {"layout": "vertical", "lines": 2, "dropped_lines": 1, "short_lines": 1,
-                                   "undetected_lines": 0})
+                                   "doubtful_lines": 0, "undetected_lines": 0})
+
+    def test_low_score_long_lines_are_doubtful(self):
+        # 刻本双行小注被并成一行、草书手稿：字数够，分数在 0.5–0.7，内容多半不对
+        lines = [column(300, 0, "大學之道在明明德在親民在止於至善"),
+                 column(250, 0, "而育當作帝學有者大之也明者明之", score=0.57),   # 计
+                 column(200, 0, "此之謂空靈不怎樣瘦損量不痛哉", score=0.75),     # 0.7–0.8 对错参半，不计
+                 column(150, 0, "工有", score=0.53, h=880),                     # 只认出两个字：算 short，不重复计
+                 (box(100, 500, 20, 20), "C", 0.6)]                             # 斑点：不算一行字
+        _text, _conf, details = oc.pdf_quality.summarize_lines(lines)
+        self.assertEqual((details["doubtful_lines"], details["short_lines"]), (1, 1))
+        self.assertEqual(oc.pdf_quality.suspect_count(details), 2)
 
     def test_dropped_box_widened_by_glosses_counts_by_page_glyph_size(self):
         # 《四書経筵直解》p12：経文夹小字音注，框被撑到 1.4 倍宽，按自身短边只有 3.9 字，按本页字号是 5.5 字
@@ -449,6 +484,9 @@ class OcrIntoIndexTests(unittest.TestCase):
             oc.render_page("字" * 5000, None, layout="vertical")
         with self.assertRaises(ValueError):
             oc.render_page("字" * 5000, None)
+        with self.assertRaises(ValueError, msg="小注占的列也要算进去"):
+            oc.render_page("字〔" + "注" * 5000 + "〕", None, layout="vertical")
+        self.assertTrue(oc.render_page("學而時習之〔習，鳥數飛也。〕", None, layout="vertical").startswith(b"\x89PNG"))
 
     def test_survey_samples_each_pdf_and_reports_problems(self):
         oc.pdf_quality.register_runner("fake", fake_engine(TRUTH, confidence=0.8))

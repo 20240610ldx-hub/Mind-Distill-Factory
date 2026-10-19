@@ -74,6 +74,8 @@ DEGRADE = {
     "severe": {"angle": 2.5, "blur": 1.3, "noise": 0.22, "scale": 0.42},
 }
 MIN_SENTENCE_CHARS = 6
+# 真值里用〔…〕标双行小注（刻本的小字夹注）：竖排时画成两列小字，横排时照常排进正文；标记本身不上图
+NOTE_RE = re.compile(r"〔([^〕]*)〕")
 
 
 def load_truth(path: Path = DEFAULT_TRUTH) -> list[str]:
@@ -100,6 +102,40 @@ def cjk_share(text: str) -> float:
 # ── 合成扫描件 ────────────────────────────────────────────────────────
 
 
+def strip_notes(text: str) -> str:
+    """去掉〔〕标记，留下图上实际有的字，也就是正确的阅读顺序：大字读到小注处，先读右小列再读左小列。"""
+    return NOTE_RE.sub(lambda m: m.group(1), text)
+
+
+def layout_vertical(text: str, rows: int) -> list[tuple[int, float, int, str]]:
+    """竖排排版，返回 [(列号, 行位置, 子列, 字)]。行位置以大字格计，小字占半格；子列 0 是大字，
+    1、2 是双行小注的右、左小列。每段另起一列。小注在本列剩下的格子里先排满右小列再排左小列，
+    放不下就接到下一列，仍是先右后左——刻本就是这样排的，也是 strip_notes 给出的阅读顺序。"""
+    cells: list[tuple[int, float, int, str]] = []
+    col = 0
+    for paragraph in text.splitlines():
+        row = 0
+        for i, chunk in enumerate(NOTE_RE.split(paragraph)):
+            if i % 2 == 0:  # 大字
+                for ch in chunk:
+                    if row >= rows:
+                        col, row = col + 1, 0
+                    cells.append((col, row, 0, ch))
+                    row += 1
+                continue
+            rest = chunk
+            while rest:
+                if row >= rows:
+                    col, row = col + 1, 0
+                take, rest = rest[:4 * (rows - row)], rest[4 * (rows - row):]
+                half = (len(take) + 1) // 2
+                cells += [(col, row + j / 2, 1, ch) for j, ch in enumerate(take[:half])]
+                cells += [(col, row + j / 2, 2, ch) for j, ch in enumerate(take[half:])]
+                row += (half + 1) // 2
+        col += 1
+    return cells
+
+
 def _wrap(text: str, per_line: int) -> list[str]:
     lines: list[str] = []
     for paragraph in text.splitlines():
@@ -114,8 +150,8 @@ def render_page(text: str, font: Path | None, *, dpi: int = 200, degrade: str = 
                 layout: str = "horizontal") -> bytes:
     """把一页文字画成 A5 灰度图（PNG 字节）。font 为 None 时用 PIL 内置字体，只供管线测试。
 
-    layout="vertical" 按竖排书的版式画：一字一格从上往下，列从右往左。放不下就报错——
-    悄悄截断会让真值比图上的字多，CER 跟着失真。"""
+    layout="vertical" 按竖排书的版式画：一字一格从上往下，列从右往左；〔…〕画成双行小注
+    （见 layout_vertical）。放不下就报错——悄悄截断会让真值比图上的字多，CER 跟着失真。"""
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
     width, height = round(148 / 25.4 * dpi), round(210 / 25.4 * dpi)
@@ -126,15 +162,16 @@ def render_page(text: str, font: Path | None, *, dpi: int = 200, degrade: str = 
     image = Image.new("L", (width, height), 255)
     draw = ImageDraw.Draw(image)
     if layout == "vertical":
-        columns = _wrap(text, max(1, (height - 2 * margin) // size))
-        if len(columns) > (width - 2 * margin) // pitch + 1:
-            raise ValueError(f"竖排一页放不下：{len(columns)} 列")
-        for index, column_text in enumerate(columns):
-            x = width - margin - size - index * pitch
-            for k, ch in enumerate(column_text):
-                draw.text((x, margin + k * size), ch, fill=0, font=face)
+        cells = layout_vertical(text, max(1, (height - 2 * margin) // size))
+        used = max((c for c, *_ in cells), default=-1) + 1
+        if used > (width - 2 * margin) // pitch + 1:
+            raise ValueError(f"竖排一页放不下：{used} 列")
+        small = ImageFont.truetype(str(font), size // 2) if font else face
+        for col, row, sub, ch in cells:
+            x = width - margin - size - col * pitch + (size // 2 if sub == 1 else 0)
+            draw.text((x, margin + round(row * size)), ch, fill=0, font=face if sub == 0 else small)
     else:
-        lines = _wrap(text, max(1, (width - 2 * margin) // size))
+        lines = _wrap(strip_notes(text), max(1, (width - 2 * margin) // size))
         if len(lines) > (height - 2 * margin) // pitch + 1:
             raise ValueError(f"横排一页放不下：{len(lines)} 行")
         for index, line in enumerate(lines):
@@ -200,6 +237,7 @@ def _normalize() -> Callable[[str], str]:
 
 def page_metrics(truth: str, ocr_text: str, normalize: Callable[[str], str] | None = None) -> dict[str, Any]:
     normalize = normalize or _normalize()
+    truth = strip_notes(truth)
     t, o = _squash(truth), _squash(ocr_text)
     sentences = [s for s in (m.group(0).strip() for m in SENTENCE_RE.finditer(truth))
                  if len(normalize(s)) >= MIN_SENTENCE_CHARS]
