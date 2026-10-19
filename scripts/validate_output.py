@@ -68,6 +68,8 @@ FRAMEWORK_SCHEMA = {
     "max_principles": 8,
     "min_blind_spots": 2,
     "min_quotes": 5,
+    # CLAUDE.md 质量门：distill_confidence.score ≥ 3 才能进 gallery（publish_skill.confidence_gate 读这个值）
+    "min_distill_confidence": 3,
     "expression_dna_fields": ["sentence_patterns", "rhetorical_devices", "tone",
                               "certainty_level", "humor_style", "taboo_expressions",
                               "paragraph_rhythm", "conversational_markers",
@@ -433,6 +435,10 @@ def validate_frameworks(slug: str) -> list[str]:
                 dc = data.get("distill_confidence", {})
                 if "score" not in dc:
                     errors.append(f"MISSING_FIELD: {fw_file}: distill_confidence.score")
+                elif isinstance(dc["score"], (int, float)) and dc["score"] < FRAMEWORK_SCHEMA["min_distill_confidence"]:
+                    # 阶段 3 只提醒（素材薄是真实情况，用户可以决定继续）；发布时 publish_skill 拦下
+                    errors.append(f"WARNING: LOW_CONFIDENCE: {fw_file}: distill_confidence.score={dc['score']} "
+                                  f"< {FRAMEWORK_SCHEMA['min_distill_confidence']}，发布会被拒绝，先问用户补素材还是继续")
                 # Check decision framework steps are filters not open questions
                 steps = data.get("decision_framework", {}).get("steps", [])
                 for i, step in enumerate(steps):

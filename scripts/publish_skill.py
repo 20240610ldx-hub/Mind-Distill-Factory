@@ -229,6 +229,30 @@ def review_gate(verdict: str, force: bool) -> tuple[bool, str]:
     return False, f"BLOCKED_{verdict}"
 
 
+def read_distill_confidence(output_dir: Path) -> float | None:
+    """frameworks.zh.json 的 distill_confidence.score；文件或字段缺失返回 None。"""
+    try:  # 不用 load_json：它读不到就 sys.exit，这里缺失要如实报「缺失」
+        data = json.loads((output_dir / "frameworks.zh.json").read_text(encoding="utf-8-sig"))
+        score = data.get("distill_confidence", {}).get("score")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return score if isinstance(score, (int, float)) and not isinstance(score, bool) else None
+
+
+def confidence_gate(score: float | None, force: bool, review_status: str) -> tuple[bool, str]:
+    """CLAUDE.md 质量门：distill_confidence.score ≥ 3 才能进 gallery（门槛取自 validate_output）。
+
+    低于门槛（或读不到分数）默认拒绝；--force 放行，但 review_status 不再是 PASS，
+    validate published --strict 据此知道它没过质量门（2026-10-19 鲁迅验收发现 10：score=2 一路通过）。
+    """
+    minimum = _load_validator().FRAMEWORK_SCHEMA["min_distill_confidence"]
+    if score is not None and score >= minimum:
+        return True, review_status
+    if not force:
+        return False, "BLOCKED_LOW_CONFIDENCE"
+    return True, "FORCED_LOW_CONFIDENCE" if review_status == "PASS" else review_status
+
+
 # ── 组包 / manifest / index ───────────────────────────────────────────
 
 
@@ -600,6 +624,15 @@ def main() -> int:
     print(f"Review verdict: {verdict['verdict']} → review_status={review_status}")
     if not allowed:
         print(f"ERROR: 审查关卡未放行（verdict={verdict['verdict']}）", file=sys.stderr)
+        return 1
+
+    # 4. 置信度关卡
+    score = read_distill_confidence(output_dir)
+    allowed, review_status = confidence_gate(score, args.force, review_status)
+    print(f"distill_confidence: {score if score is not None else '缺失'} → review_status={review_status}")
+    if not allowed:
+        print(f"ERROR: distill_confidence={score} 低于质量门 3，拒绝发布（补一手素材重跑，或用户决定后加 --force）",
+              file=sys.stderr)
         return 1
 
     if args.dry_run:
