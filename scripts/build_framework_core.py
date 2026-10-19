@@ -65,17 +65,37 @@ def confidence_score(confidence: str) -> int:
     return {"high": 3, "medium": 2, "low": 1}.get(confidence, 0)
 
 
-def collect_principles(slug: str) -> tuple[list[dict[str, Any]], Counter]:
+def is_commentary(source_type: str) -> bool:
+    """secondary 来源是评论者的话，不是思想家本人的。"""
+    return source_type.startswith("secondary")
+
+
+def source_rank(source_type: str) -> int:
+    """思想家本人的话在前：用户一手资料 0，其他（网上核实的本人言论）1，评论者 2。"""
+    if source_type.startswith("user"):
+        return 0
+    return 2 if is_commentary(source_type) else 1
+
+
+def read_principle_files(slug: str) -> list[tuple[str, dict[str, Any]]]:
+    """output/{slug}/principles_*.json，按 source_rank 排序：(来源类型, 文件内容)。"""
     output_dir = repo_root() / "output" / slug
-    principles: list[dict[str, Any]] = []
-    source_type_counts: Counter = Counter()
+    files = []
     for path in sorted(output_dir.glob("principles_*.json")):
         data = read_json(path)
-        source_type = data.get("source_type") or path.stem.replace("principles_", "")
+        files.append((data.get("source_type") or path.stem.replace("principles_", ""), data))
+    return sorted(files, key=lambda f: source_rank(f[0]))
+
+
+def collect_principles(slug: str) -> tuple[list[dict[str, Any]], Counter]:
+    principles: list[dict[str, Any]] = []
+    source_type_counts: Counter = Counter()
+    for source_type, data in read_principle_files(slug):
         for item in data.get("principles", []):
             item = dict(item)
-            item["_source_file"] = path.name
             item["_source_type"] = source_type
+            # 各来源文件的 id 都从 principle_001 起编：带上来源类型才唯一
+            item["_qid"] = f"{source_type}/{item.get('id', '')}"
             principles.append(item)
             source_type_counts[source_type] += 1
     return principles, source_type_counts
@@ -114,16 +134,18 @@ def build_clusters(principles: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             "source_title": evidence.get("source_title", ""),
                             "source_detail": evidence.get("source_detail", ""),
                             "confidence": evidence.get("confidence", "low"),
-                            "from_principle_id": item.get("id", ""),
+                            "from_principle_id": item["_qid"],
                         }
                     )
         clusters.append(
             {
                 "cluster_id": f"cluster_{idx:03d}",
+                # 只有评论者证据的簇是旁证，不是思想家本人的原则：标出来、排在最后
+                "evidence_basis": "secondary_only" if all(is_commentary(t) for t in source_types) else "thinker",
                 "canonical_name_zh": lead.get("name_zh", ""),
                 "canonical_name_en": lead.get("name_en", ""),
                 "topic_tags": [tag for tag, _ in Counter(all_tags).most_common(6)],
-                "candidate_principle_ids": [item.get("id", "") for item in items],
+                "candidate_principle_ids": [item["_qid"] for item in items],
                 "source_types": sorted(source_types),
                 "max_uniqueness_score": max((item.get("uniqueness_score") or 0) for item in items),
                 "evidence_count": total_evidence,
@@ -138,6 +160,7 @@ def build_clusters(principles: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     clusters.sort(
         key=lambda c: (
+            c["evidence_basis"] != "thinker",
             -c["max_uniqueness_score"],
             -c["high_confidence_evidence_count"],
             -c["evidence_count"],
@@ -148,41 +171,46 @@ def build_clusters(principles: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return clusters
 
 
-def collect_reasoning_patterns(principles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _candidates(files: list[tuple[str, dict[str, Any]]], key: str) -> list[dict[str, Any]]:
+    """principle-extractor 的契约把推理模式、名言放在文件顶层；早期产物也有挂在单条原则下面的，一并读。"""
+    found: list[dict[str, Any]] = []
+    for _source_type, data in files:
+        found.extend(data.get(key) or [])
+        for principle in data.get("principles", []):
+            found.extend(principle.get(key) or [])
+    return [item for item in found if isinstance(item, dict)]
+
+
+def collect_reasoning_patterns(files: list[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     patterns: list[dict[str, Any]] = []
-    for principle in principles:
-        for pattern in principle.get("reasoning_patterns", []):
-            key = normalize_key(pattern.get("name_en") or pattern.get("name_zh") or pattern.get("id") or "")
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            patterns.append(
-                {
-                    "name_zh": pattern.get("name_zh", ""),
-                    "name_en": pattern.get("name_en", ""),
-                    "description_zh": pattern.get("description_zh", ""),
-                    "description_en": pattern.get("description_en", ""),
-                    "trigger_zh": pattern.get("trigger_zh", ""),
-                    "trigger_en": pattern.get("trigger_en", ""),
-                    "supporting_evidence": pattern.get("supporting_evidence", ""),
-                }
-            )
+    for pattern in _candidates(files, "reasoning_patterns"):
+        key = normalize_key(pattern.get("name_en") or pattern.get("name_zh") or pattern.get("id") or "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        patterns.append(
+            {
+                "name_zh": pattern.get("name_zh", ""),
+                "name_en": pattern.get("name_en", ""),
+                "description_zh": pattern.get("description_zh", ""),
+                "description_en": pattern.get("description_en", ""),
+                "trigger_zh": pattern.get("trigger_zh", ""),
+                "trigger_en": pattern.get("trigger_en", ""),
+                "supporting_evidence": pattern.get("supporting_evidence", ""),
+            }
+        )
     return patterns[:12]
 
 
-def collect_quotes(principles: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    quotes: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for principle in principles:
-        for quote in principle.get("notable_quotes", []):
-            text = quote.get("text_zh") or quote.get("text_en") or ""
-            key = normalize_key(text)
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            quotes.append(quote)
-    quotes.sort(key=lambda q: -confidence_score(q.get("confidence", "")))
+def collect_quotes(files: list[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
+    best: dict[str, dict[str, Any]] = {}  # 同一句只留一份：置信度高的那份
+    for quote in _candidates(files, "notable_quotes"):
+        key = normalize_key(quote.get("text_zh") or quote.get("text_en") or "")
+        if key and (key not in best or confidence_score(quote.get("confidence", ""))
+                    > confidence_score(best[key].get("confidence", ""))):
+            best[key] = quote
+    quotes = sorted(best.values(), key=lambda q: -confidence_score(q.get("confidence", "")))
     return quotes[:20]
 
 
@@ -237,7 +265,7 @@ def collect_source_ledger(principles: list[dict[str, Any]]) -> list[dict[str, An
                 },
             )
             item["confidence_counts"][evidence.get("confidence", "low")] += 1
-            item["used_by_principle_ids"].add(principle.get("id", ""))
+            item["used_by_principle_ids"].add(principle["_qid"])
 
     result: list[dict[str, Any]] = []
     for item in ledger.values():
@@ -311,15 +339,24 @@ def build_core(slug: str) -> dict[str, Any]:
     principles, source_type_counts = collect_principles(slug)
     if not principles:
         raise SystemExit(f"No principles_*.json files with principles found for {slug}")
+    files = read_principle_files(slug)
+    blind_spots = collect_blind_spots(slug)
+    reasoning = collect_reasoning_patterns(files)
+    quotes = collect_quotes(files)
+    # scaffold 编不出来、要 framework-core-synthesizer 补的字段（盲区只在重建已有框架时读得到）
+    gaps = [name for name, value in (("shared_blind_spot_themes", blind_spots),
+                                     ("reasoning_pattern_candidates", reasoning),
+                                     ("quote_candidates", quotes)) if not value]
     return {
         "person_slug": slug,
         "core_version": "1.0",
         "synthesized_at": date.today().isoformat(),
         "synthesis_mode": "mechanical_scaffold",
         "principle_clusters": build_clusters(principles),
-        "shared_blind_spot_themes": collect_blind_spots(slug),
-        "reasoning_pattern_candidates": collect_reasoning_patterns(principles),
-        "quote_candidates": collect_quotes(principles),
+        "shared_blind_spot_themes": blind_spots,
+        "reasoning_pattern_candidates": reasoning,
+        "quote_candidates": quotes,
+        "scaffold_gaps": gaps,
         "source_ledger": collect_source_ledger(principles),
         "confidence_factors": confidence_factors(principles, source_type_counts),
         "expression_dna_raw_summary": collect_expression_summary(slug),
@@ -353,6 +390,11 @@ def main() -> None:
     print(f"[OK] Wrote {out_path}")
     print(f"  principle clusters: {len(core['principle_clusters'])}")
     print(f"  blind spot themes: {len(core['shared_blind_spot_themes'])}")
+    print(f"  reasoning pattern candidates: {len(core['reasoning_pattern_candidates'])}")
+    print(f"  quote candidates: {len(core['quote_candidates'])}")
+    if core["scaffold_gaps"]:
+        print(f"  [TODO] agent must fill: {', '.join(core['scaffold_gaps'])}"
+              " (validate frameworks rejects a core with fewer than 2 blind spot themes)")
     print(f"  source ledger entries: {len(core['source_ledger'])}")
 
 

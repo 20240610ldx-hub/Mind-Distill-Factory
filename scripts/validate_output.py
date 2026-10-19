@@ -93,6 +93,8 @@ FRAMEWORK_CORE_SCHEMA = {
                         "confidence_factors", "expression_dna_raw_summary",
                         "alignment_contract"],
     "min_clusters": 1,
+    # 与 FRAMEWORK_SCHEMA["min_blind_spots"] 同一底线；现有 26 份 core 最少 3 个主题
+    "min_blind_spot_themes": 2,
 }
 
 PACKAGE_SCHEMA = {
@@ -352,6 +354,14 @@ def validate_frameworks(slug: str) -> list[str]:
                     errors.append(f"MISSING_FIELD: {core_file}: principle_clusters[{i}].cluster_id")
                 if not cluster.get("selected_evidence"):
                     errors.append(f"EMPTY_EVIDENCE: {core_file}: principle_clusters[{i}] has no selected_evidence")
+            # 机械 scaffold 编不出盲区（原则文件里没有这个字段），要 framework-core-synthesizer 补；
+            # 以前这里只查字段在不在，空列表也放行，到框架阶段才被拦下
+            themes = core.get("shared_blind_spot_themes") or []
+            if len(themes) < FRAMEWORK_CORE_SCHEMA["min_blind_spot_themes"]:
+                errors.append(f"TOO_FEW_BLIND_SPOTS: {core_file}: shared_blind_spot_themes has {len(themes)} "
+                              f"< {FRAMEWORK_CORE_SCHEMA['min_blind_spot_themes']}")
+            if not core.get("reasoning_pattern_candidates"):
+                errors.append(f"WARNING: {core_file}: reasoning_pattern_candidates is empty")
             contract = core.get("alignment_contract", {})
             for field in ["shared_fields", "equivalent_coverage_fields", "independent_language_fields"]:
                 if not contract.get(field):
