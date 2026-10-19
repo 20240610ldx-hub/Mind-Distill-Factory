@@ -46,13 +46,14 @@ flowchart TB
 flowchart TD
     subgraph init["阶段 0 · 意图澄清与初始化"]
         init_init["目录初始化<br/><small>脚本</small>"]
+        init_classify[/"类目确认<br/><small>人工、脚本</small>"/]
     end
     subgraph stage1["阶段 1 · 素材采集"]
         stage1_sources[/"素材入库<br/><small>人工、脚本</small>"/]
         stage1_index["登记、抽取与分片<br/><small>脚本</small>"]
         stage1_clean["清洗与质量闸门<br/><small>脚本</small>"]
         stage1_extract(["分片抽取<br/><small>agent</small>"])
-        stage1_reduce["合并与网络补充<br/><small>脚本、agent</small>"]
+        stage1_reduce["合并与本地补充<br/><small>脚本、agent</small>"]
         stage1_checkpoint{{"✓ validate sources"}}
     end
     subgraph stage2["阶段 2 · 原则提取"]
@@ -76,7 +77,8 @@ flowchart TD
         stage6_publish["发布<br/><small>脚本</small>"]
         stage6_checkpoint{{"✓ validate published"}}
     end
-    init_init --> stage1_sources
+    init_init --> init_classify
+    init_classify --> stage1_sources
     stage1_sources --> stage1_index
     stage1_index --> stage1_clean
     stage1_clean --> stage1_extract
@@ -95,6 +97,7 @@ flowchart TD
     stage6_publish --> stage6_checkpoint
     classDef agent fill:#eef4ff,stroke:#4a6fd1
     classDef human fill:#fff6e5,stroke:#c98a12
+    class init_classify human
     class stage1_sources human
     class stage1_extract agent
     class stage2_principles agent

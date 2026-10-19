@@ -174,6 +174,8 @@ class RunTests(RunnerFixture):
         self.assertIn("进度：", text)
         [record] = self.records()
         self.assertEqual((record["step"], record["exit_code"], record["ok"]), ("review", 0, True))
+        self.assertEqual([c["command"] for c in record["checkpoints"]],
+                         ["python scripts/mdf.py validate package demo --strict"])
         self.assertGreaterEqual(record["changed_files"], 1, "review.md 是新产物（briefs 也算）")
         log = (ROOT / record["log"]) if not Path(record["log"]).is_absolute() else Path(record["log"])
         self.assertIn("已写审查报告", log.read_text(encoding="utf-8"))
@@ -191,9 +193,10 @@ class RunTests(RunnerFixture):
     def test_usage_is_parsed_into_result_line_and_record(self):
         with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
             self.assertEqual(self.run_fake("usage", yes=True), 0)
-        self.assertIn("费用 $0.53 · 9 轮", "\n".join(self.lines))
+        self.assertIn("$0.53 · 9 轮", "\n".join(self.lines))
         record = self.records()[0]
-        self.assertEqual((record["cost_usd"], record["turns"], record["cache_read_tokens"]), (0.53, 9, 880000))
+        usage = record["usage"]
+        self.assertEqual((usage["cost_usd"], usage["turns"], usage["cache_read_tokens"]), (0.53, 9, 880000))
         html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
         self.assertIn("$0.53 · 9 轮", html)
 
@@ -259,9 +262,9 @@ class RealClaudeOutputTests(RunnerFixture):
         self.assertEqual(code, 0)
         text = "\n".join(self.lines)
         self.assertIn("最近：Read shard_001.json", text)
-        self.assertIn("费用 $0.68 · 10 轮", text)
+        self.assertIn("$0.68 · 10 轮", text)
         self.assertIn("1 次工具调用被拒", text)
-        self.assertEqual(self.records()[0]["permission_denials"], 1)
+        self.assertEqual(self.records()[0]["usage"]["permission_denials"], 1)
 
 
 class NarrationViewTests(RunnerFixture):

@@ -63,7 +63,15 @@ python scripts/mdf.py run <slug> [step] --harness codex --yes    # 用户同意�
   … 1分30秒 · 日志 12.4 KB · 新产物 3 个 · 最近输出：已写 shard_004_extracts.json
 ```
 
-结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`，例如审查步骤是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-json 必须带 `--verbose`）。每行一个事件，心跳里的「最近」就是最后一次工具调用（如「Read shard_001.json」）。结束时的结果对象给出费用、轮数、缓存读取 token 和被拒的工具调用数，都写进结果行和运行记录。2026-10-18 用 Sonnet 5.5 实测时发现两点：一是改用流式之前，只用 `json` 要到进程结束才输出，心跳一直是「日志 0.0 KB」；二是结果对象的字段顺序不固定，以 `duration_api_ms` 起头，按 `{"type":"result"` 前缀去找会丢掉费用。所以现在逐行解析。墨子试跑 9 次调用合计 $6.04，大头是缓存读。Codex、pi 的用量格式没有核实，不解析。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`：分片抽取是 `task_status.py summary … --strict`，审查是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+
+Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-json 必须带 `--verbose`）。每行一个事件，心跳里的「最近」就是最后一次工具调用（如「Read shard_001.json」）。结束时的结果对象给出费用、轮数、token、新进程是否又派了子代理、被拒的工具调用数，写进运行记录的 `usage` 字段；结果行和 `status --html` 的运行记录表都会显示，面板上还有合计费用。2026-10-18 用 Sonnet 5.5 实测时发现两点：一是改用流式之前，只用 `json` 要到进程结束才输出，心跳一直是「日志 0.0 KB」；二是结果对象的字段顺序不固定，以 `duration_api_ms` 起头，按 `{"type":"result"` 前缀去找会丢掉费用。所以现在逐行解析。墨子试跑 9 次调用合计 $6.04，大头是缓存读。Codex、pi 的用量格式没有核实，取不到就留空，不猜。
+
+**简报里还会带上的东西**（都来自 `config/pipeline_stages.json` 的步骤字段）：
+
+- 用户确认的类目（`sources/<slug>/classification.json`，由 `mdf classify` 写入）。原则提取、框架合成、核心层组装标了 `requires: ["classification"]`，没有这份记录就拒绝生成简报——新进程不能向用户提问。
+- 禁网步骤（`network: "forbidden"`，目前是阶段 1 的合并与本地补充）写明禁止网络检索；harness 声明了 `deny_network_args` 的（Claude Code：`--disallowedTools WebSearch,WebFetch`），启动命令末尾同时从工具层面拿掉联网工具（它也是可变参数，所以和 `--add-dir` 一样放在提示词后面）。Codex、pi 只靠简报里的禁令（未验证它们的联网开关）。
+- 换行符规则：一律 LF。不设脚本闸门，由执行者自查（manifest 是字节 hash，CRLF 入库后会对不上）。
 
 ### 2. 章节标签与 H2 兜底：左侧的阶段轨
 
@@ -108,4 +116,4 @@ python scripts/mdf.py harness plan zhang-juzheng-v6 --target codex
 - **Windows 管道编码**：`mdf` 自己输出 UTF-8。用 `python -c` 读管道再 `print` 时，打印出的中文按控制台的 GBK 编码，看起来是乱码。这种情况加 `PYTHONIOENCODING=utf-8`。
 - **gallery 包的 frontmatter**：含 `format_version`、`argument-hint` 等非 Agent Skills 标准字段。Codex、pi 是否对此告警没有逐一验证；`harness plan` 会提示。
 - **Codex、pi 仍没有端到端实测**：墨子试跑（[harness-trial-mozi.md](harness-trial-mozi.md)）用 `claude -p` 新进程走完了简报路径（到发布），修掉了简报缺口，但 Codex、pi 本身没有跑过。首次使用请留意 agent 是否按简报写对了文件，检查点会兜底。
-- **Claude Code 无头模式需要 `--allowedTools`**：只给 `--permission-mode acceptEdits` 时 Bash 被拦，执行者跑不了检查点命令；`mdf brief` 打印的命令和 `mdf run` 已带上 `--allowedTools Bash,Read,Write,Edit,Glob,Grep`（等于授权该进程执行任意 shell，自行判断）。提示词必须写在 `--allowedTools` 前面：它是可变参数，排在它后面的位置参数会被当成工具名吞掉。
+- **Claude Code 无头模式需要 `--allowedTools`**：只给 `--permission-mode acceptEdits` 时 Bash 被拦，执行者跑不了检查点命令；`mdf brief` 打印的命令和 `mdf run` 已带上 `--allowedTools Bash,Read,Write,Edit,Glob,Grep`（等于授权该进程执行任意 shell，自行判断）。工具名逗号连写；提示词必须写在 `--allowedTools` 前面：它是可变参数，排在它后面的位置参数会被当成工具名吞掉。

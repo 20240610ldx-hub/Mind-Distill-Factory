@@ -71,6 +71,17 @@ agent 步骤（每步一个新进程；表中「简报是否自足」指新进�
 13. **agent 在 Windows 上写出 CRLF 的 `cases.md`。** 发布的 manifest 记的是 CRLF 的 hash，入库时 `.gitattributes`（eol=lf）改成 LF，别处检出就会 hash 不符。本次手工转 LF 后重发布。建议 `publish_skill` 组包时统一规范行尾，或 P1–P6 里加一条「行尾必须是 LF」的闸门。
 14. **费用大头是缓存读**：每个进程反复读取 50–200 万 token 的上下文。分片小（1 个分片）时，extract/reduce/principles 三步其实可以合并成一个进程。
 
+## 用户决策与处置（2026-10-18，试跑之后）
+
+| 发现 | 用户决策 | 处置 |
+|---|---|---|
+| 8 类目没有传递通道 | 沿用「编排者用 AskUserQuestion 问用户、回传决策」 | 新增 `mdf classify <slug> --primary … --secondary …`，写 `sources/<slug>/classification.json`（校验 1 主 + ≤2 副）；阶段 0 多一个「类目确认」步骤；原则提取 / 框架合成 / 核心层组装的简报带上类目，缺记录就拒绝生成；`validate frameworks` 与 `validate package`（身份卡）不一致报 `CLASSIFICATION_MISMATCH`。早于此通道的旧人物不检查 |
+| 11 reduce 没禁网 | reduce 禁用网络检索 | 步骤改名「合并与本地补充」，`network: forbidden`：简报写明禁令，Claude Code 新进程加 `--disallowedTools WebSearch,WebFetch`；`distill.md` 子代理 B/C/D 与 `source-researcher.md` 改为只读本地语料，缺素材由编排者问用户是否 `mdf acquire` |
+| 13 CRLF 致 hash 不符 | 交由运行时 agent 解决 | 不加脚本闸门。每份简报写「一律 LF，写完自查」；`distill.md` 6.3 与编排 skill 要求发布前由执行者检查并转 LF |
+| V1–V4 进度可见性 | 按建议办 | 上游已加 `mdf run`、阶段卡与 `status --html`（3801fb3）。本次补：`mdf run` 跑步骤级检查点（extract 的 `task_status.py summary --strict`——原先 summary 永远返回 0，当闸门无效）；Claude Code 新进程带 `--output-format json`，运行记录写入费用 / 轮数 / token / 子代理数，结果行与面板显示，面板有合计费用；阶段卡的「闸门」改用步骤级检查点 |
+
+测试：`tests/test_trial_decisions.py`（23 个）。
+
 ## 对三份文件的修改建议
 
 ### `scripts/harness.py`

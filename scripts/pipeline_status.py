@@ -96,6 +96,33 @@ def _stage_init(ctx: "Ctx") -> StageStatus:
     return status
 
 
+def _stage_classify(ctx: "Ctx") -> StageStatus:
+    """用户确认的类目（sources/{slug}/classification.json）。下游简报靠它，不让 agent 自选。"""
+    cls = _sibling("classification")
+    status = StageStatus("classify", "类目确认", "pending")
+    try:
+        data = cls.load(ctx.root, ctx.slug)
+    except ValueError as exc:
+        status.state = "failed"
+        status.detail = str(exc)[:120]
+        status.next_action = "重新让用户确认类目，再 " + _cmd("classify", ctx.slug, "--primary", "<主类>", "--secondary", "<副类>")
+        return status
+    if data is None and (ctx.root / "output" / ctx.slug / "frameworks.zh.json").exists():
+        # 早于类目通道的人物：类目已写进产物，以产物为准，不倒逼补录。
+        status.state = "skipped"
+        status.detail = "未记录（早于类目通道；类目以已生成的产物为准）"
+        return status
+    if data is None:
+        status.detail = "类目尚未确认"
+        status.next_action = ("按 config/taxonomy.json 推荐 1 主 + 至多 2 副，用 AskUserQuestion 让用户确认，再 "
+                              + _cmd("classify", ctx.slug, "--primary", "<主类>", "--secondary", "<副类1,副类2>"))
+        return status
+    status.state = "done"
+    status.detail = cls.describe(data)
+    status.artifacts = [_rel(ctx.root, cls.path_for(ctx.root, ctx.slug))]
+    return status
+
+
 def _stage_clean(ctx: "Ctx") -> StageStatus:
     processed = ctx.root / "sources" / ctx.slug / "processed"
     report_path = processed / "cleaning_report.json"
@@ -152,7 +179,7 @@ def _stage_index(ctx: "Ctx") -> StageStatus:
     status = StageStatus("index", "抽取与分片", "pending")
     if not ctx.has_raw:
         status.state = "skipped"
-        status.detail = "没有本地素材，只走网络补充"
+        status.detail = "没有本地素材（网络检索已禁用：先用 mdf acquire 合规采集）"
         return status
     manifest = _read_json(manifest_path)
     if not isinstance(manifest, dict):
@@ -214,7 +241,7 @@ SOURCE_FILES = ("primary_sources.json", "secondary_sources.json", "expression_dn
 
 def _stage_reduce(ctx: "Ctx") -> StageStatus:
     processed = ctx.root / "sources" / ctx.slug / "processed"
-    status = StageStatus("reduce", "合并与网络补充", "pending")
+    status = StageStatus("reduce", "合并与本地补充", "pending")
     expected = (["user_sources.json"] if ctx.has_raw else []) + list(SOURCE_FILES)
     present = [name for name in expected if (processed / name).exists()]
     missing = [name for name in expected if name not in present]
@@ -234,7 +261,7 @@ def _stage_reduce(ctx: "Ctx") -> StageStatus:
     if "user_sources.json" in missing:
         status.next_action = _cmd("reduce", ctx.slug)
     else:
-        status.next_action = "派发 source-researcher 补齐：" + "、".join(missing)
+        status.next_action = "派发 source-researcher 从本地语料补齐（禁止网络检索）：" + "、".join(missing)
     return status
 
 
@@ -392,6 +419,7 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
 
 CHECKS: dict[str, Callable[["Ctx"], StageStatus]] = {
     "init": _stage_init,
+    "classify": _stage_classify,
     "sources": _stage_sources,
     "index": _stage_index,
     "clean": _stage_clean,
@@ -542,7 +570,7 @@ def render_card(slug: str, stages: list[StageStatus], tree: dict | None = None, 
     how = (f"`{step['command'].replace('{slug}', slug)}`" if step.get("command") else
            f"agent：{step.get('agent', '')}（交给子代理；没有子代理的 harness 用 "
            f"`python scripts/mdf.py run {slug} {step['id']} --harness <名称> --yes` 交给新进程）")
-    gate = step.get("checkpoint") or phase.get("checkpoint")  # 步骤自带的检查点优先
+    gate = step.get("checkpoint") or phase.get("checkpoint")  # 步骤级检查点优先，与 mdf brief 一致
     lines = [
         tree["chapter_policy"]["fallback_heading"].format(order=phase["order"], title=phase["title"]),
         "",
@@ -560,6 +588,20 @@ HTML_STATE = {"done": ("完成", "ok"), "in_progress": ("进行中", "run"), "pe
               "failed": ("未通过", "bad"), "blocked": ("受阻", "bad"), "skipped": ("跳过", "skip")}
 
 
+def _usage_cell(usage: dict[str, Any] | None) -> str:
+    """运行记录里的用量（mdf run 从 Claude Code 的 JSON 结果里取；其他 harness 没有就留空）。"""
+    if not usage:
+        return "—"
+    parts = []
+    if usage.get("cost_usd") is not None:
+        parts.append(f"${usage['cost_usd']:.2f}")
+    if usage.get("turns") is not None:
+        parts.append(f"{usage['turns']} 轮")
+    if usage.get("subagents"):
+        parts.append(f"子代理 {usage['subagents']}")
+    return " · ".join(parts) or "—"
+
+
 def load_runs(root: Path, slug: str, limit: int = 20) -> list[dict[str, Any]]:
     """mdf run 写下的运行记录（output/{slug}/runs/runs.jsonl），新的在前。"""
     path = root / "output" / slug / "runs" / "runs.jsonl"
@@ -575,10 +617,10 @@ def load_runs(root: Path, slug: str, limit: int = 20) -> list[dict[str, Any]]:
     return runs[::-1][:limit]
 
 
-def _cost(record: dict[str, Any]) -> str:
-    cost, turns = record.get("cost_usd"), record.get("turns")
-    parts = [f"${cost:.2f}" if isinstance(cost, (int, float)) else "", f"{turns} 轮" if turns else ""]
-    return " · ".join(p for p in parts if p) or "—"
+def _run_usage(record: dict[str, Any]) -> dict[str, Any]:
+    """运行记录里的用量：现在嵌在 usage 下；更早的记录把 cost_usd、turns 平铺在顶层。"""
+    return record.get("usage") or {k: record[k] for k in ("cost_usd", "turns", "output_tokens")
+                                    if record.get(k) is not None}
 
 
 def render_html(slug: str, stages: list[StageStatus], tree: dict | None = None,
@@ -616,11 +658,14 @@ def render_html(slug: str, stages: list[StageStatus], tree: dict | None = None,
     run_rows = "".join(
         f'<tr><td>{escape(str(r.get("started_at", "")))}</td><td>{escape(str(r.get("step", "")))}</td>'
         f'<td>{escape(str(r.get("harness", "")))}</td><td>{escape(str(r.get("seconds", "")))} 秒</td>'
-        f'<td>{escape(_cost(r))}</td>'
         f'<td><span class="badge {"ok" if r.get("ok") else "bad"}">{"通过" if r.get("ok") else "未通过"}</span></td>'
+        f'<td>{escape(_usage_cell(_run_usage(r)))}</td>'
         f'<td>{escape(str(r.get("summary", "")))}</td></tr>' for r in runs or [])
-    runs_html = (f'<section><h2>运行记录（mdf run）</h2><table><thead><tr><th>开始</th><th>步骤</th><th>harness</th>'
-                 f'<th>用时</th><th>费用</th><th>结果</th><th>摘要</th></tr></thead><tbody>{run_rows}</tbody></table></section>') if run_rows else ""
+    costs = [_run_usage(r)["cost_usd"] for r in runs or [] if _run_usage(r).get("cost_usd") is not None]
+    total = (f'<p class="summary">共 {len(runs or [])} 次运行'
+             + (f'，有用量记录的 {len(costs)} 次合计 ${sum(costs):.2f}' if costs else '') + '</p>') if runs else ""
+    runs_html = (f'<section><h2>运行记录（mdf run）</h2>{total}<table><thead><tr><th>开始</th><th>步骤</th><th>harness</th>'
+                 f'<th>用时</th><th>结果</th><th>用量</th><th>摘要</th></tr></thead><tbody>{run_rows}</tbody></table></section>') if run_rows else ""
     rail_html, sections_html = "".join(rail), "".join(sections)
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

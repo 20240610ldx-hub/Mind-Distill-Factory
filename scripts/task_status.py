@@ -383,6 +383,8 @@ def main() -> None:
 
     summary = sub.add_parser("summary")
     summary.add_argument("status_path")
+    summary.add_argument("--strict", action="store_true",
+                         help="还有 pending / failed / blocked 单元时退出码为 1（当检查点用）")
 
     args = parser.parse_args()
     if args.command == "init":
@@ -399,6 +401,12 @@ def main() -> None:
         cmd_next(Path(args.status_path))
     elif args.command == "summary":
         cmd_summary(Path(args.status_path))
+        if args.strict:
+            status = load_status(Path(args.status_path))
+            open_units = [k for k in ("pending_units", "failed_units", "blocked_units") if status.get(k)]
+            if open_units:
+                print("[FAIL] 仍有未完成的单元：" + "、".join(open_units))
+                raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -453,6 +453,16 @@ def validate_frameworks(slug: str) -> list[str]:
             except Exception as e:
                 errors.append(f"PARSE_ERROR: {fw_file}: {e}")
 
+    zh_file = output_dir / "frameworks.zh.json"
+    if zh_file.exists():
+        try:
+            zh_fw = read_json_file(zh_file)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            zh_fw = None  # 解析错误上面已报
+        if isinstance(zh_fw, dict):
+            errors.extend(check_classification(slug, Path("."), zh_fw.get("primary_category"),
+                                               zh_fw.get("secondary_categories"), zh_file))
+
     # Cross-check: blind spots must cover same themes（仅在英文分支启用时）
     try:
         if not en_branch_requested(slug):
@@ -479,6 +489,22 @@ def validate_frameworks(slug: str) -> list[str]:
         pass  # Files may not exist yet
 
     return errors
+
+
+def check_classification(slug: str, root: Path, primary: str | None, secondary: list[str] | None,
+                         artifact: Path, where: str = "primary_category / secondary_categories") -> list[str]:
+    """产物里的类目必须等于用户在阶段 0 确认的（sources/{slug}/classification.json）。
+
+    没有这份文件的旧人物不检查（类目以产物为准）；文件损坏则报错，不静默放过。
+    """
+    cls = _load_sibling("classification")
+    try:
+        confirmed = cls.load(root, slug)
+    except ValueError as exc:
+        return [f"CLASSIFICATION_INVALID: {exc}"]
+    if confirmed is None:
+        return []
+    return [f"CLASSIFICATION_MISMATCH: {artifact}（{where}）：{d}" for d in cls.mismatch(confirmed, primary, secondary)]
 
 
 def is_v6_skill(content: str) -> bool:
@@ -1035,6 +1061,9 @@ def validate_package(slug: str, strict: bool = False) -> list[str]:
                 )
 
     errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
+    card = _load_sibling("publish_skill").extract_v6_metadata(skill_md)
+    errors.extend(check_classification(slug, root, card["primary_category"], card["secondary_categories"],
+                                       skill_md, where="身份卡"))
     if strict:
         review_md = output_dir / "review.md"
         evidence_md = output_dir / PACKAGE_SCHEMA["reference_dir"] / "evidence.md"

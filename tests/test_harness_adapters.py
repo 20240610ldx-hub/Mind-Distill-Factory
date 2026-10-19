@@ -175,6 +175,10 @@ class BriefTests(unittest.TestCase):
         self._td = tempfile.TemporaryDirectory()
         self.root = Path(self._td.name)
         (self.root / "output" / "demo").mkdir(parents=True)
+        # 原则提取之后的步骤要求用户已确认的类目（阶段 0 的 mdf classify）
+        (self.root / "sources" / "demo").mkdir(parents=True)
+        (self.root / "sources" / "demo" / "classification.json").write_text(
+            '{"primary": "governance", "secondary": ["philosophy"]}', encoding="utf-8")
 
     def tearDown(self):
         self._td.cleanup()

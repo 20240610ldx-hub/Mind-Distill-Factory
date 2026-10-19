@@ -59,6 +59,13 @@ class WorkspaceTests(unittest.TestCase):
                              f"cd '{data}' && " + shlex.join(["python", f"{repo}/scripts/mdf.py", "validate", "sources",
                                                               "demo"]))
 
+    def test_checkpoint_must_be_a_repo_python_script(self):
+        # 检查点来自阶段树，但 mdf run 会在数据根下直接执行它：只放行 python scripts/<脚本>.py
+        workspace = Workspace(ROOT)
+        for command in ("rm -rf output", "bash -c 'scripts/x.py'", "python -c print(1)"):
+            with self.subTest(command=command), self.assertRaises(SystemExit):
+                workspace.checkpoint_argv(command, "demo")
+
     def test_no_module_reimplements_the_data_root_rule(self):
         # 这条规则曾在 10 个模块里各写一遍；以后只在 workspace.py 里定义
         offenders = [p.name for p in (ROOT / "scripts").glob("*.py")

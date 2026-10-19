@@ -14,6 +14,7 @@ worktree 里没有私有语料时，数据根经 `--root` 或环境变量 MDF_DA
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import sys
 from dataclasses import dataclass
@@ -52,10 +53,11 @@ class Workspace:
 
     def checkpoint_argv(self, command: str, slug: str, python: str = sys.executable) -> list[str]:
         """检查点命令 → 在数据根下执行的 argv：`python` 换成给定解释器，`scripts/*.py` 换成仓库里的绝对路径，
-        其余参数（sources/… output/…）留给数据根解析。"""
+        其余参数（sources/… output/…）留给数据根解析。只放行 `python scripts/<脚本>.py …`：mdf run 会直接执行它。"""
         tokens = shlex.split(command.replace("{slug}", slug))
-        if tokens and tokens[0] in ("python", "python3"):
-            tokens[0] = python
+        if len(tokens) < 2 or tokens[0] not in ("python", "python3") or not re.fullmatch(r"scripts/\w+\.py", tokens[1]):
+            raise SystemExit(f"检查点命令不是 python scripts/<脚本>.py 形式，不会执行：{command}")
+        tokens[0] = python
         return [(self.code_root / t).as_posix() if t.startswith("scripts/") and t.endswith(".py") else t
                 for t in tokens]
 
