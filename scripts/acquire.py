@@ -37,6 +37,10 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote, unquote, urlsplit
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
+    sys.path.insert(0, _SCRIPTS_DIR)
+from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
 VERSION = "1.0"
@@ -1074,7 +1078,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", help="数据根目录（默认 MDF_DATA_ROOT，再默认仓库根）")
     args = parser.parse_args(argv)
 
-    root = Path(args.root or os.environ.get("MDF_DATA_ROOT") or CODE_ROOT).resolve()
+    root = data_root(args.root)
     targets = targets_from_args(args, root)
     if not targets:
         parser.error("没有采集目标：用 --wikisource/--ia/--gutenberg/--url/--local，或写 sources/{slug}/acquisition_plan.json")

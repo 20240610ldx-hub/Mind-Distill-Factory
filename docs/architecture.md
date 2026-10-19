@@ -245,3 +245,63 @@ mind-distill-factory/
 | 每个检查点 | 看 `mdf status` | 不过不放行；失败信息带文件与行号 |
 | 审查 | 读 `review.md`，接受或要求返工 | 裁决写进 manifest；REVISE、MISSING 需 `--force` 才能发布，并记为 `FORCED_*` |
 | 发布与安装 | 决定发不发、装到哪 | 事务式发布；`harness plan` 只打印安装命令 |
+
+---
+
+## 9. 领域模型
+
+代码按领域划分。下面的词在文档、代码、提交信息里含义一致（通用语言）；各上下文只通过带 schema 名的文件交换数据，不互相 import 对方的内部函数（`slug_rules`、`text_decoding` 是共享内核，例外）。
+
+### 通用语言
+
+| 术语 | 含义 | 在代码里 |
+|------|------|---------|
+| 人物 slug | 一次蒸馏的标识，小写连字符 | `slug_rules.py` |
+| 来源 | 一份登记过的原典文件，带权利状态与质量分 | `source-registry-v2` |
+| 分片 | 送给一个 worker 的一段语料，带输入指纹 | `local-source-manifest-v2`、`shard_NNN.json` |
+| 清洗结论 | 每个来源通过 / 待复核 / 被拒，以及原因与标记 | `cleaning-report-v1` |
+| 可疑行 | OCR 检测到却没认全的行，页码标记写作 `(OCR, k unread)` | `pdf_quality.summarize_lines` |
+| 摘录 | worker 从分片里取出的逐字片段，带置信度 | `shard_NNN_extracts.json`、`task-status-v2` |
+| 原则 / 框架 | 从摘录归纳的可执行判断；框架是过滤链 | `principles_*.json`、`framework_core.json`、`frameworks.zh.json` |
+| 技能包 | v6：`SKILL.md` + `references/` | `validate_output.py package` |
+| 证据 | 包里引文在语料中的逐字出处 | P2、`verify_provenance.py` |
+| 闸门 / 检查点 | 能确定判定的通过条件，不过不放行 | P1–P6、L1–L2、S1–S4；阶段树里的 `checkpoint` |
+| 阶段 / 步骤 | 流水线的进度单位，执行者是 script / agent / human | `pipeline-stages-v1`、`pipeline-status-v1` |
+| 简报 | 把一个 agent 步骤打包成自足的任务说明 | `harness.build_brief` |
+| 运行 | 一次新进程执行：命令、心跳、用量、检查点结果 | `run-record-v1` |
+| 工作区 | 代码根（仓库）+ 数据根（语料与产物），可以分离 | `workspace.Workspace` |
+| harness 档案 | 一个 harness 怎样起新进程、声明了哪些能力 | `harness.HarnessProfile`、`harness-profiles-v1` |
+| 权利声明 | 人写的来源使用许可 | `rights-declaration-v1` |
+
+### 限界上下文
+
+```mermaid
+flowchart LR
+    A["<b>采集与语料</b><br/><small>acquire · index · OCR · clean<br/>sampling · cost · dispatch</small>"]
+    D["<b>蒸馏</b><br/><small>agents/*.md · task_status<br/>build_framework_core</small>"]
+    V["<b>校验与发布</b><br/><small>validate · provenance<br/>manifest · publish · metrics</small>"]
+    O["<b>编排</b><br/><small>pipeline_status · harness<br/>stage_runner · workspace · mdf</small>"]
+    K["共享内核<br/><small>slug_rules · text_decoding</small>"]
+    A -- "分片 · cleaning-report-v1" --> D
+    D -- "框架与草稿包" --> V
+    A -- "原文：P2 逐字回查" --> V
+    O -- "简报 · 新进程 · run-record-v1" --> D
+    O -. "只读产物判断进度" .-> A & V
+    K --- A & V
+```
+
+| 上下文 | 拥有的概念 | 模块 | 对外发布 |
+|--------|-----------|------|---------|
+| 采集与语料 | 来源、页、分片、清洗结论、可疑行 | `acquire`、`local_source_pipeline`、`pdf_quality`、`ocr_calibrate`、`clean_corpus`、`sampling`、`cost_estimator`、`worker_dispatch`、`source_registry` | `source-registry-v2`、`local-source-manifest-v2`、`cleaning-report-v1`、`sampling-plan-v1`、`cost-estimate-v1`、`worker-dispatch-plan-v1`、`acquisition-log-v1` |
+| 蒸馏 | 摘录、原则、框架、草稿包 | `agents/*.md`、`task_status`、`build_framework_core` | `task-status-v2`、`framework_core.json` |
+| 校验与发布 | 闸门、证据、发布包、清单 | `validate_output`、`verify_provenance`、`package_manifest`、`publish_skill`、`measure_package`、`persona_metrics` | manifest（`manifest_version` 2）、`persona-metrics-v1`、`claim-ledger-v1` |
+| 编排 | 阶段与步骤、简报、运行、工作区、harness 档案 | `pipeline_status`、`harness`、`stage_runner`、`workspace`、`mdf` | `pipeline-status-v1`、`run-record-v1`、`mdf-harness-v1`、`mdf-doctor-v1` |
+
+### 不变式（由测试守住）
+
+- **证据链**：清洗只删不改；index、清洗、P2 共用同一个解码器。所以包里的引文总能在语料里逐字回查。
+- **OCR 来源**：只要有一页靠 OCR，来源就带 `ocr_text`，该页引文不高于 medium；有可疑行的页标出漏了几行。
+- **工作区**：数据根的解析规则（`--root` > `MDF_DATA_ROOT` > 仓库根）只在 `workspace.py` 定义一次，有架构测试禁止别处再写。分离时，新进程被授权访问数据根，简报写明路径约定；检查点命令只有一种改写，`mdf run` 和简报都用它。
+- **harness 档案**：`isolated_run` 必须有独立的 `{prompt}` 参数位。没声明的能力，指定了就报错（模型、推理强度），或者跳过（目录授权）；可变参数放在提示词之后。
+- **运行**：不加 `--yes` 什么也不写。每次运行都追加一条 `run-record-v1`，含费用和被拒的工具调用数。
+- **发布**：事务式改名，manifest 记下构建期的证明。改了 gallery 却没重发 manifest，测试就失败。

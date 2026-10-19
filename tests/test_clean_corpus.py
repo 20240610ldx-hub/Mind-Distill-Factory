@@ -308,6 +308,26 @@ class ReportTests(unittest.TestCase):
         self.assertIn("❌ 被拒", text)
         self.assertIn("清洗后没有正文", text)
 
+    def test_flag_cell_is_short_and_numbered_with_explanations_below(self):
+        # GUI 验收（《熱風》）：三条长说明挤在一个单元格里，「一整段读不出重点」
+        entry = {"verdict": "flagged", "reasons": [], "flags": ["ocr_incomplete", "ocr_lines_dropped", "ocr_text"],
+                 "ocr": {"pages_total": 134, "ocr_required": 134, "ocr_ok": 130, "mean_confidence": 0.9468,
+                         "vertical_pages": 122, "suspect_lines": 70}}
+        text = cc.render_report("lu-xun", cc.build_report({"熱風.pdf": entry}))
+        row = next(ln for ln in text.splitlines() if ln.startswith("| 熱風.pdf"))
+        self.assertIn("4 页没取得 OCR 文字 · 70 行 OCR 没认全 · 含 OCR 文字（引文封顶 medium）", row)
+        self.assertLess(len(row), 120, "单元格只放短标签")
+        notes = text.split("**标记说明**", 1)[1]
+        for flag in entry["flags"]:
+            self.assertEqual(notes.count(f"`{flag}`"), 1, f"{flag} 的长说明在表格下方出现一次")
+        self.assertIn(cc.FLAG_HINTS["ocr_lines_dropped"], notes)
+
+    def test_flag_labels_fall_back_without_ocr_stats(self):
+        text = cc.render_report("demo", cc.build_report({"a.txt": {"verdict": "flagged", "reasons": [],
+                                                                    "flags": ["very_short", "made_up_flag"]}}))
+        row = next(ln for ln in text.splitlines() if ln.startswith("| a.txt"))
+        self.assertIn("文本很短 · made_up_flag", row)
+
 
 class IndexIntegrationTests(unittest.TestCase):
     """真实跑一遍 index：清洗报告、重复判定、分片带质量标记、pipeline_status 的清洗步骤。"""

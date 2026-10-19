@@ -34,6 +34,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import harness  # noqa: E402
+from workspace import Workspace  # noqa: E402
 import pipeline_status as ps  # noqa: E402
 
 CODE_ROOT = SCRIPTS.parent
@@ -149,13 +150,14 @@ def _last_line(log: Path) -> str:
 
 def _checkpoint(command: str | None, slug: str, root: Path) -> dict[str, Any] | None:
     """跑阶段树里写的检查点命令：在数据根目录下执行（命令里的 sources/… output/… 相对数据根目录），
-    命令怎么改写见 harness.checkpoint_argv（简报里给执行者的那一条也由它生成）。"""
+    命令怎么改写见 Workspace.checkpoint_argv（简报里给执行者的那一条也由它生成）。"""
     if not command:
         return None
     command = command.replace("{slug}", slug)
-    tokens = harness.checkpoint_argv(command, slug, CODE_ROOT)
+    workspace = Workspace(root, CODE_ROOT)
+    tokens = workspace.checkpoint_argv(command, slug)
     done = subprocess.run(tokens, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          env={**os.environ, "MDF_DATA_ROOT": str(root), "PYTHONUTF8": "1"})
+                          env=workspace.child_env())
     tail = [ln for ln in (done.stdout + done.stderr).splitlines() if ln.strip()][-3:]
     return {"command": command, "exit_code": done.returncode, "tail": tail}
 
@@ -167,7 +169,8 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     profiles = profiles or harness.load_profiles()
     if harness_name not in profiles["harnesses"]:
         raise SystemExit(f"未知 harness {harness_name!r}；可选：{', '.join(profiles['harnesses'])}")
-    profile = profiles["harnesses"][harness_name]
+    profile = harness.HarnessProfile.from_config(harness_name, profiles["harnesses"][harness_name])
+    workspace = Workspace(root, CODE_ROOT)
     step_id, brief = harness.build_brief(slug, step_id, root)
     tree = ps.load_stage_tree()
     phase, step = harness.find_step(tree, step_id)
@@ -180,14 +183,13 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     brief_path = root / "output" / slug / "briefs" / f"{step_id}.md"  # 与 harness.write_brief 同一路径
     prompt = harness.brief_prompt(harness._display_path(brief_path, CODE_ROOT))
     if not executable:
-        out(f"❌ 没找到 {profile['label']} 的可执行文件（{', '.join(profile['executables'])}）；"
+        out(f"❌ 没找到 {profile.label} 的可执行文件（{', '.join(profile.executables)}）；"
             f"可先用 mdf brief {slug} {step_id} 生成简报，交给子代理执行。")
         return 2
     # 数据根不在仓库里时，新进程的工作目录（仓库）之外还要授权它读写数据根
-    data_dirs = () if root.resolve() == CODE_ROOT.resolve() else (root.resolve().as_posix(),)
-    argv = build_argv(profile, executable, prompt, model, usage=True, effort=effort, data_dirs=data_dirs)
+    argv = profile.argv(executable, prompt, model=model, effort=effort, grants=workspace.grants(), usage=True)
     if not yes:  # 只打印计划，不写任何文件
-        out(f"计划：用 {profile['label']} 在新进程里执行「{step['title']}」（按量计费的模型调用）。")
+        out(f"计划：用 {profile.label} 在新进程里执行「{step['title']}」（按量计费的模型调用）。")
         out(f"  命令：{shlex.join(argv)}")
         out(f"  简报：{harness._display_path(brief_path, CODE_ROOT)}（--yes 时写入）")
         out("用户同意后加 --yes 执行。")
@@ -201,9 +203,9 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     watch = [root / "output" / slug, root / "sources" / slug / "processed"]
     snapshot = _snapshot(watch)
     label = f"{phase['chapter']['title']} / {step['title']}"
-    out(f"▶ 开始：{label} · {profile['label']}" + (f" · 模型 {model}" if model else "")
+    out(f"▶ 开始：{label} · {profile.label}" + (f" · 模型 {model}" if model else "")
         + (f" · 强度 {effort}" if effort else "") + f" · 日志 {log.name}")
-    env = {**os.environ, "MDF_DATA_ROOT": str(root), "PYTHONUTF8": "1"}
+    env = workspace.child_env()
     t0 = time.monotonic()
     timed_out = False
     with log.open("wb") as sink:
@@ -220,7 +222,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
             if elapsed >= next_beat:
                 next_beat += heartbeat
                 size = log.stat().st_size / 1024
-                last = latest_activity(log, profile.get("usage_parser"))
+                last = latest_activity(log, profile.usage_parser)
                 out(f"  … {_clock(elapsed)} · 日志 {size:.1f} KB · 新产物 {len(_changed(snapshot, watch))} 个"
                     + (f" · 最近：{last}" if last else ""))
         proc.wait()
@@ -237,7 +239,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     process_ok = proc.returncode == 0 and not timed_out
     checks = [c for c in (_checkpoint(cmd, slug, root) for cmd in commands if cmd and process_ok) if c]
     ok = process_ok and state_after != "failed" and all(c["exit_code"] == 0 for c in checks)
-    usage = parse_usage(log, profile.get("usage_parser"))
+    usage = parse_usage(log, profile.usage_parser)
 
     labels = ps.STATE_LABELS
     if timed_out:
@@ -292,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--heartbeat", type=float, default=30.0, help="心跳间隔秒数（默认 30）")
     parser.add_argument("--root", help="数据根目录（默认 MDF_DATA_ROOT，再默认仓库根）")
     args = parser.parse_args(argv)
-    root = Path(args.root or os.environ.get("MDF_DATA_ROOT") or CODE_ROOT).resolve()
+    root = Workspace.resolve(args.root).data_root
     out = lambda line: print(line, flush=True)  # noqa: E731 - 心跳要即时出现在后台任务面板里
     return run_step(args.slug, args.step, root, args.harness, yes=args.yes, model=args.model, effort=args.effort,
                     timeout_min=args.timeout, heartbeat=args.heartbeat, out=out)
