@@ -253,7 +253,7 @@ class PipelineWiringTests(unittest.TestCase):
 
     def test_checkpoint_4_routes_the_new_signals(self) -> None:
         section = self._section("检查点 4")
-        for code in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE"):
+        for code in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE", "PKG_CRLF"):
             self.assertIn(code, section)
         self.assertIn("合并", section)  # P6_TOO_LONG 先合并案例索引的行，再考虑减原则
 

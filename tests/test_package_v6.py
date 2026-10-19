@@ -141,10 +141,10 @@ class PackageFixture:
         self.write_framework_core(["cluster_001"])
 
     def write_skill(self, text: str) -> None:
-        (self.out / "SKILL.md").write_text(text, encoding="utf-8")
+        (self.out / "SKILL.md").write_text(text, encoding="utf-8", newline="\n")  # 包必须是 LF（PKG_CRLF）
 
     def write_ref(self, name: str, text: str) -> None:
-        (self.refs / name).write_text(text, encoding="utf-8")
+        (self.refs / name).write_text(text, encoding="utf-8", newline="\n")  # 包必须是 LF（PKG_CRLF）
 
     def write_framework_core(self, cluster_ids: list[str]) -> None:
         data = {

@@ -520,6 +520,7 @@ python scripts/validate_output.py package {slug}
 | `P2_NOT_IN_CORPUS` | 回 evidence-carder 改逐字引文；确属底本讹字则加 `textual_note` |
 | `P2_UNVERIFIED_HIGH` | 引文不在 `raw/`、只靠 textual_note 放行的卡标了 high：改成 medium（规则 6）；要保留 high，就征得用户同意后用 `mdf acquire` 把原典采进 `raw/`，再让 evidence-carder 改卡 |
 | `P2_COVERAGE`（警告） | 不挡路，`mdf status` 的包校验一行会一直显示覆盖率。在 Stage 6.1 的成品摘要里写明「逐字核对覆盖 X/Y 张」，并问用户要不要补采这些原典 |
+| `PKG_CRLF` | 把报出的文件以二进制读出、`\r\n` 换成 `\n` 写回（内容不变），再重跑本检查点。派子代理时在任务里写明「文本文件一律 LF」——Claude Code 的子代理拿不到 `mdf brief` 里的这条规则 |
 | `P4_TOO_FEW_CASES` | 回 case-builder 补该 cluster 的案例 |
 | `P5_INDEX_ORPHAN` / `P5_CASE_NOT_INDEXED` | 同步核心层索引与 cases.md |
 | `P6_TOO_LONG` | 先把案例索引按原则合并成一行（见上方 Stage 4.5 的行数预算），仍超限再减原则条数，不压深度 |

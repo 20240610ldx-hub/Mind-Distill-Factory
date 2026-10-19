@@ -1102,6 +1102,22 @@ def check_strict_rights(rights: dict | None, where: Path) -> list[str]:
     return errors
 
 
+def check_line_endings(output_dir: Path) -> list[str]:
+    """会被发布的 Markdown 必须是 LF：manifest 按字节记 hash，入库时 .gitattributes（eol=lf）会改掉 CRLF，
+    发布后的校验就必然对不上。以前只有简报里一句「写 LF」，2026-10-20 GUI 实跑时上游 cases.md 是 CRLF，闸门照样通过。"""
+    files = [output_dir / "SKILL.md", output_dir / "人物档案.md",
+             *sorted((output_dir / PACKAGE_SCHEMA["reference_dir"]).glob("*.md"))]
+    errors = []
+    for path in files:
+        if not path.exists():
+            continue
+        count = path.read_bytes().count(b"\r\n")
+        if count:
+            errors.append(f"PKG_CRLF: {path}: 有 {count} 处 CRLF 换行。manifest 按字节记 hash，入库会被改成 LF，"
+                          f"发布后校验必然失败——以二进制读出、把 \\r\\n 换成 \\n 写回再校验（内容不变）")
+    return errors
+
+
 def validate_package(slug: str, strict: bool = False) -> list[str]:
     """构建期 v6 包校验（output/{slug}/）：结构 + P1–P6，P2 现场比对语料。
 
@@ -1136,6 +1152,7 @@ def validate_package(slug: str, strict: bool = False) -> list[str]:
                 )
 
     errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
+    errors.extend(check_line_endings(output_dir))
     card = _load_sibling("publish_skill").extract_v6_metadata(skill_md)
     errors.extend(check_classification(slug, root, card["primary_category"], card["secondary_categories"],
                                        skill_md, where="身份卡"))

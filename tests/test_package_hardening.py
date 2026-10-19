@@ -245,7 +245,7 @@ class CaseTests(unittest.TestCase):
         fx.write_cases(clusters=clusters, counter=True)
         path = fx.refs / "cases.md"
         if mutate:
-            path.write_text(mutate(path.read_text(encoding="utf-8")), encoding="utf-8")
+            path.write_text(mutate(path.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
         return path
 
     def test_rule8_duplicate_case_id(self) -> None:
