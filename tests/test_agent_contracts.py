@@ -59,6 +59,11 @@ class AssemblerContractTests(unittest.TestCase):
         # P5 已接受 case_id 列一格多 id；组装器得知道这条省行的路（鲁迅验收发现 12）
         self.assertIn("一格可放多个 case_id", self.text)
 
+    def test_keeps_counter_cases_on_their_own_row(self) -> None:
+        # 2026-10-20 Sonnet 实跑回写鲁迅索引：模型自己把反例留在单独一行。反例行是原则的失效边界，
+        # 并进正例行就看不见了——把这条好做法写进规则，别指望每次都碰巧做对
+        self.assertIn("反例单独一行", self.text)
+
 
 class CaseBuilderContractTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -142,6 +147,7 @@ class OrchestratorContractTests(unittest.TestCase):
         section = self._stage_45()
         self.assertIn("500", section)
         self.assertIn("同一原则", section)
+        self.assertIn("反例单独一行", section)
 
     def test_has_english_on_demand_stage(self) -> None:
         self.assertIn("Stage 6.5", self.text)

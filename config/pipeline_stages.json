@@ -69,7 +69,7 @@
         {"id": "assemble", "title": "核心层组装", "executor": "agent", "agent": "skill-assembler", "requires": ["classification"],
          "checkpoint_note": "此时附件尚未生成（阶段 4.5 才产出），validate package 预期只报 MISSING references/* 与指向 references/ 的 P3_DANGLING_PATH；除此之外的错误必须为零，附件类错误留到「附件生成」之后再清。"},
         {"id": "attachments", "title": "附件生成", "executor": "agent", "agent": "case-builder / evidence-carder → skill-assembler（续：voice.md 与案例索引回写）",
-         "checkpoint_note": "引文不在 sources/{slug}/raw/、只靠 textual_note 放行的证据卡最高 medium，标 high 会报 P2_UNVERIFIED_HIGH；有这类卡时 P2_COVERAGE 警告会给出逐字覆盖 X/Y，原样写进报告并列出这些卡的原典篇目。回写案例索引后 SKILL.md 仍须 ≤500 行：默认把同一原则的案例合并成一行（case_id 列一格可放多个 id）。"},
+         "checkpoint_note": "引文不在 sources/{slug}/raw/、只靠 textual_note 放行的证据卡最高 medium，标 high 会报 P2_UNVERIFIED_HIGH；有这类卡时 P2_COVERAGE 警告会给出逐字覆盖 X/Y，原样写进报告并列出这些卡的原典篇目。回写案例索引后 SKILL.md 仍须 ≤500 行：默认把同一原则的正例合并成一行（case_id 列一格可放多个 id），反例单独一行。"},
         {"id": "gates", "title": "P1–P6 包校验", "executor": "script", "command": "python scripts/mdf.py validate package {slug}"}
       ],
       "checkpoint": "python scripts/mdf.py validate package {slug}"
