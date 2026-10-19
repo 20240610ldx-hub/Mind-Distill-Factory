@@ -26,10 +26,20 @@ if sys.platform == "win32":
     except AttributeError:
         pass
 
-# 字面 '-' 置于字符类末尾，整体使用原始字符串
+# 字面 '-' 置于字符类末尾，整体使用原始字符串。
+# 第二段是整块的 Unicode 标点区：全角 ！？（OCR 常吐成半角 !?，同一句话就对不上）、
+# 竖排专用标点 ﹁﹂︵︶︑︒（竖排书的扫描件与电子版混用）、小写变体、各种破折号与引号。
+# 2026-10-18 OCR 竖排校准发现：只认半角 !? 时，「不亦說乎？」与 OCR 的「不亦說乎?」永远对不上。
 PUNCT_RE = re.compile(
-    r"[\s，。、；：「」『』“”‘’（）()《》〈〉【】·,.;:!?…—　~～\"'’-]"
+    r"[\s，。、；：「」『』“”‘’（）()《》〈〉【】·,.;:!?…—　~～\"'’"
+    "‐-‧‰-⁞"            # 一般标点：破折号、引号、省略号、‰ 等
+    "、-〃〈-】〔-〟〰"  # CJK 符号与标点（不含 々〆〇 等字）
+    "︐-︙︰-﹏﹐-﹫"        # 竖排形式、CJK 兼容形式、小写变体
+    "！-／：-＠［-｀｛-･"  # 全角 ASCII 标点
+    "-]"
 )
+# 全角数字与拉丁字母折成半角：「１９１２年」与 OCR 的「1912年」是同一句话
+_FULLWIDTH_ALNUM = {cp: cp - 0xFEE0 for cp in (*range(0xFF10, 0xFF1A), *range(0xFF21, 0xFF3B), *range(0xFF41, 0xFF5B))}
 
 TEXT_SUFFIXES = (".txt", ".md")
 PDF_SIDECAR_DIR = "extracted"
@@ -50,8 +60,8 @@ _FOLDER = get_variant_folder()
 
 
 def normalize(text: str, fold_variants: bool = True) -> str:
-    """去标点、去空白，可选繁简归一。逐字比对前的唯一预处理。"""
-    stripped = PUNCT_RE.sub("", text)
+    """去标点、去空白、全角数字字母折半角，可选繁简归一。逐字比对前的唯一预处理。"""
+    stripped = PUNCT_RE.sub("", text).translate(_FULLWIDTH_ALNUM)
     if fold_variants and _FOLDER is not None:
         stripped = _FOLDER(stripped)
     return stripped

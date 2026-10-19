@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr
+    from pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr, suspect_count
 except ImportError:  # pragma: no cover - supports package-style imports
-    from scripts.pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr  # type: ignore
+    from scripts.pdf_quality import classify_document, classify_page, quality_band, run_ocr, summarize_ocr, suspect_count  # type: ignore
 
 try:
     from sampling import SamplingConfig, build_sampling_plan, write_plan
@@ -179,8 +179,12 @@ def init_stage1a_status(slug: str) -> None:
         print(f"WARNING: could not initialize Stage 1A task_status.json: {e}")
 
 
-def extract_pdf_pages(path: Path, ocr_backend: str = "auto") -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Return every PDF page with text/image diagnostics and OCR eligibility."""
+def extract_pdf_pages(path: Path, ocr_backend: str = "auto",
+                      page_numbers: list[int] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Return every PDF page (or only `page_numbers`, 1-based) with text/image diagnostics and OCR eligibility.
+
+    抽页（mdf ocr scan/survey）必须在原文件上逐页读：把页拷进新 PDF 再渲染，JBIG2+JPX 分层压缩的
+    扫描件（日本国立公文书馆的明刻本）会渲染出不同的图，OCR 结果跟 index 对不上。"""
     pages: list[dict[str, Any]] = []
     metadata: dict[str, Any] = {}
 
@@ -195,7 +199,8 @@ def extract_pdf_pages(path: Path, ocr_backend: str = "auto") -> tuple[list[dict[
             "backend": "fitz",
         }
         page_quality_records: list[Any] = []
-        for idx in range(len(doc)):
+        wanted = range(len(doc)) if page_numbers is None else [n - 1 for n in page_numbers if 1 <= n <= len(doc)]
+        for idx in wanted:
             page = doc[idx]
             text = page.get_text("text") or ""
             image_infos: list[dict[str, Any]] = []
@@ -252,6 +257,8 @@ def extract_pdf_pages(path: Path, ocr_backend: str = "auto") -> tuple[list[dict[
         reader = PdfReader(str(path))
         metadata.update({"page_count": len(reader.pages), "title": path.stem, "backend": "pypdf"})
         for idx, page in enumerate(reader.pages):
+            if page_numbers is not None and idx + 1 not in page_numbers:
+                continue
             text = page.extract_text() or ""
             quality = classify_page(idx + 1, text)
             pages.append({
@@ -518,7 +525,7 @@ def collect_segments(slug: str) -> tuple[list[Segment], list[dict[str, Any]]]:
                     # 标出 OCR 页：worker 据此把这些页上的引文压到 medium（P2 查不出 OCR 认错的字）；
                     # 有没认出来的行时写明几行，worker 不在缺口两侧拼引文
                     page_ocr = page.get("ocr") or {}
-                    unread = int(page_ocr.get("dropped_lines") or 0) + int(page_ocr.get("short_lines") or 0)
+                    unread = suspect_count(page_ocr)
                     via_ocr = "" if page_ocr.get("status") != "ok" else (
                         f" (OCR, {unread} unread)" if unread else " (OCR)")
                     page_buffer.append(f"--- Page {page_number}{via_ocr} ---\n{page_text}")
