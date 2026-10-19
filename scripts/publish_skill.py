@@ -77,6 +77,9 @@ def _load_sibling(name: str):
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {path}")
     module = importlib.util.module_from_spec(spec)
+    # 先登记再执行：workspace 等模块在 `from __future__ import annotations` 下定义 dataclass，
+    # dataclass 要到 sys.modules 里查模块，没登记就崩
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -569,9 +572,12 @@ def main() -> int:
              "verdict. The staged published check can never be skipped.",
     )
     parser.add_argument("--notes", help="Custom notes to add/update in gallery/index.json")
+    parser.add_argument("--root", help="数据根目录（默认 MDF_DATA_ROOT，再默认仓库根）")
     args = parser.parse_args()
 
-    root = Path(__file__).resolve().parent.parent
+    # 和其他命令一样认数据根：数据根放在 worktree 之外时，发布不能回仓库根找 output/
+    workspace = _load_sibling("workspace").Workspace.resolve(args.root)
+    root, code_root = workspace.data_root, workspace.code_root
     slug = args.slug
 
     output_dir = root / "output" / slug
@@ -587,7 +593,7 @@ def main() -> int:
     if not args.force:
         print("Running pre-publication validation check...")
         ret, stdout, stderr = run_command(
-            [sys.executable, "scripts/validate_output.py", "skill", slug],
+            [sys.executable, str(code_root / "scripts" / "validate_output.py"), "skill", slug],
             root
         )
         if ret != 0:
