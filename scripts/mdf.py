@@ -38,7 +38,7 @@ from typing import Any, Callable
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
     sys.path.insert(0, _SCRIPTS_DIR)
-from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
+from workspace import Workspace, data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -79,6 +79,13 @@ def _delegate(module: str, argv: list[str], cwd: Path | None = None) -> int:
 
 def _data_root(arg: str | None) -> Path:
     return data_root(arg)
+
+
+def _risk_notice(root: Path, *, stream: Any = None) -> None:
+    """数据根在临时 worktree 里就提醒（发现 0）。文本输出走 stdout，跟着阶段卡一起贴给用户；JSON 输出走 stderr。"""
+    notice = Workspace(root).risk_notice()
+    if notice:
+        print(notice, file=stream or sys.stdout)
 
 
 def _print_json(data: Any) -> None:
@@ -155,24 +162,53 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(ps.progress_bar(stages))
     elif args.json:
         _print_json(ps.to_json(args.slug, stages))
+        _risk_notice(root, stream=sys.stderr)
     else:
         print(ps.to_markdown(args.slug, stages), end="")
         print("\n" + ps.progress_bar(stages))
+        _risk_notice(root)
     return 0
 
 
 def cmd_next(args: argparse.Namespace) -> int:
     ps = _module("pipeline_status")
-    stages = ps.collect_status(args.slug, _data_root(args.root))
+    root = _data_root(args.root)
+    stages = ps.collect_status(args.slug, root)
     nxt = ps.next_stage(stages)
     if args.card:
         print(ps.render_card(args.slug, stages), end="")
     elif args.json:
         _print_json({"slug": args.slug, "complete": nxt is None, "next": ps.to_json(args.slug, stages)["next"]})
+        _risk_notice(root, stream=sys.stderr)
+        return 0
     elif nxt is None:
         print("全部完成。")
     else:
         print(f"{nxt.chapter.get('title', '')} / {nxt.title}：{nxt.next_action or nxt.detail}")
+    _risk_notice(root)
+    return 0
+
+
+def cmd_budget(args: argparse.Namespace) -> int:
+    ce = _module("cost_estimator")
+    shard_dir = _data_root(args.root) / "sources" / args.slug / "processed" / "local_shards"
+    try:
+        estimate = json.loads((shard_dir / "cost_estimate.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        print(f"没有可读的 {shard_dir / 'cost_estimate.json'}：先运行 mdf index {args.slug}")
+        return 1
+    budget = ce.load_budget(CODE_ROOT)
+    reason = budget.verdict(estimate)
+    if reason is None:
+        print(f"未超预算：预计输入 {int(estimate['tokens']['selected_input']):,} token"
+              f"（上限 {budget.max_selected_input_tokens or 0:,}），无需批准。")
+        return 0
+    print(reason)
+    if not args.approve:
+        print("先用 AskUserQuestion 问用户；用户选全量处理后，加 --approve 记下批准。")
+        return 3
+    path = ce.write_approval(shard_dir, estimate)
+    print(f"[OK] 已记下用户批准：{reason}（{path}）")
     return 0
 
 
@@ -291,6 +327,12 @@ def build_parser() -> argparse.ArgumentParser:
         else:
             p.add_argument("--card", action="store_true", help="输出阶段卡（进入阶段时贴给用户）")
         p.set_defaults(func=func)
+
+    p = sub.add_parser("budget", help="分片抽取的预算核对；用户同意超预算全量处理后，--approve 记下批准")
+    p.add_argument("slug", type=slug_arg)
+    p.add_argument("--approve", action="store_true", help="记下用户批准当前规模（须先在对话里问过用户）")
+    p.add_argument("--root", help=ROOT_HELP)
+    p.set_defaults(func=cmd_budget)
 
     p = sub.add_parser("doctor", help="环境与可选依赖自检")
     p.add_argument("--json", action="store_true")

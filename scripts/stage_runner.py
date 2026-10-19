@@ -202,6 +202,8 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     state_before = next(s.state for s in before if s.key == step_id)
 
     out(ps.render_card(slug, before, tree, step_key=step_id))
+    if workspace.risk_notice():  # 数据根在临时 worktree 里：新进程的产物同样会随 worktree 回收丢失
+        out(workspace.risk_notice())
     detected = harness.detect(profiles, which) if which else harness.detect(profiles)
     executable = detected.get(harness_name)
     brief_path = root / "output" / slug / "briefs" / f"{step_id}.md"  # 与 harness.write_brief 同一路径
