@@ -59,6 +59,16 @@ class WorkspaceTests(unittest.TestCase):
                              f"cd '{data}' && " + shlex.join(["python", f"{repo}/scripts/mdf.py", "validate", "sources",
                                                               "demo"]))
 
+    def test_data_root_in_the_desktop_worktree_pool_is_ephemeral(self):
+        # 2026-10-19 鲁迅 GUI 验收发现 0：worktree 被回收，被 gitignore 的 sources/、output/ 一起消失，没有提示
+        repo = Path("D:/mdf")
+        pooled = repo / ".claude" / "worktrees" / "lu-xun-acceptance"
+        self.assertTrue(Workspace(pooled, pooled).ephemeral)
+        self.assertIn("MDF_DATA_ROOT", Workspace(pooled, pooled).risk_notice())
+        self.assertFalse(Workspace(repo, pooled).ephemeral, "数据根指到 worktree 外面就安全")
+        self.assertFalse(Workspace(repo, repo).ephemeral)
+        self.assertIsNone(Workspace(repo, repo).risk_notice())
+
     def test_checkpoint_must_be_a_repo_python_script(self):
         # 检查点来自阶段树，但 mdf run 会在数据根下直接执行它：只放行 python scripts/<脚本>.py
         workspace = Workspace(ROOT)

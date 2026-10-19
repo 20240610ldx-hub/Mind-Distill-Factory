@@ -38,7 +38,7 @@ from typing import Any, Callable
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
     sys.path.insert(0, _SCRIPTS_DIR)
-from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
+from workspace import Workspace, data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
 
@@ -79,6 +79,13 @@ def _delegate(module: str, argv: list[str], cwd: Path | None = None) -> int:
 
 def _data_root(arg: str | None) -> Path:
     return data_root(arg)
+
+
+def _risk_notice(root: Path, *, stream: Any = None) -> None:
+    """数据根在临时 worktree 里就提醒（发现 0）。文本输出走 stdout，跟着阶段卡一起贴给用户；JSON 输出走 stderr。"""
+    notice = Workspace(root).risk_notice()
+    if notice:
+        print(notice, file=stream or sys.stdout)
 
 
 def _print_json(data: Any) -> None:
@@ -155,24 +162,30 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(ps.progress_bar(stages))
     elif args.json:
         _print_json(ps.to_json(args.slug, stages))
+        _risk_notice(root, stream=sys.stderr)
     else:
         print(ps.to_markdown(args.slug, stages), end="")
         print("\n" + ps.progress_bar(stages))
+        _risk_notice(root)
     return 0
 
 
 def cmd_next(args: argparse.Namespace) -> int:
     ps = _module("pipeline_status")
-    stages = ps.collect_status(args.slug, _data_root(args.root))
+    root = _data_root(args.root)
+    stages = ps.collect_status(args.slug, root)
     nxt = ps.next_stage(stages)
     if args.card:
         print(ps.render_card(args.slug, stages), end="")
     elif args.json:
         _print_json({"slug": args.slug, "complete": nxt is None, "next": ps.to_json(args.slug, stages)["next"]})
+        _risk_notice(root, stream=sys.stderr)
+        return 0
     elif nxt is None:
         print("全部完成。")
     else:
         print(f"{nxt.chapter.get('title', '')} / {nxt.title}：{nxt.next_action or nxt.detail}")
+    _risk_notice(root)
     return 0
 
 

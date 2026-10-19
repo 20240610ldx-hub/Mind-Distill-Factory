@@ -84,6 +84,19 @@ class MdfCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue(out.startswith("阶段 0 · 意图澄清与初始化 / 目录初始化："), out)
 
+    def test_pooled_worktree_data_root_is_flagged_on_card_and_status(self):
+        root = str(Path(self.root) / ".claude" / "worktrees" / "w")
+        for argv in (("next", "demo", "--card"), ("status", "demo"), ("next", "demo")):
+            with self.subTest(argv=argv):
+                code, out, _ = run(*argv, "--root", root)
+                self.assertEqual(code, 0)
+                self.assertIn("临时 worktree", out)
+        code, out, err = run("status", "demo", "--json", "--root", root)
+        json.loads(out)  # JSON 保持可解析，提醒走 stderr
+        self.assertIn("临时 worktree", err)
+        _, out, _ = run("next", "demo", "--card", "--root", self.root)
+        self.assertNotIn("临时 worktree", out)
+
     def test_env_var_sets_data_root(self):
         old = os.environ.get("MDF_DATA_ROOT")
         os.environ["MDF_DATA_ROOT"] = self.root

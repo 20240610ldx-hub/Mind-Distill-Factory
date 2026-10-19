@@ -51,6 +51,19 @@ class Workspace:
     def child_env(self, base: Mapping[str, str] | None = None) -> dict[str, str]:
         return {**(os.environ if base is None else base), ENV: str(self.data_root), "PYTHONUTF8": "1"}
 
+    @property
+    def ephemeral(self) -> bool:
+        """数据根落在桌面版的 worktree 池（`.claude/worktrees/<名字>/`）里。worktree 被回收时，被 gitignore 的
+        sources/、output/ 一起消失，没有任何提示（2026-10-19 鲁迅 GUI 验收发现 0：第一轮跑到 3A 的产物全丢了）。"""
+        parts = [p.lower() for p in self.data_root.parts]
+        return any(a == ".claude" and b == "worktrees" for a, b in zip(parts, parts[1:]))
+
+    def risk_notice(self) -> str | None:
+        if not self.ephemeral:
+            return None
+        return (f"⚠️ 数据根在临时 worktree 里（{self.data_root.as_posix()}）：worktree 被回收时 sources/、output/ "
+                f"会一起消失。长流水线先把 {ENV} 指向 worktree 之外的目录（例如主仓库），再继续。")
+
     def checkpoint_argv(self, command: str, slug: str, python: str = sys.executable) -> list[str]:
         """检查点命令 → 在数据根下执行的 argv：`python` 换成给定解释器，`scripts/*.py` 换成仓库里的绝对路径，
         其余参数（sources/… output/…）留给数据根解析。只放行 `python scripts/<脚本>.py …`：mdf run 会直接执行它。"""

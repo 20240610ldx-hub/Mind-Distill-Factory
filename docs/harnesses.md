@@ -108,6 +108,7 @@ python scripts/mdf.py harness plan zhang-juzheng-v6 --target codex
 - **AGENTS.md 与 CLAUDE.md 是两份文件**：`AGENTS.md` 已对齐 v6，并补了 `mdf` 入口与进度协议；以后改规则要两份一起改，冲突时以 `CLAUDE.md` 为准。`mdf harness` 会检查 `AGENTS.md` 是否仍是 v6。
 - **Codex 子代理**：二手资料称已正式提供，但说法互相矛盾，官方文档里没有核实到，所以流水线不依赖它，统一走简报 + 新进程。
 - **Claude 桌面 GUI 不加载项目子代理**：2026-10-18 在桌面 GUI 里验收时，把 `commands/`、`agents/` 链接进 worktree 的 `.claude/`，Agent 工具报 `Agent type 'local-source-worker' not found`，只列出内置类型。同一目录下 `claude -p`（2.1.301）能识别该角色：用 junction 链接或复制文件，结果都一样。原因在桌面端，不在链接方式。编排协议的兜底（`commands/distill.md`）：`mdf brief` 写出简报，交给 `general-purpose` 子代理执行。角色定义仍以仓库里的文件为准，上下文仍然隔离。
+- **桌面版 worktree 会被回收**：在 `.claude/worktrees/<名字>/` 里跑、又没设 `MDF_DATA_ROOT` 时，`sources/`、`output/` 在 worktree 里，被 gitignore，回收时一起消失，不会有提示（2026-10-19 鲁迅验收第一轮跑到 3A，产物全丢）。现在由 `Workspace.ephemeral` 判断：阶段卡、`mdf status` 和 `mdf run` 的计划都会打印警告，编排协议要求在阶段 0 先把数据根移出 worktree。
 - **Windows 管道编码**：`mdf` 自己输出 UTF-8。用 `python -c` 读管道再 `print` 时，打印出的中文按控制台的 GBK 编码，看起来是乱码。这种情况加 `PYTHONIOENCODING=utf-8`。
 - **gallery 包的 frontmatter**：含 `format_version`、`argument-hint` 等非 Agent Skills 标准字段。Codex、pi 是否对此告警没有逐一验证；`harness plan` 会提示。
 - **Codex、pi 仍没有端到端实测**：墨子试跑（[harness-trial-mozi.md](harness-trial-mozi.md)）用 `claude -p` 新进程走完了简报路径（到发布），修掉了简报缺口，但 Codex、pi 本身没有跑过。首次使用请留意 agent 是否按简报写对了文件，检查点会兜底。

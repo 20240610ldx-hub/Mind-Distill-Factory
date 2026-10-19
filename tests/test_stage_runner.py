@@ -146,6 +146,13 @@ class ConsentTests(RunnerFixture):
         self.assertIn("按量计费", text)
         self.assertIn("--yes", text)
 
+    def test_plan_flags_a_data_root_inside_the_worktree_pool(self):
+        pooled = self.root / ".claude" / "worktrees" / "w"
+        (pooled / "output" / "demo").mkdir(parents=True)
+        which = lambda exe: sys.executable if exe == "fakeagent" else None  # noqa: E731
+        sr.run_step("demo", "review", pooled, "fake", profiles=self.profiles(), which=which, out=self.lines.append)
+        self.assertIn("临时 worktree", "\n".join(self.lines))
+
     def test_missing_executable(self):
         code = sr.run_step("demo", "review", self.root, "fake", profiles=self.profiles(), which=lambda exe: None,
                            out=self.lines.append, yes=True)
