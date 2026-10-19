@@ -54,6 +54,10 @@ class AssemblerContractTests(unittest.TestCase):
     def test_states_line_cap(self) -> None:
         self.assertIn("500", self.text)
 
+    def test_allows_several_case_ids_per_index_row(self) -> None:
+        # P5 已接受 case_id 列一格多 id；组装器得知道这条省行的路（鲁迅验收发现 12）
+        self.assertIn("一格可放多个 case_id", self.text)
+
 
 class CaseBuilderContractTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -121,6 +125,22 @@ class OrchestratorContractTests(unittest.TestCase):
 
     def test_has_attachment_stage(self) -> None:
         self.assertIn("Stage 4.5", self.text)
+
+    def _stage_45(self) -> str:
+        match = re.search(r"^## Stage 4\.5.*?(?=^### ✓ 检查点)", self.text, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(match, "distill.md 缺少 Stage 4.5 章节")
+        return match.group(0)
+
+    def test_stage_45_names_who_writes_back_the_case_index(self) -> None:
+        # 鲁迅验收发现 13：只写了「附件齐备后回写」，没说谁回写——编排器不知道该把这步派给谁
+        section = self._stage_45()
+        self.assertRegex(section, r"skill-assembler（续）[^\n]*回写[^\n]*案例索引|案例索引[^\n]*skill-assembler（续）")
+
+    def test_stage_45_states_the_line_budget_for_the_write_back(self) -> None:
+        # 占位行按簇写，回写成每案一行会多出二十多行；预算不写明，回写后才撞 P6 的 500 行上限
+        section = self._stage_45()
+        self.assertIn("500", section)
+        self.assertIn("同一原则", section)
 
     def test_has_english_on_demand_stage(self) -> None:
         self.assertIn("Stage 6.5", self.text)

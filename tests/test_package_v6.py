@@ -259,6 +259,34 @@ class P5IndexConsistencyTests(unittest.TestCase):
             errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
             self.assertEqual(errors, [])
 
+    def test_case_id_column_may_hold_several_ids_per_row(self) -> None:
+        # 鲁迅验收发现 12：每案一行，33 个案例把 SKILL.md 从 473 行推到 495 行，贴着 P6 的 500 行上限。
+        # 按原则合并成一行（触发情境与 case_id 同序分隔）能省下二十多行，P5 不该因此判「未索引」。
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            index = (
+                "## 案例索引\n\n"
+                "| 对应原则 | 触发情境 | case_id |\n|---|---|---|\n"
+                "| 原则 1 | 情境甲；情境乙 | demo-c1-1、demo-c1-2 |\n"
+                "| 原则 1 | 情境丙（反例） | `demo-counter-1` |\n"
+            )
+            fx.write_skill(build_skill_md(extra=index))
+            errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
+            self.assertEqual(errors, [])
+
+    def test_multi_id_cell_still_catches_a_typo(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            fx = PackageFixture(td)
+            index = (
+                "## 案例索引\n\n"
+                "| 对应原则 | 触发情境 | case_id |\n|---|---|---|\n"
+                "| 原则 1 | 情境甲；情境乙 | demo-c1-1, demo-c1-9<br>demo-c1-2 |\n"
+                "| 原则 1 | 反例 | demo-counter-1 |\n"
+            )
+            fx.write_skill(build_skill_md(extra=index))
+            errors = validator.check_p5_index(fx.out / "SKILL.md", fx.refs / "cases.md")
+            self.assertEqual(errors, [f"P5_INDEX_ORPHAN: {fx.out / 'SKILL.md'}: 索引引用了不存在的 case_id 'demo-c1-9'"])
+
     def test_fails_when_index_references_unknown_case_id(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             fx = PackageFixture(td)

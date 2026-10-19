@@ -629,6 +629,7 @@ BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.(?:md|json|py|txt))`")
 CASE_ID_RE = re.compile(r"case_id:\s*([A-Za-z0-9_-]+)")
 # P5 解析索引表格时只认这种形状；case_id 本身也必须是这种形状，否则写进表格也会被判「未索引」。
 CASE_ID_FORMAT_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)+")
+CASE_ID_CELL_SPLIT_RE = re.compile(r"\s*(?:<br\s*/?>|[、，,；;/\s])\s*", re.IGNORECASE)
 CASE_CLUSTER_RE = re.compile(r"^\*\*对应原则簇：\*\*\s*(\S+)\s*$", re.MULTILINE)
 CASE_HEADING_RE = re.compile(r"^###\s+.*$", re.MULTILINE)
 CASE_COUNTER_FIELD_RE = re.compile(r"^\*\*反例[:：]\*\*", re.MULTILINE)
@@ -723,12 +724,20 @@ def check_p5_index(skill_md: Path, cases_md: Path) -> list[str]:
     if section:
         index_text = section.group(1)
         indexed.update(CASE_ID_RE.findall(index_text))
+        id_columns: set[int] = set()
         for line in index_text.splitlines():
-            if line.strip().startswith("|"):
-                for cell in line.split("|"):
-                    token = cell.strip()
-                    if CASE_ID_FORMAT_RE.fullmatch(token):
-                        indexed.add(token)
+            if not line.strip().startswith("|"):
+                id_columns = set()  # 表格断开，下一张表重新认表头
+                continue
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if not id_columns and any("case_id" in cell for cell in cells):
+                id_columns = {i for i, cell in enumerate(cells) if "case_id" in cell}
+                continue
+            for i, cell in enumerate(cells):
+                # case_id 列一格可放多个 id（按原则合并成一行，省 P6 的行数，鲁迅验收发现 12）；
+                # 其他列只认整格，免得把触发情境里的 first-person 之类连字符词当成孤儿 id
+                tokens = CASE_ID_CELL_SPLIT_RE.split(cell) if i in id_columns else [cell]
+                indexed.update(t.strip("`") for t in tokens if CASE_ID_FORMAT_RE.fullmatch(t.strip("`")))
     actual = {c["case_id"] for c in _parse_cases(cases_md) if c["case_id"]}
     errors = []
     for orphan in sorted(indexed - actual):

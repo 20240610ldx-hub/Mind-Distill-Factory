@@ -484,8 +484,14 @@ python scripts/validate_output.py frameworks {slug}
 
 另由 skill-assembler 产出 `output/{slug}/人物档案.md`（模板 `templates/refs/dossier.zh.md`）。
 
-附件齐备后回写核心层的「案例索引」表——把 Stage 4 写下的占位行替换成 `output/{slug}/references/cases.md`
-中真实的 case_id，索引与 cases.md 必须双向一一对应（P5 闸门）。
+附件齐备后，由 skill-assembler（续）回写核心层的「案例索引」表（与 voice.md 同一次调用）——把 Stage 4
+写下的占位行替换成 `output/{slug}/references/cases.md` 中真实的 case_id，索引与 cases.md 必须双向一一对应
+（P5 闸门）。派发时把这一步写进它的任务说明，别指望它自己想到。
+
+**行数预算：** 回写后 SKILL.md 仍须 ≤500 行（P6）。占位行是按簇写的，回写成每案一行会多出「案例数 − 簇数」行——
+鲁迅验收 33 个案例、10 个簇，从 473 行涨到 495 行，只剩 5 行余量。默认把同一原则的案例合并成一行：触发情境
+用「；」分隔，`case_id` 列按同样顺序列出全部 case_id（「、」分隔，P5 认得）；回写后若还有 20 行以上余量，
+才拆成每案一行。
 
 ### ✓ 检查点 4：包校验
 
