@@ -93,6 +93,8 @@ FRAMEWORK_CORE_SCHEMA = {
                         "confidence_factors", "expression_dna_raw_summary",
                         "alignment_contract"],
     "min_clusters": 1,
+    # 与 FRAMEWORK_SCHEMA["min_blind_spots"] 同一底线；现有 26 份 core 最少 3 个主题
+    "min_blind_spot_themes": 2,
 }
 
 PACKAGE_SCHEMA = {
@@ -352,6 +354,14 @@ def validate_frameworks(slug: str) -> list[str]:
                     errors.append(f"MISSING_FIELD: {core_file}: principle_clusters[{i}].cluster_id")
                 if not cluster.get("selected_evidence"):
                     errors.append(f"EMPTY_EVIDENCE: {core_file}: principle_clusters[{i}] has no selected_evidence")
+            # 机械 scaffold 编不出盲区（原则文件里没有这个字段），要 framework-core-synthesizer 补；
+            # 以前这里只查字段在不在，空列表也放行，到框架阶段才被拦下
+            themes = core.get("shared_blind_spot_themes") or []
+            if len(themes) < FRAMEWORK_CORE_SCHEMA["min_blind_spot_themes"]:
+                errors.append(f"TOO_FEW_BLIND_SPOTS: {core_file}: shared_blind_spot_themes has {len(themes)} "
+                              f"< {FRAMEWORK_CORE_SCHEMA['min_blind_spot_themes']}")
+            if not core.get("reasoning_pattern_candidates"):
+                errors.append(f"WARNING: {core_file}: reasoning_pattern_candidates is empty")
             contract = core.get("alignment_contract", {})
             for field in ["shared_fields", "equivalent_coverage_fields", "independent_language_fields"]:
                 if not contract.get(field):
@@ -453,6 +463,16 @@ def validate_frameworks(slug: str) -> list[str]:
             except Exception as e:
                 errors.append(f"PARSE_ERROR: {fw_file}: {e}")
 
+    zh_file = output_dir / "frameworks.zh.json"
+    if zh_file.exists():
+        try:
+            zh_fw = read_json_file(zh_file)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            zh_fw = None  # 解析错误上面已报
+        if isinstance(zh_fw, dict):
+            errors.extend(check_classification(slug, Path("."), zh_fw.get("primary_category"),
+                                               zh_fw.get("secondary_categories"), zh_file))
+
     # Cross-check: blind spots must cover same themes（仅在英文分支启用时）
     try:
         if not en_branch_requested(slug):
@@ -479,6 +499,22 @@ def validate_frameworks(slug: str) -> list[str]:
         pass  # Files may not exist yet
 
     return errors
+
+
+def check_classification(slug: str, root: Path, primary: str | None, secondary: list[str] | None,
+                         artifact: Path, where: str = "primary_category / secondary_categories") -> list[str]:
+    """产物里的类目必须等于用户在阶段 0 确认的（sources/{slug}/classification.json）。
+
+    没有这份文件的旧人物不检查（类目以产物为准）；文件损坏则报错，不静默放过。
+    """
+    cls = _load_sibling("classification")
+    try:
+        confirmed = cls.load(root, slug)
+    except ValueError as exc:
+        return [f"CLASSIFICATION_INVALID: {exc}"]
+    if confirmed is None:
+        return []
+    return [f"CLASSIFICATION_MISMATCH: {artifact}（{where}）：{d}" for d in cls.mismatch(confirmed, primary, secondary)]
 
 
 def is_v6_skill(content: str) -> bool:
@@ -1035,6 +1071,9 @@ def validate_package(slug: str, strict: bool = False) -> list[str]:
                 )
 
     errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
+    card = _load_sibling("publish_skill").extract_v6_metadata(skill_md)
+    errors.extend(check_classification(slug, root, card["primary_category"], card["secondary_categories"],
+                                       skill_md, where="身份卡"))
     if strict:
         review_md = output_dir / "review.md"
         evidence_md = output_dir / PACKAGE_SCHEMA["reference_dir"] / "evidence.md"

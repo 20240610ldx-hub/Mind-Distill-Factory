@@ -1,6 +1,6 @@
 {
   "schema": "pipeline-stages-v1",
-  "_comment": "流水线阶段逻辑树：唯一来源。scripts/pipeline_status.py 的阶段标题、mdf status/stages 的输出、编排者的章节标签都从这里读。phase = 对话界面的一个章节（chapter）；step = 任务清单里的一项，不单独开章节。chapter.title 不超过 40 字。",
+  "_comment": "流水线阶段逻辑树：唯一来源。step 可选字段：checkpoint / checkpoint_note（步骤级检查点，优先于阶段检查点）、requires（[\"classification\"]：没有用户确认的类目就不生成简报）、network（\"forbidden\"：简报禁止网络检索，Claude Code 新进程另加 --disallowedTools）、note。scripts/pipeline_status.py 的阶段标题、mdf status/stages 的输出、编排者的章节标签都从这里读。phase = 对话界面的一个章节（chapter）；step = 任务清单里的一项，不单独开章节。chapter.title 不超过 40 字。",
   "chapter_policy": {
     "granularity": "phase",
     "title_format": "阶段 {order} · {title}",
@@ -14,7 +14,10 @@
       "title": "意图澄清与初始化",
       "chapter": {"title": "阶段 0 · 意图澄清与初始化", "summary": "确认人物、类目与素材来源，建立目录"},
       "steps": [
-        {"id": "init", "title": "目录初始化", "executor": "script", "command": "python scripts/mdf.py init {slug}"}
+        {"id": "init", "title": "目录初始化", "executor": "script", "command": "python scripts/mdf.py init {slug}"},
+        {"id": "classify", "title": "类目确认", "executor": "human|script",
+         "command": "python scripts/mdf.py classify {slug} --primary <主类> --secondary <副类1,副类2>",
+         "note": "编排者按 config/taxonomy.json 推荐 1 主 + 至多 2 副，用 AskUserQuestion（或 harness 的同类提问工具）让用户确认，再用这条命令把决定写进 sources/{slug}/classification.json；下游只读不选。"}
       ]
     },
     {
@@ -27,8 +30,10 @@
         {"id": "index", "title": "登记、抽取与分片", "executor": "script", "command": "python scripts/mdf.py index {slug}"},
         {"id": "clean", "title": "清洗与质量闸门", "executor": "script", "command": "python scripts/mdf.py clean {slug}"},
         {"id": "extract", "title": "分片抽取", "executor": "agent", "agent": "local-source-worker",
-         "checkpoint": "python scripts/task_status.py summary sources/{slug}/processed/local_shards/task_status.json"},
-        {"id": "reduce", "title": "合并与网络补充", "executor": "script|agent", "command": "python scripts/mdf.py reduce {slug}", "agent": "source-researcher"}
+         "checkpoint": "python scripts/task_status.py summary sources/{slug}/processed/local_shards/task_status.json --strict"},
+        {"id": "reduce", "title": "合并与本地补充", "executor": "script|agent", "command": "python scripts/mdf.py reduce {slug}", "agent": "source-researcher",
+         "network": "forbidden",
+         "network_note": "只读 sources/{slug}/raw/ 与 sources/{slug}/processed/；primary / secondary / expression_dna 都从本地语料整理。缺素材就停下，在报告里列出建议采集的目标，由编排者征得用户同意后用 mdf acquire 合规采集。"}
       ],
       "checkpoint": "python scripts/mdf.py validate sources {slug}"
     },
@@ -38,7 +43,7 @@
       "title": "原则提取",
       "chapter": {"title": "阶段 2 · 原则提取", "summary": "从素材提取有出处、过唯一性测试的原则"},
       "steps": [
-        {"id": "principles", "title": "原则提取", "executor": "agent", "agent": "principle-extractor"}
+        {"id": "principles", "title": "原则提取", "executor": "agent", "agent": "principle-extractor", "requires": ["classification"]}
       ],
       "checkpoint": "python scripts/mdf.py validate principles {slug}"
     },
@@ -48,7 +53,8 @@
       "title": "框架合成",
       "chapter": {"title": "阶段 3 · 框架合成", "summary": "共同核心 → 中文框架 → 自检"},
       "steps": [
-        {"id": "frameworks", "title": "框架合成与自检", "executor": "agent", "agent": "framework-core-synthesizer → framework-synthesizer-zh → framework-alignment-reviewer"}
+        {"id": "frameworks", "title": "框架合成与自检", "executor": "agent", "agent": "framework-core-synthesizer → framework-synthesizer-zh → framework-alignment-reviewer",
+         "requires": ["classification"]}
       ],
       "checkpoint": "python scripts/mdf.py validate frameworks {slug}"
     },
@@ -58,7 +64,7 @@
       "title": "组装与附件",
       "chapter": {"title": "阶段 4 · 组装与附件", "summary": "核心层 SKILL.md、三份附件与 P1–P6 包校验"},
       "steps": [
-        {"id": "assemble", "title": "核心层组装", "executor": "agent", "agent": "skill-assembler",
+        {"id": "assemble", "title": "核心层组装", "executor": "agent", "agent": "skill-assembler", "requires": ["classification"],
          "checkpoint_note": "此时附件尚未生成（阶段 4.5 才产出），validate package 预期只报 MISSING references/* 与指向 references/ 的 P3_DANGLING_PATH；除此之外的错误必须为零，附件类错误留到「附件生成」之后再清。"},
         {"id": "attachments", "title": "附件生成", "executor": "agent", "agent": "case-builder / evidence-carder → skill-assembler（续：voice.md 与案例索引回写）"},
         {"id": "gates", "title": "P1–P6 包校验", "executor": "script", "command": "python scripts/mdf.py validate package {slug}"}

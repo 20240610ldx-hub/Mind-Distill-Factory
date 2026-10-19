@@ -47,32 +47,45 @@ python scripts/mdf.py run <slug> [step] --harness codex          # 阶段卡 + �
 python scripts/mdf.py run <slug> [step] --harness codex --yes    # 用户同意后执行
 ```
 
-它先打印阶段卡，再生成简报、按 `config/harnesses.json` 的 `isolated_run` 起新进程（不经过 shell，提示词作为一个参数；`--model` 按各 harness 的 `model_flag` 传入）。运行中每 30 秒一行心跳：
+它先打印阶段卡，再生成简报，然后按 `config/harnesses.json` 的 `isolated_run` 起新进程。命令不经过 shell，提示词作为一个参数传入。`--model`、`--effort` 按各 harness 档案声明的参数传入（`model_flag`、`effort_flag`），都插在提示词前面：
+
+| | Claude Code | Codex | pi |
+|---|---|---|---|
+| 模型 | `--model` | `--model`（放在 `exec` 子命令里） | `--model` |
+| 推理强度 `--effort` | `--effort low…max` | 没有对应参数，指定了就报错 | `--thinking off…xhigh` |
+| 授权数据根 | `--add-dir`（放在命令末尾） | `--add-dir` | 不需要（没有目录沙箱） |
+
+数据根不在仓库里时（worktree 里没有私有语料，`MDF_DATA_ROOT` 指向别处），新进程的工作目录仍是仓库，额外授权它读写数据根。Claude Code 的 `--add-dir` 和 `--allowedTools` 一样是可变参数，所以放在末尾，不会吞掉提示词。简报这时多一条「路径约定」：`sources/…`、`output/…` 在数据根下，`scripts/…` 在仓库里。另附一条在本机能直接运行的检查点命令（先 cd 到数据根，脚本用仓库里的绝对路径）。`mdf run` 自己跑检查点时用的是同一套改写。
+
+运行中每 30 秒一行心跳：
 
 ```
   … 1分30秒 · 日志 12.4 KB · 新产物 3 个 · 最近输出：已写 shard_004_extracts.json
 ```
 
-结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`，例如审查步骤是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。Claude Code 的无头进程用 `--output-format json` 输出结果对象，结果行和运行记录里带上费用、轮数和缓存读取 token（墨子试跑 9 次调用合计 $6.04，大头是缓存读）；Codex、pi 的用量格式没有核实，不解析。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+结束后报这一步的状态变化（如「⬜ 待办 → ✅ 完成」），并跑这一步自己的检查点（阶段树里步骤级的 `checkpoint`：分片抽取是 `task_status.py summary … --strict`，审查是 `validate package <slug> --strict`）；本阶段的步骤全部完成时，再跑阶段检查点。最后打一行进度条，记录追加到 `output/<slug>/runs/runs.jsonl`。新进程按量计费，所以不加 `--yes` 只打印计划、什么也不写（fail-closed）。后台任务面板里显示的就是 `mdf run <slug> <step>`，一眼能看出在跑哪一步。
+
+Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-json 必须带 `--verbose`）。每行一个事件，心跳里的「最近」就是最后一次工具调用（如「Read shard_001.json」）。结束时的结果对象给出费用、轮数、token、新进程是否又派了子代理、被拒的工具调用数，写进运行记录的 `usage` 字段，结果行会显示（手动生成的 `status --html` 面板另有运行记录表和合计费用）。2026-10-18 用 Sonnet 5.5 实测时发现两点：一是改用流式之前，只用 `json` 要到进程结束才输出，心跳一直是「日志 0.0 KB」；二是结果对象的字段顺序不固定，以 `duration_api_ms` 起头，按 `{"type":"result"` 前缀去找会丢掉费用。所以现在逐行解析。墨子试跑 9 次调用合计 $6.04，大头是缓存读。Codex、pi 的用量格式没有核实，取不到就留空，不猜。
+
+**简报里还会带上的东西**（都来自 `config/pipeline_stages.json` 的步骤字段）：
+
+- 用户确认的类目（`sources/<slug>/classification.json`，由 `mdf classify` 写入）。原则提取、框架合成、核心层组装标了 `requires: ["classification"]`，没有这份记录就拒绝生成简报——新进程不能向用户提问。
+- 禁网步骤（`network: "forbidden"`，目前是阶段 1 的合并与本地补充）写明禁止网络检索；harness 声明了 `deny_network_args` 的（Claude Code：`--disallowedTools WebSearch,WebFetch`），启动命令末尾同时从工具层面拿掉联网工具（它也是可变参数，所以和 `--add-dir` 一样放在提示词后面）。Codex、pi 只靠简报里的禁令（未验证它们的联网开关）。
+- 换行符规则：一律 LF。不设脚本闸门，由执行者自查（manifest 是字节 hash，CRLF 入库后会对不上）。
 
 ### 2. 章节标签与 H2 兜底：左侧的阶段轨
 
 章节规则写在 `config/pipeline_stages.json` 的 `chapter_policy`：每进入一个阶段打一次标签。Claude 桌面版的章节工具是 `mcp__ccd_session__mark_chapter`（常列在 deferred 工具里，先用 ToolSearch 加载），调用后左侧出现可跳转的「阶段 N · 标题」；Codex、pi、终端输出同名的 H2 标题（如 `## 阶段 2 · 原则提取`），在长对话里可以搜索。Codex App 的长线程导航是按轮次跳转的，H2 标题落在对应那一轮里，同样能用。
 
-章节由编排者打。只要在驱动流水线，就算每一步都交给新进程、自己只是在等，也算编排者。墨子试跑没有打标签，原因是驱动会话把自己当成了「测试脚本」。现在 `commands/distill.md` 写明了这一点，还规定了每个阶段的三拍叙述：开场贴阶段卡（`mdf next <slug> --card`），过程只在有新信息时开口，收尾贴结果行和进度条。
+章节由编排者打。只要在驱动流水线，就算每一步都交给新进程、自己只是在等，也算编排者。墨子试跑没有打标签，原因是驱动会话把自己当成了「测试脚本」。现在 `commands/distill.md` 写明了这一点，还规定了每个阶段的三拍叙述：开场贴阶段卡（`mdf next <slug> --card`），过程只在有新信息时开口，收尾贴结果行。
 
-### 3. 状态面板 `mdf status`：不靠对话记忆
+**任务清单**：开场按阶段树每个 phase 建一项（标题与章节同名），进入时置进行中，闸门通过置完成。用的是 harness 原生的任务工具，写在 `config/harnesses.json` 的 `tasks`：Claude Code 是 `TaskCreate` / `TaskUpdate`（桌面版画在消息下方）；Codex 用自带的计划工具（工具名未在本机核实）；pi 没有核实到任务工具，每阶段收尾贴进度条代替。2026-10-19 的 GUI 验收里，编排者每个阶段收尾都发一次 HTML 面板，用户反馈多余：任务清单已经能显示进度。所以协议里不再生成、不再发送面板。
 
-`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度，表格末尾附一行进度条（▶ 当前、▰ 完成、◐ 部分完成、✖ 未通过、▱ 未开始）。`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读。中断后换一个 harness 接着做，进度不丢。
+### 3. 状态表 `mdf status`：不靠对话记忆
 
-`--html` 生成自包含的可视化面板 `output/<slug>/status.html`，不引用任何外部资源，离线可开，深浅色、手机宽度都适配。面板内容：
+`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度，表格末尾附一行进度条（▶ 当前、▰ 完成、◐ 部分完成、✖ 未通过、▱ 未开始）。`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读，恢复执行时编排者用它重建任务清单。中断后换一个 harness 接着做，进度不丢。
 
-- 左侧是阶段轨，与对话里的章节一一对应；
-- 右侧逐阶段列出步骤状态、说明、下一步和闸门命令；
-- 当前阶段高亮；
-- 底部是 `mdf run` 的运行记录。
-
-在 Claude 桌面版里，编排者用文件发送工具以渲染方式打开它；其他 harness 给出文件路径即可。
+`--html` 仍可手动生成自包含的离线面板 `output/<slug>/status.html`（阶段轨、步骤与闸门、`mdf run` 运行记录与合计费用），适合发给不在对话里的人看。它不在编排流程里。
 
 ## 安装已发布的技能
 
@@ -94,6 +107,8 @@ python scripts/mdf.py harness plan zhang-juzheng-v6 --target codex
 
 - **AGENTS.md 与 CLAUDE.md 是两份文件**：`AGENTS.md` 已对齐 v6，并补了 `mdf` 入口与进度协议；以后改规则要两份一起改，冲突时以 `CLAUDE.md` 为准。`mdf harness` 会检查 `AGENTS.md` 是否仍是 v6。
 - **Codex 子代理**：二手资料称已正式提供，但说法互相矛盾，官方文档里没有核实到，所以流水线不依赖它，统一走简报 + 新进程。
+- **Claude 桌面 GUI 不加载项目子代理**：2026-10-18 在桌面 GUI 里验收时，把 `commands/`、`agents/` 链接进 worktree 的 `.claude/`，Agent 工具报 `Agent type 'local-source-worker' not found`，只列出内置类型。同一目录下 `claude -p`（2.1.301）能识别该角色：用 junction 链接或复制文件，结果都一样。原因在桌面端，不在链接方式。编排协议的兜底（`commands/distill.md`）：`mdf brief` 写出简报，交给 `general-purpose` 子代理执行。角色定义仍以仓库里的文件为准，上下文仍然隔离。
+- **Windows 管道编码**：`mdf` 自己输出 UTF-8。用 `python -c` 读管道再 `print` 时，打印出的中文按控制台的 GBK 编码，看起来是乱码。这种情况加 `PYTHONIOENCODING=utf-8`。
 - **gallery 包的 frontmatter**：含 `format_version`、`argument-hint` 等非 Agent Skills 标准字段。Codex、pi 是否对此告警没有逐一验证；`harness plan` 会提示。
 - **Codex、pi 仍没有端到端实测**：墨子试跑（[harness-trial-mozi.md](harness-trial-mozi.md)）用 `claude -p` 新进程走完了简报路径（到发布），修掉了简报缺口，但 Codex、pi 本身没有跑过。首次使用请留意 agent 是否按简报写对了文件，检查点会兜底。
-- **Claude Code 无头模式需要 `--allowedTools`**：只给 `--permission-mode acceptEdits` 时 Bash 被拦，执行者跑不了检查点命令；`mdf brief` 打印的命令和 `mdf run` 已带上 `--allowedTools Bash,Read,Write,Edit,Glob,Grep`（等于授权该进程执行任意 shell，自行判断）。提示词必须写在 `--allowedTools` 前面：它是可变参数，排在它后面的位置参数会被当成工具名吞掉。
+- **Claude Code 无头模式需要 `--allowedTools`**：只给 `--permission-mode acceptEdits` 时 Bash 被拦，执行者跑不了检查点命令；`mdf brief` 打印的命令和 `mdf run` 已带上 `--allowedTools Bash,Read,Write,Edit,Glob,Grep`（等于授权该进程执行任意 shell，自行判断）。工具名逗号连写；提示词必须写在 `--allowedTools` 前面：它是可变参数，排在它后面的位置参数会被当成工具名吞掉。

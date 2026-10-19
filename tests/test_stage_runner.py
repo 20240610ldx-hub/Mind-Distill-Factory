@@ -39,6 +39,35 @@ if mode == "usage":
     print('{"type":"result","subtype":"success","num_turns":9,"total_cost_usd":0.53,"usage":{"output_tokens":1200,"cache_read_input_tokens":880000},"result":"检查点通过"}', flush=True)
 '''
 
+# claude 2.1.301 的真实输出形状（2026-10-18 Sonnet 5.5 实测）：结果对象以 duration_api_ms 起头，
+# "type":"result" 排在中后部；stream-json 下它也不是最后一行，后面还跟一条 task_summary。
+REAL_RESULT = ('{"duration_api_ms":99856,"stop_reason":"end_turn","total_cost_usd":0.6821683,'
+               '"usage":{"input_tokens":18,"cache_read_input_tokens":673463,"output_tokens":12805},'
+               '"permission_denials":[{"tool_name":"Write"}],"is_error":false,"num_turns":10,"subtype":"success",'
+               '"result":"已写 shard_001_extracts.json","type":"result","duration_ms":133000}')
+STREAM_EVENTS = [
+    '{"type":"system","subtype":"init","cwd":"C:\\\\repo"}',
+    '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read",'
+    '"input":{"file_path":"D:/data/sources/demo/processed/local_shards/shard_001.json"}}]}}',
+    '{"type":"user","message":{"content":[{"type":"tool_result","content":"..."}]}}',
+    '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash",'
+    '"input":{"command":"python scripts/task_status.py summary sources/demo/x.json","description":"检查点"}}]}}',
+]
+STREAM_TAIL = '{"type":"system","subtype":"task_summary","detail":null}'
+STREAM_AGENT = r'''
+import os, sys, time
+from pathlib import Path
+sys.stdout.reconfigure(encoding="utf-8")
+lines = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+for line in lines[:2]:  # 先读分片：心跳此时应报出「Read shard_001.json」
+    print(line, flush=True)
+time.sleep(0.8)
+out = Path(os.environ["MDF_DATA_ROOT"]) / "output" / "demo" / "review.md"
+out.write_text("# 审查\n\n## 裁决\n\n[PASS] 假 harness 写的审查结论\n", encoding="utf-8")
+for line in lines[2:]:
+    print(line, flush=True)
+'''
+
 
 def load_mdf():
     spec = importlib.util.spec_from_file_location("_mdf_for_runner_test", ROOT / "scripts" / "mdf.py")
@@ -81,11 +110,12 @@ class RunnerFixture(unittest.TestCase):
 
 
 class ArgvTests(unittest.TestCase):
-    def test_prompt_is_one_argument_and_model_follows_executable(self):
+    def test_prompt_is_one_argument_and_model_goes_right_before_it(self):
+        # 模型选项插在提示词前：codex 的 --model 这样才落在 exec 子命令里（放到子命令前面没核实）
         profile = sr.harness.load_profiles()["harnesses"]["claude-code"]
         prompt = "读取 output/x y/briefs/review.md 并执行"
         argv = sr.build_argv(profile, "/bin/claude", prompt, model="sonnet")
-        self.assertEqual(argv[:5], ["/bin/claude", "--model", "sonnet", "-p", prompt])
+        self.assertEqual(argv[:5], ["/bin/claude", "-p", "--model", "sonnet", prompt])
         self.assertIn("--allowedTools", argv)
 
     def test_prompt_is_not_swallowed_by_variadic_allowed_tools(self):
@@ -144,6 +174,8 @@ class RunTests(RunnerFixture):
         self.assertIn("进度：", text)
         [record] = self.records()
         self.assertEqual((record["step"], record["exit_code"], record["ok"]), ("review", 0, True))
+        self.assertEqual([c["command"] for c in record["checkpoints"]],
+                         ["python scripts/mdf.py validate package demo --strict"])
         self.assertGreaterEqual(record["changed_files"], 1, "review.md 是新产物（briefs 也算）")
         log = (ROOT / record["log"]) if not Path(record["log"]).is_absolute() else Path(record["log"])
         self.assertIn("已写审查报告", log.read_text(encoding="utf-8"))
@@ -161,9 +193,10 @@ class RunTests(RunnerFixture):
     def test_usage_is_parsed_into_result_line_and_record(self):
         with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
             self.assertEqual(self.run_fake("usage", yes=True), 0)
-        self.assertIn("费用 $0.53 · 9 轮", "\n".join(self.lines))
+        self.assertIn("$0.53 · 9 轮", "\n".join(self.lines))
         record = self.records()[0]
-        self.assertEqual((record["cost_usd"], record["turns"], record["cache_read_tokens"]), (0.53, 9, 880000))
+        usage = record["usage"]
+        self.assertEqual((usage["cost_usd"], usage["turns"], usage["cache_read_tokens"]), (0.53, 9, 880000))
         html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
         self.assertIn("$0.53 · 9 轮", html)
 
@@ -182,6 +215,56 @@ class RunTests(RunnerFixture):
         self.assertEqual(self.run_fake("slow", yes=True, timeout_min=0.01), 1)
         self.assertIn("⏱ 超时", "\n".join(self.lines))
         self.assertTrue(self.records()[0]["timed_out"])
+
+
+class RealClaudeOutputTests(RunnerFixture):
+    """按实测的真实输出形状解析用量与进展，不依赖字段顺序，也不假定结果在最后一行。"""
+
+    def write_log(self, lines: list[str]) -> Path:
+        log = self.root / "x.log"
+        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return log
+
+    def test_result_found_whatever_the_key_order(self):
+        usage = sr.parse_usage(self.write_log([REAL_RESULT]), "claude-json")
+        self.assertEqual((usage["cost_usd"], usage["turns"], usage["cache_read_tokens"]), (0.6821683, 10, 673463))
+        self.assertEqual(usage["permission_denials"], 1, "被拒的工具调用要记下来：新进程有没有被权限拦住就看它")
+
+    def test_stream_json_result_is_not_the_last_line(self):
+        usage = sr.parse_usage(self.write_log([*STREAM_EVENTS, REAL_RESULT, STREAM_TAIL]), "claude-json")
+        self.assertEqual(usage["turns"], 10)
+
+    def test_latest_activity_reads_tool_calls(self):
+        log = self.write_log(STREAM_EVENTS[:2])
+        self.assertEqual(sr.latest_activity(log, "claude-json"), "Read shard_001.json")
+        log = self.write_log(STREAM_EVENTS)
+        self.assertEqual(sr.latest_activity(log, "claude-json"),
+                         "Bash python scripts/task_status.py summary sources/demo/x.json")
+        self.assertEqual(sr.latest_activity(self.write_log(["纯文本输出"]), None), "纯文本输出")
+
+    def test_claude_profile_streams_events(self):
+        flags = sr.harness.load_profiles()["harnesses"]["claude-code"]["usage_flags"]
+        self.assertEqual(flags, ["--output-format", "stream-json", "--verbose"],
+                         "json 要到进程结束才输出，心跳一直是「日志 0.0 KB」；stream-json 必须带 --verbose")
+
+    def test_heartbeat_and_result_line_with_streamed_events(self):
+        events = self.root / "events.jsonl"
+        events.write_text("\n".join([*STREAM_EVENTS, REAL_RESULT, STREAM_TAIL]) + "\n", encoding="utf-8")
+        script = self.root / "stream_agent.py"
+        script.write_text(STREAM_AGENT, encoding="utf-8")
+        profiles = self.profiles()
+        profiles["harnesses"]["fake"]["isolated_run"] = (
+            f'fakeagent -I "{script.as_posix()}" "{events.as_posix()}" "{{prompt}}"')
+        which = lambda exe: sys.executable if exe == "fakeagent" else None  # noqa: E731
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
+            code = sr.run_step("demo", "review", self.root, "fake", profiles=profiles, which=which,
+                               out=self.lines.append, yes=True, heartbeat=0.2)
+        self.assertEqual(code, 0)
+        text = "\n".join(self.lines)
+        self.assertIn("最近：Read shard_001.json", text)
+        self.assertIn("$0.68 · 10 轮", text)
+        self.assertIn("1 次工具调用被拒", text)
+        self.assertEqual(self.records()[0]["usage"]["permission_denials"], 1)
 
 
 class NarrationViewTests(RunnerFixture):

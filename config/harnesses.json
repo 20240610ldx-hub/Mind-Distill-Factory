@@ -22,12 +22,22 @@
       "isolated_run": "claude -p \"{prompt}\" --permission-mode acceptEdits --allowedTools Bash,Read,Write,Edit,Glob,Grep",
       "_isolated_run_comment": "提示词必须放在 --allowedTools 前面：它是可变参数（<tools...>），后面的位置参数会被当成工具名吞掉。只用 acceptEdits 时 Bash 会被拦（墨子试跑发现 7），检查点命令跑不了",
       "model_flag": "--model",
-      "usage_flags": ["--output-format", "json"],
+      "effort_flag": "--effort",
+      "data_dir_flag": "--add-dir",
+      "_flags_comment": "--effort low|medium|high|xhigh|max；--add-dir 是可变参数，mdf run 把它放在命令末尾。均在本机 claude 2.1.301 --help 核对",
+      "usage_flags": ["--output-format", "stream-json", "--verbose"],
       "usage_parser": "claude-json",
+      "deny_network_args": ["--disallowedTools", "WebSearch,WebFetch"],
+      "_deny_network_comment": "阶段树里 network: forbidden 的步骤（reduce）追加这组参数；--disallowedTools 也是可变参数，同样放在命令末尾",
       "chapters": {
         "native": true,
         "tool": "mcp__ccd_session__mark_chapter",
         "how": "桌面版（Code 标签页）提供章节工具 mcp__ccd_session__mark_chapter，可能列在 deferred 工具里，先用 ToolSearch 的 select: 加载；按 config/pipeline_stages.json 每阶段调用一次，左侧出现可跳转的阶段轨。终端里没有该工具时输出 H2 兜底标题"
+      },
+      "tasks": {
+        "native": true,
+        "tools": ["TaskCreate", "TaskUpdate"],
+        "how": "开场按阶段树每个 phase 建一项（标题 = chapter.title），进入时置进行中、闸门通过置完成。桌面版（Code 标签页）若在系统提示里给了自己的任务清单工具，就用那个，它画在消息下方。进度不再另做 HTML 面板"
       },
       "sources": [
         "https://code.claude.com/docs/en/plugins-reference.md"
@@ -50,9 +60,17 @@
       },
       "isolated_run": "codex exec --sandbox workspace-write \"{prompt}\"",
       "model_flag": "--model",
+      "effort_flag": null,
+      "data_dir_flag": "--add-dir",
+      "_flags_comment": "codex exec --help（0.145.0）有 --add-dir <DIR>，没有推理强度参数",
       "chapters": {
         "native": false,
         "how": "没有可由 agent 调用的章节 API（App 的长线程导航按轮次）；每阶段输出一行 H2 兜底标题"
+      },
+      "tasks": {
+        "native": true,
+        "tools": ["update_plan"],
+        "how": "用 Codex 自带的计划工具 update_plan 维护同样的阶段清单（未在本机核实工具名，以 Codex 实际提供的为准）"
       },
       "sources": [
         "https://learn.chatgpt.com/docs/build-skills.md",
@@ -76,9 +94,16 @@
       },
       "isolated_run": "pi -p \"{prompt}\"",
       "model_flag": "--model",
+      "effort_flag": "--thinking",
+      "data_dir_flag": null,
+      "_flags_comment": "pi --help（0.65.2）：--thinking off|minimal|low|medium|high|xhigh；没有目录授权参数（不设目录沙箱）",
       "chapters": {
         "native": false,
         "how": "无章节功能；每阶段输出一行 H2 兜底标题"
+      },
+      "tasks": {
+        "native": false,
+        "how": "没有核实到任务清单工具；每阶段收尾贴 mdf status <slug> 末尾的进度条代替"
       },
       "sources": [
         "https://app.unpkg.com/@mariozechner/pi-coding-agent@0.68.0/files/README.md"

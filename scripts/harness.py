@@ -22,12 +22,17 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Iterable
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
+if str(CODE_ROOT / "scripts") not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
+    sys.path.insert(0, str(CODE_ROOT / "scripts"))
+from workspace import Workspace  # noqa: E402
 PROFILES_SCHEMA = "harness-profiles-v1"
 PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
 PLUGIN_NAME = "mind-distill-factory"
@@ -54,6 +59,79 @@ def load_profiles(code_root: Path = CODE_ROOT) -> dict[str, Any]:
     if data.get("schema") != PROFILES_SCHEMA:
         raise ValueError(f"config/harnesses.json: schema 应为 {PROFILES_SCHEMA}")
     return data
+
+
+@dataclass(frozen=True)
+class HarnessProfile:
+    """一个 harness 怎样起新进程，以及它声明了哪些能力（config/harnesses.json 的一项）。
+
+    能力没声明就明确拒绝（指定模型、推理强度）或跳过（目录授权：pi 没有目录沙箱），不猜参数名。
+    """
+
+    name: str
+    label: str
+    executables: tuple[str, ...]
+    isolated_run: str
+    model_flag: str | None = None
+    effort_flag: str | None = None
+    data_dir_flag: str | None = None
+    usage_flags: tuple[str, ...] = ()
+    usage_parser: str | None = None
+    deny_network_args: tuple[str, ...] = ()
+
+    @classmethod
+    def from_config(cls, name: str, raw: dict[str, Any]) -> "HarnessProfile":
+        if "{prompt}" not in shlex.split(raw.get("isolated_run", "")):
+            raise ValueError(f"harness {name!r} 的 isolated_run 缺少独立的 {{prompt}} 参数位")
+        return cls(name=name, label=raw.get("label", name), executables=tuple(raw.get("executables") or ()),
+                   isolated_run=raw["isolated_run"], model_flag=raw.get("model_flag"),
+                   effort_flag=raw.get("effort_flag"), data_dir_flag=raw.get("data_dir_flag"),
+                   usage_flags=tuple(raw.get("usage_flags") or ()), usage_parser=raw.get("usage_parser"),
+                   deny_network_args=tuple(raw.get("deny_network_args") or ()))
+
+    @property
+    def can_set_effort(self) -> bool:
+        return bool(self.effort_flag)
+
+    @property
+    def can_grant_directories(self) -> bool:
+        return bool(self.data_dir_flag)
+
+    def _flag(self, key: str, what: str) -> str:
+        flag = getattr(self, key)
+        if not flag:
+            raise SystemExit(f"{self.label} 没有配置 {key}，不能指定{what}")
+        return flag
+
+    def argv(self, executable: str, prompt: str, *, model: str | None = None, effort: str | None = None,
+             grants: Iterable[str] = (), usage: bool = False, deny_network: bool = False) -> list[str]:
+        """新进程的 argv（不经过 shell，提示词原样作为一个参数）。
+
+        - 模型、推理强度是单值选项，插在提示词前面：codex 的 --model 在 exec 子命令里核实过，放到子命令前面没核实；
+        - 禁网参数、目录授权放在模板末尾：claude 的 --disallowedTools、--add-dir 与 --allowedTools 一样是可变参数，
+          排在提示词前面会把它吞掉；没声明 deny_network_args 的 harness 只靠简报里的禁令；
+        - usage=True 时追加 usage_flags（机器可读的结果与用量）。
+        """
+        tokens = shlex.split(self.isolated_run)
+        options: list[str] = []
+        if model:
+            options += [self._flag("model_flag", "模型"), model]
+        if effort:
+            options += [self._flag("effort_flag", "推理强度（effort）"), effort]
+        at = tokens.index("{prompt}")
+        argv = [executable, *tokens[1:at], *options, prompt, *tokens[at + 1:]]
+        if deny_network:
+            argv += list(self.deny_network_args)
+        if self.data_dir_flag:
+            for directory in grants:
+                argv += [self.data_dir_flag, str(directory)]
+        if usage:
+            argv += list(self.usage_flags)
+        return argv
+
+
+def harness_profiles(code_root: Path = CODE_ROOT) -> dict[str, HarnessProfile]:
+    return {name: HarnessProfile.from_config(name, raw) for name, raw in load_profiles(code_root)["harnesses"].items()}
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
@@ -280,6 +358,17 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
     if not roles:
         raise SystemExit(f"步骤 {step_id!r} 不是 agent 步骤（执行者：{step['executor']}）；照 mdf next 给的命令跑")
     status = next(s for s in stages if s.key == step_id)
+    cls = _sibling("classification")
+    try:
+        classification = cls.load(root, slug)
+    except ValueError as exc:
+        raise SystemExit(f"类目文件有问题，不生成简报：{exc}") from exc
+    if "classification" in step.get("requires", []) and classification is None:
+        # 新进程不能向用户提问；类目必须由编排者先问用户、落盘，再交下去（fail-closed）。
+        raise SystemExit(
+            f"步骤 {step_id!r} 需要用户确认的类目，但 sources/{slug}/classification.json 不存在。"
+            f"编排者先按 config/taxonomy.json 推荐 1 主 + 至多 2 副，用 AskUserQuestion 让用户确认，"
+            f"再运行 python scripts/mdf.py classify {slug} --primary <主类> --secondary <副类1,副类2>")
     chapter = phase["chapter"]
     heading = tree["chapter_policy"]["fallback_heading"].format(order=phase["order"], title=phase["title"])
     lines = [
@@ -295,13 +384,35 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
         f"- 当前状态：{status.detail or '（无）'}",
         f"- 待办：{status.next_action or '按角色定义完成本步骤'}",
         f"- 依次扮演的角色：{'、'.join(roles)}（定义全文附在后面）",
+    ]
+    workspace = Workspace(root, code_root)
+    if workspace.separate:  # worktree 里没有私有语料：数据根经 MDF_DATA_ROOT 指向别处
+        data, code = workspace.data_root.as_posix(), workspace.code_root.as_posix()
+        lines.append(f"- 路径约定：下文的 `sources/…`、`output/…` 都在数据根目录 `{data}` 下；"
+                     f"`scripts/…`、`agents/…`、`config/…` 在仓库 `{code}` 下。"
+                     "读写语料与产物用数据根下的绝对路径；跑命令先 cd 到数据根目录，脚本写仓库里的绝对路径。")
+    if classification is not None:
+        lines.append(f"- 类目（用户已在阶段 0 确认，照用，不得自选或改动）：{cls.describe(classification)}"
+                     f"——写进产物的 primary_category / secondary_categories 与 SKILL.md 身份卡必须与此一致"
+                     f"（`sources/{slug}/{cls.FILENAME}`）")
+    lines += [
         "",
         "## 规则",
         "",
         "- 规则以 `CLAUDE.md`（v6）为准；与 `AGENTS.md` 冲突时以 `CLAUDE.md` 为准。",
         f"- 引文必须逐字来自 `sources/{slug}/raw/` 的语料，不得编造或改字；网络来源最高 confidence: medium。",
         f"- 进度标题：开始时输出一行 `{heading}`（harness 有章节工具就改用工具）。",
+        "- 换行符：写出的文本文件一律 LF（不要 CRLF）、UTF-8 无 BOM。在 Windows 上写完后自查"
+        "（例如用 Python 以二进制读取，看有没有 `\\r\\n`），有就转成 LF 再跑检查点："
+        "manifest 记的是字节 hash，入库时 .gitattributes 会把 CRLF 改成 LF，hash 就对不上了。",
     ]
+    if step.get("network") == "forbidden":
+        lines += [
+            "- **禁止网络检索**：不得使用 WebSearch、WebFetch、搜索类 MCP、curl / wget / requests 等任何联网手段，"
+            "也不要自己运行 `mdf acquire`。",
+        ]
+        if step.get("network_note"):
+            lines.append(f"  {step['network_note'].replace('{slug}', slug)}")
     if step_id in ISOLATED_STEPS:
         lines.append("- 你是独立审查者：没有参与生成，不得沿用生成过程的结论；只依据包内容、语料与审查标准下裁决。")
     # 步骤自带的检查点优先：阶段检查点（如 validate sources）要等整个阶段做完才可能通过，
@@ -309,6 +420,8 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
     checkpoint = step.get("checkpoint") or phase.get("checkpoint")
     if checkpoint:
         lines += ["", "## 完成标准", "", f"- 检查点：`{checkpoint.replace('{slug}', slug)}` 必须通过。"]
+        if workspace.separate:
+            lines.append(f"- 在本机这样跑：`{workspace.runnable(checkpoint, slug)}`")
         if step.get("checkpoint_note"):
             lines.append(f"- 说明：{step['checkpoint_note'].replace('{slug}', slug)}")
     for role in roles:
@@ -326,10 +439,43 @@ def write_brief(slug: str, step_id: str, text: str, root: Path) -> Path:
     return path
 
 
-def launch_commands(brief_path: str, profiles: dict[str, Any], only: str | None = None) -> dict[str, str]:
-    prompt = f"读取 {brief_path} 并严格按其执行，完成后报告检查点结果。"
-    return {name: p["isolated_run"].replace("{prompt}", prompt)
-            for name, p in profiles["harnesses"].items() if only in (None, name)}
+def brief_prompt(brief_path: str) -> str:
+    return f"读取 {brief_path} 并严格按其执行，完成后报告检查点结果。"
+
+
+def forbids_network(step: dict[str, Any] | None) -> bool:
+    """阶段树里标了 network: forbidden 的步骤（reduce）：简报写禁令，支持的 harness 再从工具层面拿掉联网工具。"""
+    return bool(step) and step.get("network") == "forbidden"
+
+
+def isolated_argv(profile: dict[str, Any], executable: str, prompt: str, *, model: str | None = None,
+                  effort: str | None = None, data_dirs: Iterable[str] = (), usage: bool = False,
+                  deny_network: bool = False) -> list[str]:
+    """兼容入口：配置里的一项（dict）→ HarnessProfile.argv。"""
+    return HarnessProfile.from_config(profile.get("label", "harness"), profile).argv(
+        executable, prompt, model=model, effort=effort, grants=data_dirs, usage=usage, deny_network=deny_network)
+
+
+def _quote(arg: str) -> str:
+    return arg if re.fullmatch(r"[\w@%+=:,./-]+", arg) else f'"{arg}"'
+
+
+def launch_commands(brief_path: str, profiles: dict[str, Any], only: str | None = None,
+                    data_dirs: Iterable[str] = (), step: dict[str, Any] | None = None) -> dict[str, str]:
+    """给人看、可复制的启动命令（bash、PowerShell 都认双引号）。"""
+    prompt = brief_prompt(brief_path)
+    commands = {}
+    for name, profile in profiles["harnesses"].items():
+        if only in (None, name):
+            executable = shlex.split(profile["isolated_run"])[0]
+            argv = isolated_argv(profile, executable, prompt, data_dirs=data_dirs, deny_network=forbids_network(step))
+            commands[name] = " ".join(_quote(a) for a in argv)
+    return commands
+
+
+def checkpoint_argv(command: str, slug: str, code_root: Path = CODE_ROOT, python: str = sys.executable) -> list[str]:
+    """兼容入口：见 Workspace.checkpoint_argv。"""
+    return Workspace(code_root, code_root).checkpoint_argv(command, slug, python=python)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────
@@ -369,7 +515,8 @@ def main(argv: list[str] | None = None) -> int:
         plan = install_plan(args.slug, args.target, args.scope)
         print(json.dumps(plan, ensure_ascii=False, indent=2) if args.json else render_plan(plan), end="\n" if args.json else "")
         return 0
-    root = Path(args.root or os.environ.get("MDF_DATA_ROOT") or CODE_ROOT).resolve()
+    workspace = Workspace.resolve(args.root)
+    root = workspace.data_root
     step_id, text = build_brief(args.slug, args.step, root)
     if args.stdout:
         print(text, end="")
@@ -377,7 +524,8 @@ def main(argv: list[str] | None = None) -> int:
     path = _display_path(write_brief(args.slug, step_id, text, root), CODE_ROOT)
     print(f"[OK] 简报已写入 {path}")
     print("在有子代理的 harness 里交给子代理执行；否则在新进程里执行（各 harness 的命令）：")
-    for name, command in launch_commands(path, load_profiles(), args.harness).items():
+    _, step = find_step(_sibling("pipeline_status").load_stage_tree(CODE_ROOT), step_id)
+    for name, command in launch_commands(path, load_profiles(), args.harness, workspace.grants(), step).items():
         print(f"  {name}: {command}")
     return 0
 

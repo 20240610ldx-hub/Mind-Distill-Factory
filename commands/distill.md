@@ -20,9 +20,16 @@ argument-hint: <人物名/charactor name>
 
 ---
 
-## 进度可见性：章节标签与状态面板
+## 进度可见性：章节标签与任务清单
 
-阶段划分的唯一来源是 `config/pipeline_stages.json`（下文的 Stage 0–6 与其中的 phase 一一对应）。用户靠两样东西掌握进度：对话界面左侧的**章节**，和随时可调的**状态面板**。
+阶段划分的唯一来源是 `config/pipeline_stages.json`（下文的 Stage 0–6 与其中的 phase 一一对应）。用户靠两样东西掌握进度：对话界面左侧的**章节**，和 harness 原生的**任务清单**。不另做 HTML 面板，也不往对话里发进度文件：2026-10-19 的 GUI 验收里，每个阶段收尾都发一次 `status.html`，用户反馈多余，任务清单本身就能显示进度。
+
+**任务清单（开场建一次，之后只更新）**
+
+1. 开场、阶段 0 之前，按阶段树建清单：每个 phase 一项，标题用 `chapter.title`（与章节同名）。phase 列表与各自的状态取自 `python scripts/mdf.py status {slug} --json`，已完成的直接标为完成。
+2. 用 harness 原生的任务工具。Claude Code 是 `TaskCreate` 建项、`TaskUpdate` 改状态；桌面版（Code 标签页）如果在系统提示里给了自己的任务清单工具，就用那个，它画在消息下方。其他 harness 见 `config/harnesses.json` 的 `tasks`：Codex 用自带的计划工具；pi 没有任务工具，每阶段收尾贴 `mdf status {slug}` 末尾的进度条代替。
+3. 进入 phase 时置为进行中，闸门通过后置为完成。闸门不过就保持进行中，在该项描述里写清卡在哪。同一时刻只有一项进行中。
+4. phase 内的 step（分片抽取、3A/3B/3C 等）需要时作为子项追加，不另开章节。
 
 **章节标签（每个 phase 一次）**
 
@@ -41,19 +48,27 @@ argument-hint: <人物名/charactor name>
 
 墨子试跑的教训：没有章节、全是底层命令滚动，用户找不到现在在哪、这一步为什么、过没过闸门。每个 phase 都按这三拍说话，全程用中文：
 
-1. **开场**：打章节标签，然后贴阶段卡——`python scripts/mdf.py next {slug} --card` 的输出原样贴出（这一步做什么、怎么做、过哪道闸门、整体进度条）。
+1. **开场**：打章节标签，把任务清单里这一项置为进行中，然后贴阶段卡——`python scripts/mdf.py next {slug} --card` 的输出原样贴出（这一步做什么、怎么做、过哪道闸门、整体进度条）。
 2. **过程**：只更新任务清单。后台命令都写中文描述（如「阶段 1：新进程执行分片抽取」）。不写 `until [ -f … ]; do sleep …` 这类轮询循环：agent 步骤用 `mdf run`，它自己出心跳；等别的后台进程时用 harness 的后台运行与完成通知。中途只在有新信息时开口（产物出来了、失败了、需要用户拍板），每次一两句。
-3. **收尾**：贴一行结果——`mdf run` 最后打印的结果行，或自己写「闸门 `validate …` 通过/未通过 · 产物 … · 下一步 …」——再加 `mdf status {slug}` 末尾那行进度条。
+3. **收尾**：贴一行结果——`mdf run` 最后打印的结果行，或自己写「闸门 `validate …` 通过/未通过 · 产物 … · 下一步 …」——闸门通过就把任务清单里这一项置为完成。没有任务清单的 harness 再贴 `mdf status {slug}` 末尾那行进度条。
 
-**状态面板（每次进出 phase、以及用户问「到哪了」时）**
+**状态表（用户问「到哪了」、或恢复执行时）**
 
 ```bash
 python scripts/mdf.py status {slug}            # Markdown 表格 + 下一步 + 进度条
 python scripts/mdf.py status {slug} --check    # 同时跑各阶段确定性校验
-python scripts/mdf.py status {slug} --html     # 可视化面板 output/{slug}/status.html
 ```
 
-把 Markdown 表格原样贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。可视化面板的左侧阶段轨与对话里的章节一一对应，右侧逐阶段列出步骤、闸门和下一步，底部是 `mdf run` 的运行记录。每个 phase 收尾时重新生成一次；在 Claude 桌面版里用文件发送工具以渲染方式打开它，其他 harness 告诉用户文件路径。
+用户问起时把 Markdown 表格贴给用户；需要程序化判断时用 `--json`（`next.key` / `next.next_action`）。恢复执行时用它重建任务清单。
+
+**Agent 工具里没有该角色时（Claude 桌面 GUI）**
+
+先查 Agent 工具列出的类型里有没有角色名（插件加载时是 `mind-distill-factory:<角色>`，项目加载时是 `<角色>`）。2026-10-18 在桌面 GUI 里验收时，项目 `.claude/agents/` 下的角色没有出现在 Agent 工具里；同一目录下 `claude -p` 却能识别。没有该角色时，不要让通用子代理凭记忆去「扮演」它，改用简报：
+
+1. `python scripts/mdf.py brief {slug} <step>`：写出 `output/{slug}/briefs/<step>.md`，里面附了该步骤所有角色定义的全文与检查点。
+2. 用 Agent 工具起一个 `general-purpose` 子代理，提示词只写：「读取 output/{slug}/briefs/<step>.md 并严格按其执行，完成后报告检查点结果。」并行的分片抽取，每个分片起一个，提示词里注明分片编号。
+
+子代理的上下文仍然与你隔离，Stage 5 审查也可以这样做。
 
 **没有子代理的 harness（Codex、pi），或要在干净上下文里执行的步骤**
 
@@ -72,7 +87,7 @@ python scripts/mdf.py brief {slug} [step]   # 只写简报 output/{slug}/briefs/
 3. 进程结束后报这一步的状态变化；本阶段的步骤全部完成时，再跑阶段检查点。
 4. 把结果追加到 `output/{slug}/runs/runs.jsonl`，可视化面板从这里读运行记录。
 
-新进程按量计费，所以不加 `--yes` 只打印计划。用户同意了这次运行，才加 `--yes`。
+新进程按量计费，所以不加 `--yes` 只打印计划。用户同意了这次运行，才加 `--yes`。用户指定了模型或推理强度时，加 `--model <模型>`、`--effort <强度>`（Codex 不支持 `--effort`，指定了会直接报错）。数据根不在仓库里时（`MDF_DATA_ROOT`），`mdf run` 会自动授权新进程访问数据根。
 
 Stage 5 审查必须这样做（或用真正的子代理），绝不能在编排者自己的上下文里审。各 harness 的入口与限制见 `docs/harnesses.md`。
 
@@ -126,7 +141,7 @@ python scripts/task_status.py next <status-path>
 → 列出发现的文件
 
 情况 B：目录为空或不存在
-→ 告知用户"未检测到本地素材，将通过网络搜索采集"
+→ 告知用户"未检测到本地素材，需要先用 mdf acquire 从白名单来源合规采集原典（网络检索已禁用）"
 → 询问是否要先提供本地素材，还是直接继续
 ```
 
@@ -142,11 +157,21 @@ python scripts/task_status.py next <status-path>
 是否采用此分类？或有调整？
 ```
 
-### 0.4 确认后初始化目录
+**用提问工具问，不要只在正文里问。** Claude Code 用 `AskUserQuestion`（推荐方案放第一个选项），其他 harness 用同类工具；没有提问工具就停下等用户回复。用户的回答就是决定，编排者不得自行改动。
+
+### 0.4 确认后初始化目录并记下类目
 
 ```bash
 python scripts/mdf.py init {slug}   # 建 sources/{slug}/raw、processed 与 output/{slug}（已存在则跳过）
+python scripts/mdf.py classify {slug} --primary governance --secondary philosophy,conduct --name 墨子
 ```
+
+`mdf classify` 把用户的决定写进 `sources/{slug}/classification.json`（校验 1 主 + 至多 2 副、都在 taxonomy 里）。这是类目传给下游的唯一通道：
+
+- `mdf brief` / `mdf run` 把它写进简报「上下文」；原则提取、框架合成、核心层组装这几步**没有它就拒绝生成简报**——新进程不能向用户提问，不能让它自选。
+- 子代理分派同理：把 `mdf classify {slug}` 打印的那行类目原样写进分派说明。
+- `validate frameworks` 核对 `output/{slug}/frameworks.zh.json` 的 `primary_category` / `secondary_categories`，`validate package` 核对 SKILL.md 身份卡；与用户确认的不一致就报 `CLASSIFICATION_MISMATCH`。
+- 用户事后要改类目：重新问、重新 `mdf classify`，再从受影响的阶段重跑。
 
 ---
 
@@ -171,6 +196,8 @@ python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy  
 - 人物在世时，提醒用户：包里必须带「在世人物声明」（L2 闸门会查），并考虑是否适合公开发布。
 
 将以下任务分派给子代理，**并行执行**：
+
+> **阶段 1 的合并与补充（reduce）禁用网络检索**（墨子试跑后的决定）：子代理 B/C/D 只读 `sources/{slug}/raw/` 与 `sources/{slug}/processed/`，不得用 WebSearch、WebFetch、搜索类 MCP 或 curl 之类联网手段；网络转述的 secondary 全是 confidence: low，徒增噪声。缺素材时停下，列出建议采集的目标（著作、篇目、传记），由编排者征得用户同意后用 1.0 节的 `mdf acquire` 合规采集，再回到子代理 A 的流水线。下文 B/C/D 里的「搜索」一律按「在本地语料里检索」理解。`mdf brief` 生成的 reduce 简报会写明禁令；Claude Code 新进程另加 `--disallowedTools WebSearch,WebFetch`。
 
 ### 子代理 A：用户素材处理（Stage 1A，本地分片流水线）
 
@@ -206,7 +233,7 @@ python scripts/mdf.py clean {slug}    # 查看清洗报告：被拒 / 待复核 
   - 高难度 shard 单独派发，完成/失败后才释放下一槽位；
   - 同一 shard 连续失败时先拆分或降低并发，不让整个 Stage 1A 阻塞。
 - `recommended_worker_count` 只是总量提示，不是强制并发数。实际并发由主 agent 根据当前上下文窗口动态裁决。
-- `sources/{slug}/processed/local_shards/cost_estimate.json` 的 upper bound 超过配置预算时，必须先调用 AskUserQuestion：全量处理 / 分层抽样 / 只用本地素材并降低预算 / 取消；用户选择前不得派 worker 或网络补充。
+- `sources/{slug}/processed/local_shards/cost_estimate.json` 的 upper bound 超过配置预算时，必须先调用 AskUserQuestion：全量处理 / 分层抽样 / 只用本地素材并降低预算 / 取消；用户选择前不得派 worker 或补充采集。
 
 #### A1：local-source-worker[N]（按 shard 并行）
 
@@ -257,35 +284,32 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 - PDF 文本抽取由脚本完成，agent 不得反复打开 PDF 全文
 - 最终对 Stage 2 暴露的接口仍是 `sources/{slug}/processed/user_sources.json`
 
-### 子代理 B：主要文献采集（网络）
+### 子代理 B：主要文献整理（本地）
 
-- 搜索该人物的原著、演讲、书信、访谈
+- 在本地语料里检索该人物的原著、演讲、书信、访谈
 - 重点：**第一手资料**（本人写的或说的）
 - 输出至 `sources/{slug}/processed/primary_sources.json`
 
-### 子代理 C：分析性文献采集（网络）
+### 子代理 C：分析性文献整理（本地）
 
-- 搜索该人物的传记、学术分析、权威评论
+- 在本地语料里检索该人物的传记、学术分析、权威评论（本地没有就留空并写明缺口，见上方禁令）
 - 用于理解背景和验证第一手资料
 - 输出至 `sources/{slug}/processed/secondary_sources.json`
 
 ### 子代理 D：表达风格采集（⚠️ 必须执行，不可跳过）
 
-- 搜索该人物的演讲逐字稿、访谈实录、书信原文、社交媒体
+- 在本地语料里检索该人物的演讲逐字稿、访谈实录、书信原文
 - 重点：**此人怎么说话/写作**，而非说了什么内容
 - 提取句式偏好、高频词汇、修辞手法、幽默实例、语气特征
 - 此任务的 extracts 使用 `content_type: "expression_sample"`
 - 输出至 `sources/{slug}/processed/expression_dna.json`
-- **如果网络搜索全部失败**：从用户提供的 PDF/TXT 资料中提取表达风格素材（演讲段落、论辩用语、典型句式），不得留空
+- 从本地语料（用户提供的 PDF/TXT、`mdf acquire` 采集的原典）中提取表达风格素材（演讲段落、论辩用语、典型句式），不得留空
 
 **注意：** 如果用户提供了充足素材（子代理 A 产出丰富），子代理 B/C 可以精简搜索范围。**子代理 D 始终执行，且必须产出非空的 `sources/{slug}/processed/expression_dna.json`**——表达风格是消除"套公式"感的核心依据，跳过此步骤将导致 SKILL 质量严重下降。
 
-当 Stage 1A 的 `sources/{slug}/processed/user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 应改为**补缺搜索**：围绕本地素材缺失的著作、演讲、传记争议或出处验证进行窄搜索，不得重新铺开泛泛搜索。
+当 Stage 1A 的 `sources/{slug}/processed/user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 只做**补缺清单**：列出本地素材缺失的著作、演讲、传记争议或待验证的出处，交编排者决定是否用 `mdf acquire` 采集，不得自行联网。
 
-**搜索工具回退策略：** 子代理 B/C/D 的网络搜索按以下优先级选择工具：
-
-1. `WebSearch`（内置）→ 2. Tavily MCP（`mcp__tavily-*__tavily_search`）→ 3. `WebFetch` 直接抓取已知 URL → 4. 仅使用已有素材并在 `collection_notes` 中标注搜索失败。
-   详见 `agents/source-researcher.md` 的"搜索工具回退策略"章节。
+**素材不足时：** 网络检索已禁用，不再有「搜索工具回退」。子代理 B/C/D 只用本地语料；本地确实没有的（例如传记、学术评论），在 `collection_notes` 里写明缺什么、建议用 `mdf acquire` 采集哪些目标，由编排者问用户是否采集。`sources/{slug}/processed/primary_sources.json` / `sources/{slug}/processed/secondary_sources.json` 缺失只是警告；`sources/{slug}/processed/expression_dna.json` 必须从本地语料产出。
 
 ### ✓ 检查点 1：素材完整性校验（双重检查）
 
@@ -313,7 +337,7 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 如果 `sources/{slug}/processed/expression_dna.json` 不存在或为空：
 
 - **不要跳过** — 立即补充执行子代理 D
-- 如果网络搜索不可用，指示子代理 D 从 `sources/{slug}/processed/user_sources.json` 中提取表达样本
+- 指示子代理 D 从 `sources/{slug}/processed/user_sources.json` 与本地语料中提取表达样本（网络检索已禁用）
 - 只有确认 `sources/{slug}/processed/expression_dna.json` 非空后才能进入格式校验
 
 **第二步：格式校验**
@@ -532,6 +556,9 @@ python scripts/validate_output.py package {slug}
 ### 6.3 执行安装（如用户选择 [1]）
 
 顺序是**发布 → 校验 → 安装**——校验不过绝不能先把文件 cp 进用户的真实 skills 目录。
+
+**发布前先查换行符（运行时 agent 负责）。** manifest 记的是字节 hash，而仓库的 `.gitattributes`（`eol=lf`）入库时会把 CRLF 改成 LF——墨子试跑里 agent 在 Windows 上写出 CRLF 的 `output/{slug}/references/cases.md`，发布后一入库 hash 就对不上。所以发布前由你（编排者或执行这一步的 agent）检查 `output/{slug}/` 下要发布的文本文件（`output/{slug}/SKILL.md`、`output/{slug}/references/*.md`、`output/{slug}/人物档案.md`）有没有 `
+`，有就转成 LF、重跑 `validate package`，再发布。这一步不设脚本闸门，靠执行者自查；每份简报里也写了「一律 LF」。
 
 ```bash
 # 1. 发布到 gallery 并写 manifest（脚本会自动识别 v6 包并同步 references/）
