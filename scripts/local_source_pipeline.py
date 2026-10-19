@@ -920,8 +920,29 @@ def reduce_outputs(slug: str, person_name: str | None = None, max_extracts: int 
     out_path = processed_dir(slug) / "user_sources.json"
     out_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[OK] Reduced {len(accepted)} extracts to {out_path}")
-    if len(accepted) < DEFAULT_MIN_EXTRACTS:
-        print(f"WARNING: only {len(accepted)} extracts; target is {DEFAULT_MIN_EXTRACTS}-{DEFAULT_MAX_EXTRACTS}")
+    status_path = shard_dir(slug) / "task_status.json"
+    note = extract_shortfall(len(accepted), manifest, read_json_file(status_path) if status_path.exists() else None)
+    if note:
+        print(note)
+
+
+def extract_shortfall(count: int, manifest: dict[str, Any], status: dict[str, Any] | None) -> str | None:
+    """摘录数不到目标下限时的说明，分清「语料已经用尽」（不可改善）与「还有分片没抽、或只抽了样」（可改善）。
+    以前只有一句英文 WARNING，只有一本书的人物永远会看到它（鲁迅验收发现 6）。"""
+    if count >= DEFAULT_MIN_EXTRACTS:
+        return None
+    head = f"WARNING: 只合并出 {count} 条摘录（目标 {DEFAULT_MIN_EXTRACTS}–{DEFAULT_MAX_EXTRACTS}）"
+    units = [u.get("unit_id") for u in (status or {}).get("input_units", [])]
+    done = set((status or {}).get("completed_units", []))
+    pending = [u for u in units if u not in done]
+    if pending:
+        return f"{head} [可改善]：还有 {len(pending)} 个分片没抽取，抽完再 reduce"
+    if manifest.get("sampling_mode") == "stratified":
+        return f"{head} [可改善]：分层抽样只选了部分分片，可扩大抽样后重抽"
+    tokens = manifest.get("total_token_estimate")
+    size = f"，语料约 {tokens:,} token" if isinstance(tokens, int) else ""
+    return (f"{head} [不可改善]：全部 {manifest.get('shard_count', len(units))} 个分片都已抽取{size}；"
+            "要更多只能补素材")
 
 
 def print_stats(slug: str) -> None:

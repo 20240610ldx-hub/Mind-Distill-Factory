@@ -22,6 +22,7 @@ import sys
 import re
 import os
 from pathlib import Path
+from collections import Counter
 
 # Fix Windows console encoding for Unicode output
 if sys.platform == "win32":
@@ -52,6 +53,8 @@ PRINCIPLE_SCHEMA = {
                         "decision_rule_zh", "decision_rule_en",
                         "supporting_extracts", "topic_tags"],
     "uniqueness_score_range": (1, 5),
+    # agents/principle-extractor.md：每次运行目标 6–12 条候选
+    "target_per_file": (6, 12),
 }
 
 FRAMEWORK_SCHEMA = {
@@ -273,6 +276,7 @@ def validate_sources(slug: str) -> list[str]:
                 errors.append(f"MANIFEST_PARSE_ERROR: {manifest_path}: {e}")
 
     # ── Per-file format validation ──
+    ocr_files = _ocr_source_files(processed_dir)
     for jf in json_files:
         errors.extend(validate_json_file(jf, SOURCE_FILE_SCHEMA["required_fields"]))
         try:
@@ -299,10 +303,39 @@ def validate_sources(slug: str) -> list[str]:
                 high_count = sum(1 for e in extracts if e.get("confidence") == "high")
                 ratio = high_count / len(extracts)
                 if ratio < 0.2:
-                    errors.append(f"WARNING: {jf}: high-confidence ratio={ratio:.0%} (<20%), consider requesting user sources")
+                    errors.append(f"WARNING: {jf}: {_high_ratio_note(extracts, ratio, ocr_files)}")
         except Exception:
             pass  # Parse errors already caught above
     return errors
+
+
+def _ocr_source_files(processed_dir: Path) -> set[str]:
+    """清洗报告里标了 ocr_text 的来源文件名（引文按规则封顶 medium）。"""
+    try:
+        sources = read_json_file(processed_dir / "cleaning_report.json").get("sources") or {}
+    except Exception:
+        return set()
+    return {name for name, s in sources.items() if isinstance(s, dict) and "ocr_text" in (s.get("flags") or [])}
+
+
+def _confidence_cap(ext: dict, ocr_files: set[str]) -> str | None:
+    """摘录按规则只能到 medium 的原因：web（规则 6：只有网络来源）或 ocr（OCR 文本）；都不是返回 None。"""
+    if str(ext.get("source_url") or "").startswith(("http://", "https://")):
+        return "web"
+    detail, title = str(ext.get("source_detail") or ""), str(ext.get("source_title") or "")
+    if any(detail.startswith(name) or title == Path(name).stem for name in ocr_files):
+        return "ocr"
+    return None
+
+
+def _high_ratio_note(extracts: list[dict], ratio: float, ocr_files: set[str]) -> str:
+    """high 占比低的警告分两种（鲁迅验收发现 6）：全是按规则封顶的「不可改善」，否则「可改善」。"""
+    caps = Counter(_confidence_cap(e, ocr_files) for e in extracts if e.get("confidence") != "high")
+    capped = "、".join(f"{label} {caps[key]} 条" for key, label in (("web", "网络来源"), ("ocr", "OCR 文本")) if caps[key])
+    if not caps[None]:
+        return f"high 占比 {ratio:.0%} [不可改善]：按规则封顶 medium（{capped}）；要提高只能换一手文字版素材"
+    return (f"high 占比 {ratio:.0%} [可改善]：{caps[None]} 条既非网络也非 OCR 却不是 high，补一手素材或复核置信度"
+            + (f"（另有 {capped} 按规则封顶）" if capped else ""))
 
 
 def validate_principles(slug: str) -> list[str]:
@@ -316,9 +349,19 @@ def validate_principles(slug: str) -> list[str]:
     if not principle_files:
         return [f"NO_PRINCIPLES: {output_dir} (no principles_*.json)"]
 
+    # 原则数以前没有下限，「少」不会被看见（鲁迅验收发现 8）。素材薄时宁少勿凑，所以只提醒；一条都没有才报错
+    is_commentary = _load_sibling("build_framework_core").is_commentary
+    lo = PRINCIPLE_SCHEMA["target_per_file"][0]
+    total = thinker_total = 0
     for pf in principle_files:
         try:
             data = read_json_file(pf)
+            count = len(data.get("principles", []))
+            total += count
+            if not is_commentary(data.get("source_type") or pf.stem.replace("principles_", "")):
+                thinker_total += count
+                if 0 < count < lo:
+                    errors.append(f"WARNING: [原则候选偏少] {pf}: {count} 条 < 目标下限 {lo}（素材薄时宁少勿凑；确认不是漏提）")
             for i, p in enumerate(data.get("principles", [])):
                 for field in PRINCIPLE_SCHEMA["required_fields"]:
                     if field not in p:
@@ -332,6 +375,13 @@ def validate_principles(slug: str) -> list[str]:
                     errors.append(f"EMPTY_EVIDENCE: {pf}: principles[{i}] has no supporting_extracts")
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             errors.append(f"PARSE_ERROR: {pf}: {e}")
+    minimum = FRAMEWORK_SCHEMA_V6_PRINCIPLES["min_principles"]
+    if total == 0:
+        errors.append(f"NO_PRINCIPLES: {output_dir}: principles_*.json 里一条原则都没有")
+    elif thinker_total < minimum:
+        errors.append(f"WARNING: [原则候选不足] 本人来源 {thinker_total} 条 < {minimum}（评论者观点不计）："
+                      f"v6 框架要 {minimum}–{FRAMEWORK_SCHEMA_V6_PRINCIPLES['max_principles']} 条核心原则，"
+                      "先问用户补素材，还是接受框架阶段可能凑不够")
     return errors
 
 
