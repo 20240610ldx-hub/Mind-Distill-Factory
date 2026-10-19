@@ -369,7 +369,13 @@ def _stage_gates(ctx: "Ctx") -> StageStatus:
         status.detail = "legacy 包走 skill 阶段校验" if status.state == "skipped" else "等待核心层"
         return status
     if not ctx.check:
-        status.detail = "未检查（加 --check 运行确定性闸门）"
+        current = _sibling("gate_records").package_gate_current(ctx.root / "output" / ctx.slug)
+        if current:
+            status.state = "done"
+            status.detail = "上次校验通过，产物未改动（加 --check 重新校验）"
+            return status
+        status.detail = ("上次校验后产物改过，需要重新校验" if current is False
+                         else "未检查（加 --check 运行确定性闸门）")
         status.next_action = _cmd("validate", "package", ctx.slug)
         return status
     errors = _hard(_validator().validate_package, ctx)

@@ -1461,6 +1461,8 @@ def main():
         sys.exit(1)
     else:
         print(f"\n✅ Stage '{stage}' passed for '{slug}'")
+        if stage == "package":  # mdf status 不加 --check 时靠这份记录知道包闸门已通过（产物改了即作废）
+            _load_sibling("gate_records").record_package_gate(Path(f"output/{slug}"))
         if warnings:
             print(f"   ({len(warnings)} warning(s) — review recommended)")
         sys.exit(0)
