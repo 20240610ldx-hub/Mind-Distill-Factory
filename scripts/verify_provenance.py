@@ -285,20 +285,58 @@ def check_p2_corpus_closure(
         corpus = load_corpus(slug, root)
     if not corpus:
         return [f"EMPTY_CORPUS: sources/{slug}/ 下没有可读的 .txt/.md 语料"]
+    return p2_scan(evidence_md, slug, corpus)[0]
+
+
+def p2_scan(evidence_md: Path, slug: str, corpus: list[tuple[str, str]]) -> tuple[list[str], int, int]:
+    """逐张核对证据卡：(错误与警告, 机器核对通过的卡数, 有引文的卡数)。
+
+    语料外的卡写了 textual_note 只降级为 WARNING——但闸门「通过」不等于每张卡都核对过。2026-10-19 鲁迅验收里
+    16 张维基文库转录卡都走了这条路，P2 的逐字保证实际只覆盖《熱風》（发现 11），所以另给一行覆盖率；
+    这类卡按规则 6 最高 medium，标 high 直接报错。
+
+    「语料外」看语料位置指向哪里，不看 textual_note 本身：底本讹字的卡原文就在 raw/ 里，textual_note
+    记的是校勘，可以是 high；指向 processed/（维基文库转录之类）的卡才是规则 6 说的网络来源。
+    """
     errors: list[str] = []
+    verified = total = adjudicated = 0
     for card in parse_evidence_cards(evidence_md.read_text(encoding="utf-8")):
         verbatim = card["verbatim"]
         if not normalize(verbatim):
             continue
+        total += 1
         if find_verbatim(verbatim, corpus):
+            verified += 1
             continue
         prefix = longest_verbatim_prefix(verbatim, corpus)
         message = (
             f"P2_NOT_IN_CORPUS: {evidence_md.name} [{card['title']}]: "
             f"「{verbatim[:32]}」未逐字出现在语料中（最长逐字前缀={prefix}字）"
         )
-        if "textual_note" in card["fields"]:
-            errors.append(f"WARNING: {message} — 已记 textual_note，人工裁决在案")
-        else:
+        if "textual_note" not in card["fields"]:
             errors.append(message)
-    return errors
+            continue
+        adjudicated += 1
+        errors.append(f"WARNING: {message} — 已记 textual_note，人工裁决在案")
+        off_corpus = not _located_in_raw(card["fields"].get("语料位置", ""), slug)
+        if off_corpus and card["fields"].get("confidence", "").strip().lower() == "high":
+            errors.append(f"P2_UNVERIFIED_HIGH: {evidence_md.name} [{card['title']}]: "
+                          "语料位置不在 raw/ 里、只靠 textual_note 放行的卡最高 medium（规则 6），却标了 high")
+    if adjudicated:
+        errors.append(f"WARNING: P2_COVERAGE: {evidence_md.name}: 逐字核对覆盖 {verified}/{total} 张证据卡；"
+                      f"{adjudicated} 张未逐字命中语料，只靠 textual_note 人工裁决放行。"
+                      f"语料外的原文用 mdf acquire 采进 sources/{slug}/raw/ 才能机器核对")
+    return errors, verified, total
+
+
+LOCATION_PATH_RE = re.compile(r"^`?([^`（(\s]+)")
+
+
+def _located_in_raw(location: str, slug: str) -> bool:
+    """语料位置的第一个路径是否在 sources/{slug}/raw/ 下。
+
+    只看开头那个路径：鲁迅验收的维基文库卡写的是「processed/…json（…不在 `sources/lu-xun/raw/` 内）」，
+    整串做子串匹配会把这句否定说明当成命中。
+    """
+    match = LOCATION_PATH_RE.match(location.strip())
+    return bool(match) and match.group(1).replace("\\", "/").startswith(f"sources/{slug}/raw/")

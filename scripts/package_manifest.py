@@ -156,10 +156,15 @@ def attest_p2(evidence_md: Path, slug: str, root: Path, prov: Any) -> dict[str, 
     errors = prov.check_p2_corpus_closure(evidence_md, slug, root, corpus=corpus)
     hard = [e for e in errors if not e.startswith("WARNING:")]
     warnings = [e for e in errors if e.startswith("WARNING:")]
+    # 覆盖率进 manifest：读 gallery 的人看得见「逐字核对」到底覆盖了几张卡（鲁迅验收发现 11）
+    _, verified, total = (prov.p2_scan(evidence_md, slug, corpus) if evidence_md.exists() and corpus
+                          else ([], 0, 0))
     return {
         "status": "pass" if not hard else "fail",
         "hard_errors": len(hard),
         "warnings": len(warnings),
+        "cards_verified": verified,
+        "cards_total": total,
         "evidence_sha256": sha256_file(evidence_md) if evidence_md.exists() else None,
         "corpus_fingerprint": corpus_fingerprint(corpus) if corpus else None,
         "corpus_files": len(corpus),
