@@ -359,8 +359,22 @@ def _stage_attachments(ctx: "Ctx") -> StageStatus:
     else:
         status.state = "in_progress" if present else "pending"
         status.detail = "缺少 " + "、".join(n for n in REQUIRED_REFS if n not in present)
-        status.next_action = "派发 case-builder / evidence-carder，再由 skill-assembler 续写 voice.md 并回写案例索引（Stage 4.5）"
+        status.next_action = _attachments_todo(present)
     return status
+
+
+# 每份附件由谁产出；voice.md 与案例索引回写是 skill-assembler 的第二次调用
+ATTACHMENT_AUTHORS = {"cases.md": "case-builder", "evidence.md": "evidence-carder"}
+
+
+def _attachments_todo(present: list[str]) -> str:
+    """只派缺的那一份：恢复执行时重做已有附件既白花钱，又可能覆盖已过审的产物。"""
+    authors = [role for name, role in ATTACHMENT_AUTHORS.items() if name not in present]
+    todo = (f"派发 {' / '.join(authors)}，再" if authors else "") + "由 skill-assembler 续写 voice.md 并回写案例索引（Stage 4.5）"
+    kept = [name for name in ATTACHMENT_AUTHORS if name in present]
+    if kept:
+        todo += f"；{'、'.join(kept)} 已有，不要重做"
+    return todo
 
 
 def _stage_gates(ctx: "Ctx") -> StageStatus:
