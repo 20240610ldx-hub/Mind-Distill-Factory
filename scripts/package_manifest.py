@@ -153,18 +153,18 @@ def attest_p2(evidence_md: Path, slug: str, root: Path, prov: Any) -> dict[str, 
     语料只读一次，同一份既用于 P2 比对、取指纹，又用于权利汇总。
     """
     corpus = prov.load_corpus(slug, root)
-    errors = prov.check_p2_corpus_closure(evidence_md, slug, root, corpus=corpus)
+    if evidence_md.exists() and corpus:  # 只扫一遍：错误与覆盖率出自同一次比对
+        errors, coverage = prov.p2_scan(evidence_md, slug, corpus)
+    else:
+        errors, coverage = prov.check_p2_corpus_closure(evidence_md, slug, root, corpus=corpus), prov.EvidenceCoverage(0, 0)
     hard = [e for e in errors if not e.startswith("WARNING:")]
     warnings = [e for e in errors if e.startswith("WARNING:")]
-    # 覆盖率进 manifest：读 gallery 的人看得见「逐字核对」到底覆盖了几张卡（鲁迅验收发现 11）
-    _, verified, total = (prov.p2_scan(evidence_md, slug, corpus) if evidence_md.exists() and corpus
-                          else ([], 0, 0))
     return {
         "status": "pass" if not hard else "fail",
         "hard_errors": len(hard),
         "warnings": len(warnings),
-        "cards_verified": verified,
-        "cards_total": total,
+        # 覆盖率进 manifest：读 gallery 的人看得见「逐字核对」到底覆盖了几张卡（鲁迅验收发现 11）
+        **coverage.to_attestation(),
         "evidence_sha256": sha256_file(evidence_md) if evidence_md.exists() else None,
         "corpus_fingerprint": corpus_fingerprint(corpus) if corpus else None,
         "corpus_files": len(corpus),

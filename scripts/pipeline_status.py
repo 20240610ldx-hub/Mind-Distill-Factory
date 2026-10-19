@@ -393,17 +393,13 @@ def _stage_gates(ctx: "Ctx") -> StageStatus:
     return status
 
 
-COVERAGE_RE = re.compile(r"P2_COVERAGE:.*?(\d+)/(\d+) 张证据卡")
-
-
 def _coverage_hint(lines: list[str]) -> str:
     """P2 只逐字核对了部分证据卡时，在阶段卡上一直挂着（鲁迅验收发现 11）。不挡路：语料外的卡已封顶 medium。"""
+    coverage_type = _sibling("verify_provenance").EvidenceCoverage
     for line in lines:
-        match = COVERAGE_RE.search(line)
-        if match:
-            verified, total = int(match.group(1)), int(match.group(2))
-            return (f"；但逐字核对只覆盖 {verified}/{total} 张证据卡，{total - verified} 张靠 textual_note 放行"
-                    "——征得用户同意后用 mdf acquire 把原典采进 raw/，再让 evidence-carder 改卡")
+        coverage = coverage_type.parse(line)
+        if coverage and coverage.gap():
+            return f"；但{coverage.gap()}——征得用户同意后用 mdf acquire 把原典采进 raw/，再让 evidence-carder 改卡"
     return ""
 
 
@@ -448,10 +444,10 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
     review = (manifest.get("review") or {}).get("verdict", "无记录")
     status.state = "done"
     status.detail = f"已发布（manifest v{manifest.get('manifest_version')}，审查记录 {review}）"
-    p2 = (manifest.get("attestation") or {}).get("p2") or {}
-    verified, total = p2.get("cards_verified"), p2.get("cards_total")
-    if isinstance(verified, int) and isinstance(total, int) and verified < total:
-        status.detail += f"；逐字核对覆盖 {verified}/{total} 张证据卡，其余语料外、最高 medium"
+    coverage = _sibling("verify_provenance").EvidenceCoverage.from_attestation(
+        (manifest.get("attestation") or {}).get("p2"))
+    if coverage and coverage.gap():
+        status.detail += f"；{coverage.gap()}，这些卡语料外、最高 medium"
     if ctx.check:
         hard = [e for e in _validator().validate_published(ctx.slug, ctx.root) if not e.startswith("WARNING:")]
         if hard:

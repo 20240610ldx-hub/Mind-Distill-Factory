@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import gate_records as gr  # noqa: E402
 import pipeline_status as ps  # noqa: E402
 import validate_output  # noqa: E402
+import verify_provenance as prov  # noqa: E402
 
 V6_SKILL = "---\nname: demo-wisdom\nformat_version: 6\n---\n\n# 演示\n"
 
@@ -99,14 +100,15 @@ class StatusReadsTheRecord(PackageFixture):
         self.assertIn("validate package demo", step.next_action)
 
     def test_status_shows_partial_coverage_without_check(self):
-        gr.record_package_gate(self.out, notes=["P2_COVERAGE: evidence.md: 逐字核对覆盖 12/28 张证据卡；…"])
+        line = prov.EvidenceCoverage(12, 28, 16).warning("evidence.md", "demo")
+        gr.record_package_gate(self.out, notes=gr.carried_notes([line]))
         step = self.gates()
         self.assertEqual(step.state, "done", "覆盖不全是警告，不挡路")
         self.assertIn("12/28", step.detail)
         self.assertIn("mdf acquire", step.detail)
 
     def test_status_shows_partial_coverage_with_check(self):
-        coverage = "WARNING: P2_COVERAGE: evidence.md: 逐字核对覆盖 3/5 张证据卡；…"
+        coverage = prov.EvidenceCoverage(3, 5, 2).warning("evidence.md", "demo")
         ctx = ps.Ctx(slug="demo", root=self.root, check=True)
         ctx.is_v6 = True
         with mock.patch.object(ps, "_validator") as validator:
@@ -114,6 +116,11 @@ class StatusReadsTheRecord(PackageFixture):
             step = ps._stage_gates(ctx)
         self.assertEqual(step.state, "done")
         self.assertIn("3/5", step.detail)
+
+
+class CarriedCodesStayInSync(unittest.TestCase):
+    def test_gate_records_carries_the_domain_code(self):
+        self.assertIn(prov.EvidenceCoverage.CODE, gr.CARRIED_CODES)
 
 
 class PublishShowsCoverage(PackageFixture):
@@ -129,7 +136,7 @@ class PublishShowsCoverage(PackageFixture):
         return next(s for s in ps.collect_status("demo", self.root) if s.key == "publish")
 
     def test_partial_coverage_is_named(self):
-        row = self.publish_row({"status": "pass", "cards_verified": 12, "cards_total": 28})
+        row = self.publish_row({"status": "pass", **prov.EvidenceCoverage(12, 28, 16).to_attestation()})
         self.assertEqual(row.state, "done")
         self.assertIn("12/28", row.detail)
 

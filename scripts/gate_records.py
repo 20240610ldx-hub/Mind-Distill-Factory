@@ -20,7 +20,7 @@ RECORD_DIR = ".gates"
 PACKAGE_GATE = "package"
 # 闸门通过后仍要一路带到状态表、阶段卡的警告：P2 的逐字覆盖率（鲁迅验收发现 11——28 张卡只核对了 12 张，
 # 闸门却只说「通过」）。其余警告看校验器输出即可。
-CARRIED_CODES = ("P2_COVERAGE",)
+CARRIED_CODES = ("P2_COVERAGE",)  # = verify_provenance.EvidenceCoverage.CODE（有测试守着）
 
 
 def carried_notes(warnings: list[str]) -> list[str]:

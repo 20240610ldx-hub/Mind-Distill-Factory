@@ -84,5 +84,44 @@ class Coverage(unittest.TestCase):
         self.assertEqual((attestation["cards_verified"], attestation["cards_total"]), (1, 2))
 
 
+class CoverageValueObject(unittest.TestCase):
+    """覆盖率是领域概念，不是一行警告文本：格式与解析只在 EvidenceCoverage 一处。
+
+    之前状态表用正则把警告文本拆回数字，manifest 另记一套整数，三处各自知道格式——改一处措辞，
+    另一处就静悄悄地读不出覆盖率。
+    """
+
+    def test_warning_text_round_trips(self):
+        coverage = prov.EvidenceCoverage(verified=12, total=28, adjudicated=16)
+        line = coverage.warning("evidence.md", "lu-xun")
+        self.assertTrue(line.startswith("WARNING: P2_COVERAGE"))
+        self.assertEqual(prov.EvidenceCoverage.parse(line), coverage)
+        self.assertIsNone(prov.EvidenceCoverage.parse("WARNING: 别的警告"))
+
+    def test_attestation_round_trips(self):
+        coverage = prov.EvidenceCoverage(verified=5, total=7, adjudicated=2)
+        self.assertEqual(prov.EvidenceCoverage.from_attestation(coverage.to_attestation()), coverage)
+        self.assertIsNone(prov.EvidenceCoverage.from_attestation({"status": "pass"}), "旧 manifest 没有覆盖率")
+
+    def test_gap_is_only_reported_when_cards_were_waved_through(self):
+        self.assertEqual(prov.EvidenceCoverage(verified=3, total=3).gap(), "")
+        gap = prov.EvidenceCoverage(verified=12, total=28, adjudicated=16).gap()
+        self.assertIn("12/28", gap)
+        self.assertIn("16", gap)
+
+    def test_scan_returns_the_value_object(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            raw = root / "sources" / "demo" / "raw"
+            raw.mkdir(parents=True)
+            (raw / "a.txt").write_text("真的猛士敢於直面慘淡的人生", encoding="utf-8")
+            evidence = root / "evidence.md"
+            evidence.write_text("# 证据\n\n" + card("甲", "真的猛士，敢於直面慘淡的人生", "medium", False)
+                                + card("乙", "天才並不是自生自長的怪物", "medium", True), encoding="utf-8")
+            errors, coverage = prov.p2_scan(evidence, "demo", prov.load_corpus("demo", root))
+        self.assertEqual(coverage, prov.EvidenceCoverage(verified=1, total=2, adjudicated=1))
+        self.assertIn(coverage.warning("evidence.md", "demo"), errors)
+
+
 if __name__ == "__main__":
     unittest.main()
