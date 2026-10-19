@@ -41,6 +41,8 @@ def _number_or_none(value: Any) -> float | None:
 
 
 def _range_cost(lower: float, upper: float, rate: float | None) -> dict[str, Any]:
+    if upper == 0:  # 没有 OCR 页、没有网络请求：不论单价都是 0，不该让总价变成未知
+        return {"lower": 0.0, "upper": 0.0, "status": "estimated"}
     if rate is None:
         return {"lower": None, "upper": None, "status": "cost_unknown"}
     return {
@@ -119,13 +121,62 @@ def estimate_cost(
     }
 
 
+APPROVAL_FILE = "budget_approval.json"
+
+
+def _selected_tokens(estimate: dict[str, Any]) -> int:
+    return int((estimate.get("tokens") or {}).get("selected_input") or 0)
+
+
+@dataclass(frozen=True)
+class Budget:
+    """分片抽取的预算上限（config/defaults.json 的 source_strategy.sampling）。
+
+    token 数总是算得出，所以总能判断；费用只在配了单价、上界算得出时才参与。没配单价时费用是
+    cost_unknown，若只按费用判断，闸门永远不响（2026-10-19 鲁迅 GUI 验收发现 5）。
+    """
+
+    max_selected_input_tokens: int | None = None
+    max_cost_usd: float | None = None
+
+    def verdict(self, estimate: dict[str, Any]) -> str | None:
+        """超预算的原因，没超返回 None。"""
+        tokens = _selected_tokens(estimate)
+        if self.max_selected_input_tokens is not None and tokens > self.max_selected_input_tokens:
+            return f"预计输入 {tokens:,} token，超过预算 {self.max_selected_input_tokens:,} token"
+        upper = (estimate.get("cost") or {}).get("upper")
+        if self.max_cost_usd is not None and upper is not None and float(upper) > self.max_cost_usd:
+            return f"预计费用上界 ${float(upper):.2f}，超过预算 ${self.max_cost_usd:.2f}"
+        return None
+
+    @staticmethod
+    def covers(approval: dict[str, Any] | None, estimate: dict[str, Any]) -> bool:
+        """用户批准过不小于当前规模的预算；重新分片后变大了，要再问一次。"""
+        approved = (approval or {}).get("approved_selected_input_tokens")
+        return isinstance(approved, (int, float)) and _selected_tokens(estimate) <= approved
+
+
+def load_budget(code_root: Path) -> Budget:
+    config = json.loads((code_root / "config" / "defaults.json").read_text(encoding="utf-8"))
+    sampling = (config.get("source_strategy") or {}).get("sampling") or {}
+    limit = sampling.get("max_selected_input_tokens")
+    return Budget(max_selected_input_tokens=int(limit) if limit is not None else None,
+                  max_cost_usd=_number_or_none(sampling.get("max_cost_usd")))
+
+
+def write_approval(shard_dir: Path, estimate: dict[str, Any]) -> Path:
+    """记下用户批准的规模（mdf budget --approve），分片抽取步骤据此放行。"""
+    path = shard_dir / APPROVAL_FILE
+    write_estimate(path, {
+        "approved_selected_input_tokens": _selected_tokens(estimate),
+        "estimate_created_at": estimate.get("created_at"),
+        "approved_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    })
+    return path
+
+
 def exceeds_budget(estimate: dict[str, Any], *, max_tokens: int | None = None, max_cost: float | None = None) -> bool:
-    tokens = estimate.get("tokens", {})
-    if max_tokens is not None and int(tokens.get("selected_input") or 0) > max_tokens:
-        return True
-    cost = estimate.get("cost", {})
-    upper = cost.get("upper")
-    return max_cost is not None and upper is not None and float(upper) > max_cost
+    return Budget(max_tokens, max_cost).verdict(estimate) is not None
 
 
 def write_estimate(path: Path, estimate: dict[str, Any]) -> None:

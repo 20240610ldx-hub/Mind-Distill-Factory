@@ -14,6 +14,7 @@
 import functools
 import importlib.util
 import json
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -58,6 +59,7 @@ def _sibling(name: str) -> Any:
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclass 在 `from __future__ import annotations` 下要按模块名查注解
     spec.loader.exec_module(module)
     return module
 
@@ -217,6 +219,16 @@ def _stage_extract(ctx: "Ctx") -> StageStatus:
     failed = data.get("failed_units") or []
     status.artifacts = [_rel(ctx.root, status_path)]
     status.detail = f"{done}/{len(units)} 个分片已完成" + (f"，{len(failed)} 个失败" if failed else "")
+    estimate = _read_json(status_path.parent / "cost_estimate.json")
+    hold = None
+    if isinstance(estimate, dict):
+        ce = _sibling("cost_estimator")
+        status.detail += f"，预计输入 {int((estimate.get('tokens') or {}).get('selected_input') or 0):,} token"
+        over = ce.load_budget(Path(__file__).resolve().parent.parent).verdict(estimate)
+        if over and ce.Budget.covers(_read_json(status_path.parent / ce.APPROVAL_FILE), estimate):
+            status.detail += "（超预算，用户已批准）"
+        elif over:
+            hold = over
     state = data.get("status")
     merged = (ctx.root / "sources" / ctx.slug / "processed" / "user_sources.json").exists()
     if state == "completed":
@@ -228,6 +240,10 @@ def _stage_extract(ctx: "Ctx") -> StageStatus:
     elif state == "blocked":
         status.state = "blocked"
         status.next_action = "有分片连续失败被标记 blocked：先拆分该分片或降低并发，再重试"
+    elif hold:  # 超预算且没有覆盖当前规模的批准：用户拍板前不得派 worker
+        status.state = "blocked"
+        status.next_action = (f"{hold}。先用 AskUserQuestion 让用户选：全量处理 / 分层抽样 / 降低预算 / 取消；"
+                              f"选全量就运行 {_cmd('budget', ctx.slug, '--approve')}，用户选定前不得派 worker")
     else:
         status.state = "in_progress" if done or failed else "pending"
         runnable = [u.get("unit_id") for u in ts.runnable_units(data)][:5]

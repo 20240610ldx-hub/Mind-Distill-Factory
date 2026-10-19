@@ -36,7 +36,7 @@ python scripts/local_source_pipeline.py index {person_slug}
    - `recommended_max_concurrency` 与当前上下文窗口匹配
 5. 如果 manifest 中存在 `over_limit_shards`，停止并报告给编排者，不要继续派 worker。
 6. 主 agent 读取 `dispatch_plan.json` 的 next batch 动态派工：高难度 shard 单独派发；低/中难度 shard 只在剩余上下文足够时并行。每个 worker 完成或失败后再取下一批，避免一次性提交全部任务阻塞。
-7. 如果 `cost_estimate.json` 的 upper bound 超过配置预算，先通过 AskUserQuestion 让用户选择全量、分层抽样、降低预算或取消；用户未选择前不得派发 worker 或启动网络补充。
+7. 如果 `python scripts/mdf.py budget {person_slug}` 报超预算（预计输入 token 超过 `max_selected_input_tokens`，或配了单价时费用超过 `max_cost_usd`），先通过 AskUserQuestion 让用户选择全量、分层抽样、降低预算或取消；用户未选择前不得派发 worker 或启动网络补充。
 
 ## 输出
 

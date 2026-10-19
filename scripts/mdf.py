@@ -189,6 +189,29 @@ def cmd_next(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_budget(args: argparse.Namespace) -> int:
+    ce = _module("cost_estimator")
+    shard_dir = _data_root(args.root) / "sources" / args.slug / "processed" / "local_shards"
+    try:
+        estimate = json.loads((shard_dir / "cost_estimate.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        print(f"没有可读的 {shard_dir / 'cost_estimate.json'}：先运行 mdf index {args.slug}")
+        return 1
+    budget = ce.load_budget(CODE_ROOT)
+    reason = budget.verdict(estimate)
+    if reason is None:
+        print(f"未超预算：预计输入 {int(estimate['tokens']['selected_input']):,} token"
+              f"（上限 {budget.max_selected_input_tokens or 0:,}），无需批准。")
+        return 0
+    print(reason)
+    if not args.approve:
+        print("先用 AskUserQuestion 问用户；用户选全量处理后，加 --approve 记下批准。")
+        return 3
+    path = ce.write_approval(shard_dir, estimate)
+    print(f"[OK] 已记下用户批准：{reason}（{path}）")
+    return 0
+
+
 OPTIONAL_DEPS = [
     ("fitz", "PyMuPDF", "pdf", "PDF 文本抽取（首选）"),
     ("pypdf", "pypdf", "pdf", "PDF 文本抽取（回退）"),
@@ -304,6 +327,12 @@ def build_parser() -> argparse.ArgumentParser:
         else:
             p.add_argument("--card", action="store_true", help="输出阶段卡（进入阶段时贴给用户）")
         p.set_defaults(func=func)
+
+    p = sub.add_parser("budget", help="分片抽取的预算核对；用户同意超预算全量处理后，--approve 记下批准")
+    p.add_argument("slug", type=slug_arg)
+    p.add_argument("--approve", action="store_true", help="记下用户批准当前规模（须先在对话里问过用户）")
+    p.add_argument("--root", help=ROOT_HELP)
+    p.set_defaults(func=cmd_budget)
 
     p = sub.add_parser("doctor", help="环境与可选依赖自检")
     p.add_argument("--json", action="store_true")

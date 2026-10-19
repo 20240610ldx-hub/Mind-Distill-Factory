@@ -235,7 +235,7 @@ python scripts/mdf.py clean {slug}    # 查看清洗报告：被拒 / 待复核 
   - 高难度 shard 单独派发，完成/失败后才释放下一槽位；
   - 同一 shard 连续失败时先拆分或降低并发，不让整个 Stage 1A 阻塞。
 - `recommended_worker_count` 只是总量提示，不是强制并发数。实际并发由主 agent 根据当前上下文窗口动态裁决。
-- `sources/{slug}/processed/local_shards/cost_estimate.json` 的 upper bound 超过配置预算时，必须先调用 AskUserQuestion：全量处理 / 分层抽样 / 只用本地素材并降低预算 / 取消；用户选择前不得派 worker 或补充采集。
+- 预算：`config/defaults.json` 的 `source_strategy.sampling.max_selected_input_tokens`（默认 500,000，与抽样上限一致）；配了单价时，`max_cost_usd` 也会参与判断。超预算时，`mdf status` 把「分片抽取」标为受阻。这时必须先调用 AskUserQuestion，让用户在全量处理、分层抽样、只用本地素材并降低预算、取消之间选；用户选择前不得派 worker 或补充采集。用户选全量后，运行 `python scripts/mdf.py budget {slug} --approve` 记下批准。批准只覆盖当时的规模，重新分片后规模变大，要再问一次。
 
 #### A1：local-source-worker[N]（按 shard 并行）
 
