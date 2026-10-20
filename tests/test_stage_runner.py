@@ -37,6 +37,9 @@ out.write_text("# 审查\n\n## 裁决\n\n[PASS] 假 harness 写的审查结论\n
 print("已写审查报告", flush=True)
 if mode == "usage":
     print('{"type":"result","subtype":"success","num_turns":9,"total_cost_usd":0.53,"usage":{"output_tokens":1200,"cache_read_input_tokens":880000},"result":"检查点通过"}', flush=True)
+if mode == "limit":  # 2026-10-20 实跑：额度用完，claude 退出码 1，原因只在结果对象里
+    print('{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"num_turns":1,"total_cost_usd":0,"result":"You have hit your session limit - resets 9pm"}', flush=True)
+    raise SystemExit(1)
 if mode == "spawn":  # 墨子试跑 review 步骤：新进程自己又派了子代理
     print('{"type":"result","subtype":"success","num_turns":1,"total_cost_usd":0.69,"subagent_stats":{"spawned":2},"result":"PASS"}', flush=True)
 '''
@@ -221,6 +224,12 @@ class RunTests(RunnerFixture):
         self.assertIn("子代理", record["warnings"][0])
         html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
         self.assertIn("⚠️ 子代理 2", html)
+
+    def test_failed_process_says_why(self):
+        self.assertEqual(self.run_fake("limit", yes=True), 1)
+        text = "\n".join(self.lines)
+        self.assertIn("❌ 进程退出码 1", text)
+        self.assertIn("原因：You have hit your session limit - resets 9pm", text, "原因不能只埋在日志里")
 
     def test_no_subagents_no_warning(self):
         self.assertEqual(sr.run_warnings({"cost_usd": 0.5, "turns": 3}), [])

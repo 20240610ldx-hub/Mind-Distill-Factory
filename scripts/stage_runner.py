@@ -301,6 +301,9 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
         + (changes if unit.is_bundle else f"步骤 {labels.get(state_before, state_before)} → "
            f"{labels.get(state_after, state_after)}")
         + f" · 新产物 {len(changed)} 个" + (f" · {usage_text(usage)}" if usage else ""))
+    if not process_ok and (usage or {}).get("result_excerpt"):
+        # 2026-10-20 实跑：额度用完时 claude 退出码 1，「session limit」只写在结果对象里
+        out(f"  原因：{usage['result_excerpt']}")
     for warning in warnings:
         out(f"  ⚠️ {warning}")
     for check in checks:

@@ -8,7 +8,7 @@
 - 鲁迅 GUI 验收与修复（2026-10-19/20）：PR #9（`b080dd4` 等，墨子试跑决策 + 值对象）、PR #10（`0963022`、`89f593d`）、PR #11（`9e9ef17` → `58cc872`）均已合入 main（`3ed4e0c`），明细见「〇-2」
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 732 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
+结果：`Ran 733 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -274,7 +274,7 @@ claude plugin validate .
 ## 六、建议的下一动作顺序
 
 1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
-2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` 还缺一次真实模型实跑（单分片人物，用户同意后 `mdf run <slug> --harness claude-code --yes`）
+2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` 还缺一次真实模型实跑。2026-10-20 在鲁迅副本上试过（Sonnet 5.5 high，鲁迅正好 1 个分片），Claude Code 会话额度用完（429），没跑起来，花费 $0；结果行此后会把这类原因打出来
 3. P5 两张任务卡：DNA 禁忌词对语料核对、统一按路径加载 helper
 4. P2 runtime `read_reference` + trace + judge schema
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
