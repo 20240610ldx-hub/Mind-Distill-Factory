@@ -232,5 +232,4 @@ This skill was distilled from:
 {/repeat_block}
 
 Distilled on: {distill_date}
-Quality review: {review_status}
 Categories: {primary_category_en}, {secondary_categories_en}

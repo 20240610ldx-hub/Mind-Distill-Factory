@@ -350,6 +350,13 @@ python scripts/validate_output.py sources {slug}
 
 通过后进入 Stage 2。失败则检查子代理输出的 JSON 格式并修复。
 
+reduce 与本检查点的「语料偏薄」警告会带标签，按标签走：
+
+- `[可改善]`：还有分片没抽、只做了分层抽样，或有既非网络也非 OCR 的条目没标 high。先补——回子代理 A
+  把剩下的分片抽完，或复核这些条目的 confidence——再重跑本检查点。
+- `[不可改善]`：语料已经抽完，或条目按规则 6（网络来源）/ OCR 文本封顶 medium。这不是错误，不要为了消警告
+  去改 confidence。在阶段汇报里说一句这份语料的上限，列出能用 `mdf acquire` 补采的原典，由用户决定。
+
 ---
 
 ## Stage 2：原则提取
@@ -371,7 +378,13 @@ python scripts/validate_output.py sources {slug}
 python scripts/validate_output.py principles {slug}
 ```
 
-通过后进入 Stage 3。
+通过后进入 Stage 3。两类警告要先处理再走：
+
+- `[原则候选偏少]`：单个文件不到 6 条。先看这个文件的素材是不是本来就薄。
+- `[原则候选不足]`：本人来源的候选合计不到 8 条（评论者观点不计），Stage 3 拼不出 9–11 条原则。回看检查点 1
+  的标签：`[可改善]` 就回 Stage 1A 补抽；`[不可改善]` 就问用户要不要用 `mdf acquire` 补采原典。两条路都走不通，
+  才带着缺口进 Stage 3，并把理由写进 `output/{slug}/framework_alignment_review.md`。**不要拿评论者观点凑数**——
+  它们本来就不计入本人来源，凑进去只会让框架失真。
 
 ---
 
@@ -484,8 +497,15 @@ python scripts/validate_output.py frameworks {slug}
 
 另由 skill-assembler 产出 `output/{slug}/人物档案.md`（模板 `templates/refs/dossier.zh.md`）。
 
-附件齐备后回写核心层的「案例索引」表——把 Stage 4 写下的占位行替换成 `output/{slug}/references/cases.md`
-中真实的 case_id，索引与 cases.md 必须双向一一对应（P5 闸门）。
+附件齐备后，由 skill-assembler（续）回写核心层的「案例索引」表（与 voice.md 同一次调用）——把 Stage 4
+写下的占位行替换成 `output/{slug}/references/cases.md` 中真实的 case_id，索引与 cases.md 必须双向一一对应
+（P5 闸门）。派发时把这一步写进它的任务说明，别指望它自己想到。
+
+**行数预算：** 回写后 SKILL.md 仍须 ≤500 行（P6）。占位行是按簇写的，回写成每案一行会多出「案例数 − 簇数」行——
+鲁迅验收 33 个案例、10 个簇，从 473 行涨到 495 行，只剩 5 行余量。默认把同一原则的正例合并成一行：触发情境
+用「；」分隔，`case_id` 列按同样顺序列出全部 case_id（「、」分隔，P5 认得）；触发情境差得远的正例可以各占一行。
+反例单独一行，行首标「反例：」——它是原则的失效边界，并进正例行就看不见了。回写后若还有 20 行以上余量，
+才拆成每案一行。（2026-10-20 用 Sonnet 5.5 high 实跑这一步：33 个案例回写成 23 行，6 条反例各占一行，485 行。）
 
 ### ✓ 检查点 4：包校验
 
@@ -498,9 +518,12 @@ python scripts/validate_output.py package {slug}
 | 报错 | 处置 |
 |---|---|
 | `P2_NOT_IN_CORPUS` | 回 evidence-carder 改逐字引文；确属底本讹字则加 `textual_note` |
+| `P2_UNVERIFIED_HIGH` | 引文不在 `raw/`、只靠 textual_note 放行的卡标了 high：改成 medium（规则 6）；要保留 high，就征得用户同意后用 `mdf acquire` 把原典采进 `raw/`，再让 evidence-carder 改卡 |
+| `P2_COVERAGE`（警告） | 不挡路，`mdf status` 的包校验一行会一直显示覆盖率。在 Stage 6.1 的成品摘要里写明「逐字核对覆盖 X/Y 张」，并问用户要不要补采这些原典 |
+| `PKG_CRLF` | 把报出的文件以二进制读出、`\r\n` 换成 `\n` 写回（内容不变），再重跑本检查点。派子代理时在任务里写明「文本文件一律 LF」——Claude Code 的子代理拿不到 `mdf brief` 里的这条规则 |
 | `P4_TOO_FEW_CASES` | 回 case-builder 补该 cluster 的案例 |
 | `P5_INDEX_ORPHAN` / `P5_CASE_NOT_INDEXED` | 同步核心层索引与 cases.md |
-| `P6_TOO_LONG` | 减原则条数，不压深度 |
+| `P6_TOO_LONG` | 先把案例索引按原则合并成一行（见上方 Stage 4.5 的行数预算），仍超限再减原则条数，不压深度 |
 
 ---
 
@@ -542,7 +565,8 @@ python scripts/validate_output.py package {slug}
 
 - 人物基本信息（时代、门类）
 - 提取到的核心原则清单（仅标题）
-- 质量审查结论
+- 质量审查结论，以及 `distill_confidence`（低于 3 的进不了 gallery，见 `scripts/publish_skill.py` 的置信度门）
+- 逐字证据覆盖：包校验有 `P2_COVERAGE` 时写明「逐字核对覆盖 X/Y 张证据卡」，其余是语料外的卡，最高 medium
 - `output/{slug}/SKILL.md` 核心层预览（前 50 行）+ `references/` 下三个附件的文件清单
 
 ### 6.2 询问操作选择

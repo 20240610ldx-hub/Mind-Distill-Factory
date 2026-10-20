@@ -269,7 +269,11 @@ mind-distill-factory/
 | 原则 / 框架 | 从摘录归纳的可执行判断；框架是过滤链 | `principles_*.json`、`framework_core.json`、`frameworks.zh.json` |
 | 技能包 | v6：`SKILL.md` + `references/` | `validate_output.py package` |
 | 证据 | 包里引文在语料中的逐字出处 | P2、`verify_provenance.py` |
+| 逐字覆盖率 | 证据卡里有几张被 P2 机器核对过、几张只靠 textual_note 人工放行；闸门通过不等于全核对过 | `verify_provenance.EvidenceCoverage` |
 | 闸门 / 检查点 | 能确定判定的通过条件，不过不放行 | P1–P6、L1–L2、S1–S4；阶段树里的 `checkpoint` |
+| 闸门通过记录 | 包闸门通过时记下的产物指纹与附注；产物一改就作废 | `gate_records.package_gate_current`、`output/{slug}/.gates/package.json` |
+| 预算 | 分片抽取前的规模上限（按 token，配了单价再按费用）与用户批准 | `cost_estimator.Budget`、`mdf budget --approve` |
+| 置信度门 | `distill_confidence` < 3 不进 gallery；`--force` 记为 `FORCED_LOW_CONFIDENCE` | `publish_skill.confidence_gate` |
 | 阶段 / 步骤 | 流水线的进度单位，执行者是 script / agent / human | `pipeline-stages-v1`、`pipeline-status-v1` |
 | 简报 | 把一个 agent 步骤打包成自足的任务说明 | `harness.build_brief` |
 | 运行 | 一次新进程执行：命令、心跳、用量、检查点结果 | `run-record-v1` |
@@ -298,7 +302,7 @@ flowchart LR
 |--------|-----------|------|---------|
 | 采集与语料 | 来源、页、分片、清洗结论、可疑行 | `acquire`、`local_source_pipeline`、`pdf_quality`、`ocr_calibrate`、`clean_corpus`、`sampling`、`cost_estimator`、`worker_dispatch`、`source_registry` | `source-registry-v2`、`local-source-manifest-v2`、`cleaning-report-v1`、`sampling-plan-v1`、`cost-estimate-v1`、`worker-dispatch-plan-v1`、`acquisition-log-v1` |
 | 蒸馏 | 摘录、原则、框架、草稿包 | `agents/*.md`、`task_status`、`build_framework_core` | `task-status-v2`、`framework_core.json` |
-| 校验与发布 | 闸门、证据、发布包、清单 | `validate_output`、`verify_provenance`、`package_manifest`、`publish_skill`、`measure_package`、`persona_metrics` | manifest（`manifest_version` 2）、`persona-metrics-v1`、`claim-ledger-v1` |
+| 校验与发布 | 闸门、证据、逐字覆盖率、闸门通过记录、置信度门、发布包、清单 | `validate_output`、`verify_provenance`、`gate_records`、`package_manifest`、`publish_skill`、`measure_package`、`persona_metrics` | manifest（`manifest_version` 2）、`persona-metrics-v1`、`claim-ledger-v1` |
 | 编排 | 阶段与步骤、简报、运行、工作区、harness 档案 | `pipeline_status`、`harness`、`stage_runner`、`workspace`、`mdf` | `pipeline-status-v1`、`run-record-v1`、`mdf-harness-v1`、`mdf-doctor-v1` |
 
 ### 不变式（由测试守住）
@@ -309,3 +313,6 @@ flowchart LR
 - **harness 档案**：`isolated_run` 必须有独立的 `{prompt}` 参数位。没声明的能力，指定了就报错（模型、推理强度），或者跳过（目录授权）；可变参数放在提示词之后。
 - **运行**：不加 `--yes` 什么也不写。每次运行都追加一条 `run-record-v1`，含费用和被拒的工具调用数。
 - **发布**：事务式改名，manifest 记下构建期的证明。改了 gallery 却没重发 manifest，测试就失败。
+- **逐字覆盖率**：覆盖率的文字格式、解析和 manifest 字段只在 `EvidenceCoverage` 定义；它随闸门通过记录和 manifest 一路传到状态表的包校验行与发布行。语料位置不在 `raw/`、只靠 textual_note 放行的证据卡不高于 medium（规则 6）。
+- **闸门通过记录**：绑定 SKILL.md 与 references/ 的指纹，产物改过即作废，附注随之作废；不随发布进入 gallery。
+- **置信度门**：`distill_confidence` < 3 的包发布被拒；`--force` 放行时审查状态记 `FORCED_LOW_CONFIDENCE`，绝不记 PASS。

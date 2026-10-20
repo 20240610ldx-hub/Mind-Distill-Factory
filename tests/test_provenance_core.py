@@ -311,15 +311,16 @@ class GateTests(unittest.TestCase):
             self._write(
                 root,
                 "**原文出处：**「甲」——《疏》\n",
-                "### 原则 1：甲\n\n> 如此则月有考\n\n"
+                "### 原则 1：甲\n\n> 如此则月有考\n\n- 语料位置：`sources/demo/raw/corpus.txt`\n"
                 "- confidence：high\n- textual_note：底本讹字，据received text 正之\n",
                 "如此，月有考。",
             )
             errors = prov.check_p2_corpus_closure(
                 root / "output" / "demo" / "references" / "evidence.md", "demo", root
             )
-            self.assertEqual(len(errors), 1)
-            self.assertTrue(errors[0].startswith("WARNING:"))
+            self.assertEqual([e for e in errors if not e.startswith("WARNING:")], [])
+            self.assertTrue(errors[0].startswith("WARNING: P2_NOT_IN_CORPUS"))
+            self.assertIn("P2_COVERAGE", errors[-1])  # 人工裁决放行的卡要记进覆盖率
 
     def test_p2_passes_when_verbatim(self) -> None:
         with tempfile.TemporaryDirectory() as td:

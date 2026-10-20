@@ -83,7 +83,7 @@ Claude Code 的无头进程用 `--output-format stream-json --verbose`（stream-
 
 ### 3. 状态表 `mdf status`：不靠对话记忆
 
-`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度，表格末尾附一行进度条（▶ 当前、▰ 完成、◐ 部分完成、✖ 未通过、▱ 未开始）。`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读，恢复执行时编排者用它重建任务清单。中断后换一个 harness 接着做，进度不丢。
+`python scripts/mdf.py status <slug>` 只看磁盘产物，就能重建进度，表格末尾附一行进度条（▶ 当前、▰ 完成、◐ 部分完成、✖ 未通过、▱ 未开始）。它不跑较慢的 P1–P6，但 `validate package` 通过时会在 `output/<slug>/.gates/` 记下包的指纹；只要产物没改过，状态表就显示「已通过」，改过就回到「需要重新校验」。以前这件事不落盘，鲁迅验收时审查都 PASS 了，阶段卡还指回阶段 4。记录里还带着 P2 的逐字覆盖率：只有部分证据卡在 `raw/` 里时，包校验和发布这两行都会一直挂着「逐字核对覆盖 X/Y」，不会因为闸门通过就看不见。`--json`（schema `pipeline-status-v1`）给 GUI 或其他工具读，恢复执行时编排者用它重建任务清单。中断后换一个 harness 接着做，进度不丢。
 
 `--html` 仍可手动生成自包含的离线面板 `output/<slug>/status.html`（阶段轨、步骤与闸门、`mdf run` 运行记录与合计费用），适合发给不在对话里的人看。它不在编排流程里。
 

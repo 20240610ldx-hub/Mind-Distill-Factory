@@ -22,6 +22,12 @@ model: haiku
    保留语料原文之外**追加** `- textual_note：` 说明分歧与裁决依据。
    P2 闸门会把这类条目降级为 WARNING 并记录在案；沉默改字则是 error。
 6. **每张卡必须有 `- confidence：high|medium`** 与 `- 语料位置：`（指向实际文件）。
+   `语料位置` 的第一个路径就是引文实际所在的文件，补充说明写在后面的括号里——P2 只看第一个路径判断
+   这张卡在不在 `sources/{slug}/raw/` 里。
+7. **语料外的卡最高 medium。** 引文不在 `sources/{slug}/raw/`（例如只在 `sources/{slug}/processed/primary_sources.json`
+   里的网络转录）时，textual_note 只是临时放行，不是核对：confidence 只能写 medium（规则 6），
+   写 high 会被 P2 判为 `P2_UNVERIFIED_HIGH` 硬错误。在交付报告里逐条列出这些卡的原典篇目，
+   交编排者问用户要不要用 `mdf acquire` 采进 `raw/`，采进来以后再改卡。
 
 ## 自检
 
@@ -29,5 +35,7 @@ model: haiku
 python scripts/validate_output.py package {slug}
 ```
 
-必须做到 `P2_NOT_IN_CORPUS` 零条（或全部带 `textual_note` 降级为 WARNING）。
+必须做到 `P2_NOT_IN_CORPUS` 零条（或全部带 `textual_note` 降级为 WARNING），`P2_UNVERIFIED_HIGH` 零条。
+有卡靠 textual_note 放行时，P2 会多给一行 `P2_COVERAGE`（逐字核对覆盖了几张）——把这行原样写进交付报告，
+不要只报「闸门通过」。
 报错中的「最长逐字前缀=N字」指出分歧位置：N 远小于全长即缝合（该函数无锚点，短前缀可能是巧合命中，故 N 很少恰为 0），N 接近全长是改字或省略。

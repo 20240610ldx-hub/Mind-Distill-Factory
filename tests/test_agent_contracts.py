@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -53,6 +54,15 @@ class AssemblerContractTests(unittest.TestCase):
 
     def test_states_line_cap(self) -> None:
         self.assertIn("500", self.text)
+
+    def test_allows_several_case_ids_per_index_row(self) -> None:
+        # P5 已接受 case_id 列一格多 id；组装器得知道这条省行的路（鲁迅验收发现 12）
+        self.assertIn("一格可放多个 case_id", self.text)
+
+    def test_keeps_counter_cases_on_their_own_row(self) -> None:
+        # 2026-10-20 Sonnet 实跑回写鲁迅索引：模型自己把反例留在单独一行。反例行是原则的失效边界，
+        # 并进正例行就看不见了——把这条好做法写进规则，别指望每次都碰巧做对
+        self.assertIn("反例单独一行", self.text)
 
 
 class CaseBuilderContractTests(unittest.TestCase):
@@ -121,6 +131,23 @@ class OrchestratorContractTests(unittest.TestCase):
 
     def test_has_attachment_stage(self) -> None:
         self.assertIn("Stage 4.5", self.text)
+
+    def _stage_45(self) -> str:
+        match = re.search(r"^## Stage 4\.5.*?(?=^### ✓ 检查点)", self.text, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(match, "distill.md 缺少 Stage 4.5 章节")
+        return match.group(0)
+
+    def test_stage_45_names_who_writes_back_the_case_index(self) -> None:
+        # 鲁迅验收发现 13：只写了「附件齐备后回写」，没说谁回写——编排器不知道该把这步派给谁
+        section = self._stage_45()
+        self.assertRegex(section, r"skill-assembler（续）[^\n]*回写[^\n]*案例索引|案例索引[^\n]*skill-assembler（续）")
+
+    def test_stage_45_states_the_line_budget_for_the_write_back(self) -> None:
+        # 占位行按簇写，回写成每案一行会多出二十多行；预算不写明，回写后才撞 P6 的 500 行上限
+        section = self._stage_45()
+        self.assertIn("500", section)
+        self.assertIn("同一原则", section)
+        self.assertIn("反例单独一行", section)
 
     def test_has_english_on_demand_stage(self) -> None:
         self.assertIn("Stage 6.5", self.text)
@@ -196,6 +223,55 @@ class PrincipleCountConsistencyTests(unittest.TestCase):
             with self.subTest(agent=path.name):
                 self.assertIn("9-11", targets, f"{path.name}: no explicit 9-11 target statement found")
                 self.assertNotIn("5-8", targets, f"{path.name}: still states a 5-8 target")
+
+
+class PipelineWiringTests(unittest.TestCase):
+    """鲁迅验收修复要落到管线每个入口，而不只是校验器多一条警告。
+
+    `mdf run` / Codex / pi 的简报只拼角色定义（agents/*.md）和阶段树的 checkpoint_note，不读 distill.md；
+    Claude Code 编排者读 distill.md。两条路都得知道遇到这些信号该怎么走。
+    """
+
+    def setUp(self) -> None:
+        self.orchestrator = (ROOT / "commands" / "distill.md").read_text(encoding="utf-8")
+        self.carder = (ROOT / "agents" / "evidence-carder.md").read_text(encoding="utf-8")
+        self.reviewer = (ROOT / "agents" / "quality-reviewer.md").read_text(encoding="utf-8")
+        tree = json.loads((ROOT / "config" / "pipeline_stages.json").read_text(encoding="utf-8"))
+        self.steps = {s["id"]: s for phase in tree["phases"] for s in phase["steps"]}
+
+    def _section(self, heading: str) -> str:
+        match = re.search(rf"^### ✓ {heading}.*?(?=^## |^### )", self.orchestrator, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(match, heading)
+        return match.group(0)
+
+    def test_evidence_carder_knows_the_off_corpus_cap(self) -> None:
+        for code in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE"):
+            self.assertIn(code, self.carder)
+
+    def test_reviewer_reports_p2_coverage(self) -> None:
+        self.assertIn("P2_COVERAGE", self.reviewer)
+
+    def test_checkpoint_4_routes_the_new_signals(self) -> None:
+        section = self._section("检查点 4")
+        for code in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE", "PKG_CRLF"):
+            self.assertIn(code, section)
+        self.assertIn("合并", section)  # P6_TOO_LONG 先合并案例索引的行，再考虑减原则
+
+    def test_checkpoint_1_routes_fixable_shortfalls(self) -> None:
+        section = self._section("检查点 1")
+        self.assertIn("[可改善]", section)
+        self.assertIn("[不可改善]", section)
+
+    def test_checkpoint_2_routes_too_few_principles(self) -> None:
+        section = self._section("检查点 2")
+        self.assertIn("原则候选不足", section)
+
+    def test_briefs_carry_the_routing_for_each_harness(self) -> None:
+        self.assertIn("[可改善]", self.steps["reduce"].get("checkpoint_note", ""))
+        self.assertIn("原则候选不足", self.steps["principles"].get("checkpoint_note", ""))
+        note = self.steps["attachments"].get("checkpoint_note", "")
+        for needle in ("P2_UNVERIFIED_HIGH", "P2_COVERAGE", "500"):
+            self.assertIn(needle, note)
 
 
 if __name__ == "__main__":

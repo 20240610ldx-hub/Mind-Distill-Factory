@@ -15,7 +15,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 # Windows 控制台 UTF-8（沿用 validate_output.py:23-29 的模式）
 if sys.platform == "win32":
@@ -285,20 +285,104 @@ def check_p2_corpus_closure(
         corpus = load_corpus(slug, root)
     if not corpus:
         return [f"EMPTY_CORPUS: sources/{slug}/ 下没有可读的 .txt/.md 语料"]
+    return p2_scan(evidence_md, slug, corpus)[0]
+
+
+class EvidenceCoverage(NamedTuple):
+    """P2 的逐字覆盖：机器核对通过的卡 / 有引文的卡；adjudicated 是只靠 textual_note 人工放行的卡。
+
+    闸门「通过」不等于每张卡都核对过（鲁迅验收发现 11：28 张只核对了 12 张）。覆盖率要从校验器一路带到
+    状态表、manifest、发布行，文字格式与解析只在这里——别处用正则拆警告文本，改一处措辞另一处就读不出。
+
+    用 NamedTuple 而不是 dataclass：本模块常被 spec_from_file_location 按路径加载而不登记进 sys.modules，
+    dataclass 在 `from __future__ import annotations` 下会去 sys.modules 查模块而崩掉。
+    """
+
+    verified: int
+    total: int
+    adjudicated: int = 0
+
+    CODE = "P2_COVERAGE"
+    _PARSE_RE = re.compile(r"P2_COVERAGE: .*?逐字核对覆盖 (\d+)/(\d+) 张证据卡；(\d+) 张未逐字命中语料")
+
+    def warning(self, evidence_name: str, slug: str) -> str:
+        return (f"WARNING: {self.CODE}: {evidence_name}: 逐字核对覆盖 {self.verified}/{self.total} 张证据卡；"
+                f"{self.adjudicated} 张未逐字命中语料，只靠 textual_note 人工裁决放行。"
+                f"语料外的原文用 mdf acquire 采进 sources/{slug}/raw/ 才能机器核对")
+
+    @classmethod
+    def parse(cls, line: str) -> "EvidenceCoverage | None":
+        match = cls._PARSE_RE.search(line)
+        return cls(*(int(g) for g in match.groups())) if match else None
+
+    def to_attestation(self) -> dict[str, int]:
+        return {"cards_verified": self.verified, "cards_total": self.total, "cards_adjudicated": self.adjudicated}
+
+    @classmethod
+    def from_attestation(cls, data: Any) -> "EvidenceCoverage | None":
+        if not isinstance(data, dict):
+            return None
+        verified, total = data.get("cards_verified"), data.get("cards_total")
+        if not isinstance(verified, int) or not isinstance(total, int):
+            return None  # 发现 11 之前的 manifest 没有覆盖率
+        adjudicated = data.get("cards_adjudicated")
+        return cls(verified, total, adjudicated if isinstance(adjudicated, int) else total - verified)
+
+    def gap(self) -> str:
+        """给状态表的一句话；没有人工放行的卡时为空。"""
+        if not self.adjudicated:
+            return ""
+        return f"逐字核对只覆盖 {self.verified}/{self.total} 张证据卡，{self.adjudicated} 张靠 textual_note 放行"
+
+
+def p2_scan(evidence_md: Path, slug: str, corpus: list[tuple[str, str]]) -> tuple[list[str], EvidenceCoverage]:
+    """逐张核对证据卡：(错误与警告, 覆盖率)。
+
+    语料外的卡写了 textual_note 只降级为 WARNING——但闸门「通过」不等于每张卡都核对过。2026-10-19 鲁迅验收里
+    16 张维基文库转录卡都走了这条路，P2 的逐字保证实际只覆盖《熱風》（发现 11），所以另给一行覆盖率；
+    这类卡按规则 6 最高 medium，标 high 直接报错。
+
+    「语料外」看语料位置指向哪里，不看 textual_note 本身：底本讹字的卡原文就在 raw/ 里，textual_note
+    记的是校勘，可以是 high；指向 processed/（维基文库转录之类）的卡才是规则 6 说的网络来源。
+    """
     errors: list[str] = []
+    verified = total = adjudicated = 0
     for card in parse_evidence_cards(evidence_md.read_text(encoding="utf-8")):
         verbatim = card["verbatim"]
         if not normalize(verbatim):
             continue
+        total += 1
         if find_verbatim(verbatim, corpus):
+            verified += 1
             continue
         prefix = longest_verbatim_prefix(verbatim, corpus)
         message = (
             f"P2_NOT_IN_CORPUS: {evidence_md.name} [{card['title']}]: "
             f"「{verbatim[:32]}」未逐字出现在语料中（最长逐字前缀={prefix}字）"
         )
-        if "textual_note" in card["fields"]:
-            errors.append(f"WARNING: {message} — 已记 textual_note，人工裁决在案")
-        else:
+        if "textual_note" not in card["fields"]:
             errors.append(message)
-    return errors
+            continue
+        adjudicated += 1
+        errors.append(f"WARNING: {message} — 已记 textual_note，人工裁决在案")
+        off_corpus = not _located_in_raw(card["fields"].get("语料位置", ""), slug)
+        if off_corpus and card["fields"].get("confidence", "").strip().lower() == "high":
+            errors.append(f"P2_UNVERIFIED_HIGH: {evidence_md.name} [{card['title']}]: "
+                          "语料位置不在 raw/ 里、只靠 textual_note 放行的卡最高 medium（规则 6），却标了 high")
+    coverage = EvidenceCoverage(verified, total, adjudicated)
+    if adjudicated:
+        errors.append(coverage.warning(evidence_md.name, slug))
+    return errors, coverage
+
+
+LOCATION_PATH_RE = re.compile(r"^`?([^`（(\s]+)")
+
+
+def _located_in_raw(location: str, slug: str) -> bool:
+    """语料位置的第一个路径是否在 sources/{slug}/raw/ 下。
+
+    只看开头那个路径：鲁迅验收的维基文库卡写的是「processed/…json（…不在 `sources/lu-xun/raw/` 内）」，
+    整串做子串匹配会把这句否定说明当成命中。
+    """
+    match = LOCATION_PATH_RE.match(location.strip())
+    return bool(match) and match.group(1).replace("\\", "/").startswith(f"sources/{slug}/raw/")

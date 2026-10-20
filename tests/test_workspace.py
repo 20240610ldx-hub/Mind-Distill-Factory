@@ -95,8 +95,21 @@ class DomainDocTests(unittest.TestCase):
 
     def test_glossary_points_at_the_value_objects(self):
         text = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-        for name in ("workspace.Workspace", "harness.HarnessProfile", "run-record-v1"):
+        for name in ("workspace.Workspace", "harness.HarnessProfile", "run-record-v1",
+                     "verify_provenance.EvidenceCoverage", "cost_estimator.Budget", "gate_records.package_gate_current"):
             self.assertIn(name, text)
+
+    def test_every_code_reference_in_the_glossary_resolves(self):
+        # 通用语言表里写的 `模块.名字` 必须在代码里真有——改名、删类时文档不能悄悄过期
+        import importlib
+        text = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+        glossary = text.split("### 通用语言", 1)[1].split("### 限界上下文", 1)[0]
+        refs = sorted(ref for ref in set(re.findall(r"`([a-z_]+)\.([A-Za-z_]+)`", glossary))
+                      if ref[1] not in {"py", "json", "md", "txt"})  # 文件名不是代码引用
+        self.assertGreaterEqual(len(refs), 6)
+        missing = [f"{mod}.{name}" for mod, name in refs
+                   if not hasattr(importlib.import_module(mod), name)]
+        self.assertEqual(missing, [])
 
 
 class HarnessProfileTests(unittest.TestCase):

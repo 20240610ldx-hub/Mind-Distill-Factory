@@ -33,7 +33,8 @@
          "checkpoint": "python scripts/task_status.py summary sources/{slug}/processed/local_shards/task_status.json --strict"},
         {"id": "reduce", "title": "合并与本地补充", "executor": "script|agent", "command": "python scripts/mdf.py reduce {slug}", "agent": "source-researcher",
          "network": "forbidden",
-         "network_note": "只读 sources/{slug}/raw/ 与 sources/{slug}/processed/；primary / secondary / expression_dna 都从本地语料整理。缺素材就停下，在报告里列出建议采集的目标，由编排者征得用户同意后用 mdf acquire 合规采集。"}
+         "network_note": "只读 sources/{slug}/raw/ 与 sources/{slug}/processed/；primary / secondary / expression_dna 都从本地语料整理。缺素材就停下，在报告里列出建议采集的目标，由编排者征得用户同意后用 mdf acquire 合规采集。",
+         "checkpoint_note": "语料偏薄的警告带标签：[可改善]（还有分片没抽、只做了分层抽样、或有既非网络也非 OCR 的条目没标 high）先补完再重跑检查点；[不可改善]（语料已抽完、按规则 6 / OCR 封顶 medium）不是错误，不要为消警告改 confidence，在报告里写明语料上限和可补采的原典。"}
       ],
       "checkpoint": "python scripts/mdf.py validate sources {slug}"
     },
@@ -43,7 +44,8 @@
       "title": "原则提取",
       "chapter": {"title": "阶段 2 · 原则提取", "summary": "从素材提取有出处、过唯一性测试的原则"},
       "steps": [
-        {"id": "principles", "title": "原则提取", "executor": "agent", "agent": "principle-extractor", "requires": ["classification"]}
+        {"id": "principles", "title": "原则提取", "executor": "agent", "agent": "principle-extractor", "requires": ["classification"],
+         "checkpoint_note": "出现 [原则候选不足]（本人来源合计 < 8 条，评论者观点不计）时，不要拿评论者观点凑数；在报告里写明缺口，并说明是语料本身薄（[不可改善]）还是还有没抽完的分片（[可改善]），由编排者决定回阶段 1 补抽还是补采。"}
       ],
       "checkpoint": "python scripts/mdf.py validate principles {slug}"
     },
@@ -66,7 +68,8 @@
       "steps": [
         {"id": "assemble", "title": "核心层组装", "executor": "agent", "agent": "skill-assembler", "requires": ["classification"],
          "checkpoint_note": "此时附件尚未生成（阶段 4.5 才产出），validate package 预期只报 MISSING references/* 与指向 references/ 的 P3_DANGLING_PATH；除此之外的错误必须为零，附件类错误留到「附件生成」之后再清。"},
-        {"id": "attachments", "title": "附件生成", "executor": "agent", "agent": "case-builder / evidence-carder → skill-assembler（续：voice.md 与案例索引回写）"},
+        {"id": "attachments", "title": "附件生成", "executor": "agent", "agent": "case-builder / evidence-carder → skill-assembler（续：voice.md 与案例索引回写）",
+         "checkpoint_note": "引文不在 sources/{slug}/raw/、只靠 textual_note 放行的证据卡最高 medium，标 high 会报 P2_UNVERIFIED_HIGH；有这类卡时 P2_COVERAGE 警告会给出逐字覆盖 X/Y，原样写进报告并列出这些卡的原典篇目。回写案例索引后 SKILL.md 仍须 ≤500 行：默认把同一原则的正例合并成一行（case_id 列一格可放多个 id），反例单独一行。"},
         {"id": "gates", "title": "P1–P6 包校验", "executor": "script", "command": "python scripts/mdf.py validate package {slug}"}
       ],
       "checkpoint": "python scripts/mdf.py validate package {slug}"

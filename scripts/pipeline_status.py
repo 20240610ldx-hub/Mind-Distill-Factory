@@ -14,6 +14,7 @@
 import functools
 import importlib.util
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -358,8 +359,22 @@ def _stage_attachments(ctx: "Ctx") -> StageStatus:
     else:
         status.state = "in_progress" if present else "pending"
         status.detail = "缺少 " + "、".join(n for n in REQUIRED_REFS if n not in present)
-        status.next_action = "派发 case-builder / evidence-carder，再由 skill-assembler 续写 voice.md 并回写案例索引（Stage 4.5）"
+        status.next_action = _attachments_todo(present)
     return status
+
+
+# 每份附件由谁产出；voice.md 与案例索引回写是 skill-assembler 的第二次调用
+ATTACHMENT_AUTHORS = {"cases.md": "case-builder", "evidence.md": "evidence-carder"}
+
+
+def _attachments_todo(present: list[str]) -> str:
+    """只派缺的那一份：恢复执行时重做已有附件既白花钱，又可能覆盖已过审的产物。"""
+    authors = [role for name, role in ATTACHMENT_AUTHORS.items() if name not in present]
+    todo = (f"派发 {' / '.join(authors)}，再" if authors else "") + "由 skill-assembler 续写 voice.md 并回写案例索引（Stage 4.5）"
+    kept = [name for name in ATTACHMENT_AUTHORS if name in present]
+    if kept:
+        todo += f"；{'、'.join(kept)} 已有，不要重做"
+    return todo
 
 
 def _stage_gates(ctx: "Ctx") -> StageStatus:
@@ -369,18 +384,37 @@ def _stage_gates(ctx: "Ctx") -> StageStatus:
         status.detail = "legacy 包走 skill 阶段校验" if status.state == "skipped" else "等待核心层"
         return status
     if not ctx.check:
-        status.detail = "未检查（加 --check 运行确定性闸门）"
+        records = _sibling("gate_records")
+        current = records.package_gate_current(ctx.root / "output" / ctx.slug)
+        if current:
+            status.state = "done"
+            status.detail = ("上次校验通过，产物未改动（加 --check 重新校验）"
+                             + _coverage_hint(records.package_gate_notes(ctx.root / "output" / ctx.slug)))
+            return status
+        status.detail = ("上次校验后产物改过，需要重新校验" if current is False
+                         else "未检查（加 --check 运行确定性闸门）")
         status.next_action = _cmd("validate", "package", ctx.slug)
         return status
-    errors = _hard(_validator().validate_package, ctx)
+    findings = _run(_validator().validate_package, ctx)
+    errors = [e for e in findings if not e.startswith("WARNING:")]
     if errors:
         status.state = "failed"
         status.detail = f"{len(errors)} 个错误：{errors[0][:80]}"
         status.next_action = _cmd("validate", "package", ctx.slug)
     else:
         status.state = "done"
-        status.detail = "P1–P6 与 M4 加固规则全部通过"
+        status.detail = "P1–P6 与 M4 加固规则全部通过" + _coverage_hint(findings)
     return status
+
+
+def _coverage_hint(lines: list[str]) -> str:
+    """P2 只逐字核对了部分证据卡时，在阶段卡上一直挂着（鲁迅验收发现 11）。不挡路：语料外的卡已封顶 medium。"""
+    coverage_type = _sibling("verify_provenance").EvidenceCoverage
+    for line in lines:
+        coverage = coverage_type.parse(line)
+        if coverage and coverage.gap():
+            return f"；但{coverage.gap()}——征得用户同意后用 mdf acquire 把原典采进 raw/，再让 evidence-carder 改卡"
+    return ""
 
 
 def _stage_review(ctx: "Ctx") -> StageStatus:
@@ -412,6 +446,7 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
         status.next_action = _cmd("publish", "--slug", ctx.slug)
         if not gallery.exists():
             status.detail = "尚未发布"
+            _confidence_gate_ahead(ctx, status)
         elif errors and errors[0].startswith("MANIFEST_OUTDATED"):
             status.state = "failed"
             status.detail = "已发布但 manifest 是旧版 v1（无构建期证明）"
@@ -424,6 +459,10 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
     review = (manifest.get("review") or {}).get("verdict", "无记录")
     status.state = "done"
     status.detail = f"已发布（manifest v{manifest.get('manifest_version')}，审查记录 {review}）"
+    coverage = _sibling("verify_provenance").EvidenceCoverage.from_attestation(
+        (manifest.get("attestation") or {}).get("p2"))
+    if coverage and coverage.gap():
+        status.detail += f"；{coverage.gap()}，这些卡语料外、最高 medium"
     if ctx.check:
         hard = [e for e in _validator().validate_published(ctx.slug, ctx.root) if not e.startswith("WARNING:")]
         if hard:
@@ -431,6 +470,21 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
             status.detail = f"发布包校验 {len(hard)} 个错误：{hard[0][:80]}"
             status.next_action = _cmd("validate", "published", ctx.slug)
     return status
+
+
+def _confidence_gate_ahead(ctx: "Ctx", status: StageStatus) -> None:
+    """发布前就亮出置信度门（鲁迅 GUI 复验问题 2）：以前要等 mdf publish 报 BLOCKED 才知道，
+    可「补素材 / 接受不入 gallery / --force」是该先问用户的决定。门槛与判定都用 publish_skill 的那一份。"""
+    publisher = _sibling("publish_skill")
+    score = publisher.read_distill_confidence(ctx.root / "output" / ctx.slug)
+    allowed, _ = publisher.confidence_gate(score, False, "PASS")
+    if allowed or score is None:  # 读不到分数时，框架阶段还没做完，留给前面的阶段报
+        return
+    status.state = "blocked"
+    status.detail = f"尚未发布；distill_confidence={score} 低于质量门 3，发布会被拒（BLOCKED_LOW_CONFIDENCE）"
+    status.next_action = ("先用 AskUserQuestion 让用户选：补一手素材重跑 / 接受不入 gallery / "
+                          f"加 --force 发布（审查状态记 FORCED_LOW_CONFIDENCE，不算 PASS）——选了才运行 "
+                          f"{_cmd('publish', '--slug', ctx.slug)}")
 
 
 CHECKS: dict[str, Callable[["Ctx"], StageStatus]] = {
@@ -464,16 +518,19 @@ def _validator() -> Any:
     return _sibling("validate_output")
 
 
-def _hard(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
-    """validate_output 的阶段函数按 cwd 解析路径，这里临时切到数据根目录。"""
+def _run(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
+    """validate_output 的阶段函数按 cwd 解析路径，这里临时切到数据根目录。返回错误与警告。"""
     import os
     cwd = os.getcwd()
     try:
         os.chdir(ctx.root)
-        errors = func(ctx.slug)
+        return func(ctx.slug)
     finally:
         os.chdir(cwd)
-    return [e for e in errors if not e.startswith("WARNING:")]
+
+
+def _hard(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
+    return [e for e in _run(func, ctx) if not e.startswith("WARNING:")]
 
 
 # ── 汇总与渲染 ────────────────────────────────────────────────────────
