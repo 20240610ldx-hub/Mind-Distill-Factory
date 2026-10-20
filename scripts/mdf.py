@@ -176,7 +176,7 @@ def cmd_next(args: argparse.Namespace) -> int:
     stages = ps.collect_status(args.slug, root)
     nxt = ps.next_stage(stages)
     if args.card:
-        print(ps.render_card(args.slug, stages), end="")
+        print(ps.render_card(args.slug, stages, shard_count=_module("run_unit").shard_count(root, args.slug)), end="")
     elif args.json:
         _print_json({"slug": args.slug, "complete": nxt is None, "next": ps.to_json(args.slug, stages)["next"]})
         _risk_notice(root, stream=sys.stderr)

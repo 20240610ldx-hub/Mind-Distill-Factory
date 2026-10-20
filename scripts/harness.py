@@ -339,11 +339,12 @@ def _display_path(path: Path, code_root: Path) -> str:
         return path.resolve().as_posix()
 
 
-def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CODE_ROOT) -> tuple[str, str]:
-    """返回 (step_id, 简报 Markdown)。step_id 为空时取下一个未完成的 agent 步骤。"""
+def plan_unit(slug: str, step_id: str | None, root: Path, code_root: Path = CODE_ROOT, *,
+              tree: dict[str, Any] | None = None, stages: list[Any] | None = None) -> Any:
+    """step_id（步骤 id 或合并单位 id；为空时取下一个未完成的 agent 步骤）落成哪个执行单位（run_unit.RunUnit）。"""
     ps = _sibling("pipeline_status")
-    tree = ps.load_stage_tree(code_root)
-    stages = ps.collect_status(slug, root, tree=tree)
+    tree = tree or ps.load_stage_tree(code_root)
+    stages = stages if stages is not None else ps.collect_status(slug, root, tree=tree)
     if step_id is None:
         pending = [s for s in stages if s.state not in ps.FINISHED]
         candidates = [s for s in pending if "agent" in find_step(tree, s.key)[1]["executor"].split("|")]
@@ -353,26 +354,43 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
             print(f"WARNING: 前面还有未完成的步骤「{pending[0].title}」：{pending[0].next_action or pending[0].detail}",
                   file=sys.stderr)
         step_id = candidates[0].key
-    phase, step = find_step(tree, step_id)
-    roles = agent_names(step, code_root)
+    ru = _sibling("run_unit")
+    try:
+        return ru.plan(tree, step_id, pending=[s.key for s in stages if s.state not in ps.FINISHED],
+                       shard_count=ru.shard_count(root, slug))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+
+def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CODE_ROOT) -> tuple[str, str]:
+    """返回 (执行单位 id, 简报 Markdown)。step_id 为空时取下一个未完成的 agent 步骤；
+    语料只有 1 个分片时，抽取、合并、原则提取合成一份简报（阶段树 bundles，见 run_unit）。"""
+    ps = _sibling("pipeline_status")
+    tree = ps.load_stage_tree(code_root)
+    stages = ps.collect_status(slug, root, tree=tree)
+    unit = plan_unit(slug, step_id, root, code_root, tree=tree, stages=stages)
+    phase, step = unit.members[0]
+    roles = list(dict.fromkeys(r for _, member in unit.members for r in agent_names(member, code_root)))
     if not roles:
-        raise SystemExit(f"步骤 {step_id!r} 不是 agent 步骤（执行者：{step['executor']}）；照 mdf next 给的命令跑")
-    status = next(s for s in stages if s.key == step_id)
+        raise SystemExit(f"步骤 {unit.id!r} 不是 agent 步骤（执行者：{step['executor']}）；照 mdf next 给的命令跑")
+    by_key = {s.key: s for s in stages}
     cls = _sibling("classification")
     try:
         classification = cls.load(root, slug)
     except ValueError as exc:
         raise SystemExit(f"类目文件有问题，不生成简报：{exc}") from exc
-    if "classification" in step.get("requires", []) and classification is None:
+    if "classification" in unit.requires and classification is None:
         # 新进程不能向用户提问；类目必须由编排者先问用户、落盘，再交下去（fail-closed）。
         raise SystemExit(
-            f"步骤 {step_id!r} 需要用户确认的类目，但 sources/{slug}/classification.json 不存在。"
+            f"步骤 {unit.id!r} 需要用户确认的类目，但 sources/{slug}/classification.json 不存在。"
             f"编排者先按 config/taxonomy.json 推荐 1 主 + 至多 2 副，用 AskUserQuestion 让用户确认，"
             f"再运行 python scripts/mdf.py classify {slug} --primary <主类> --secondary <副类1,副类2>")
-    chapter = phase["chapter"]
-    heading = tree["chapter_policy"]["fallback_heading"].format(order=phase["order"], title=phase["title"])
+    policy = tree["chapter_policy"]
+    headings = list(dict.fromkeys(policy["fallback_heading"].format(order=p["order"], title=p["title"])
+                                  for p, _ in unit.members))
+    title = f"{unit.title}：{unit.steps_text}" if unit.is_bundle else f"{phase['chapter']['title']} / {step['title']}"
     lines = [
-        f"# 任务简报：{slug} · {chapter['title']} / {step['title']}",
+        f"# 任务简报：{slug} · {title}",
         "",
         "> 由 `python scripts/mdf.py brief` 生成。读完全文再动手；只写角色定义里规定的输出文件；"
         "完成后运行检查点命令，把结果原样报告。",
@@ -381,16 +399,22 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
         "",
         f"- 人物 slug：`{slug}`（角色定义里的 slug 占位符已替换为此值）",
         f"- 工作目录：仓库根目录；数据根目录：`{_display_path(root, code_root) or '.'}`",
-        f"- 当前状态：{status.detail or '（无）'}",
-        f"- 待办：{status.next_action or '按角色定义完成本步骤'}",
-        f"- 依次扮演的角色：{'、'.join(roles)}（定义全文附在后面）",
     ]
+    if unit.is_bundle:
+        lines.append(f"- 为什么合在一起：{unit.note}多分片时这几步分开跑。")
+    else:
+        status = by_key[step["id"]]
+        lines += [f"- 当前状态：{status.detail or '（无）'}",
+                  f"- 待办：{status.next_action or '按角色定义完成本步骤'}"]
+    lines.append(f"- 依次扮演的角色：{'、'.join(roles)}（定义全文附在后面）")
     workspace = Workspace(root, code_root)
     if workspace.separate:  # worktree 里没有私有语料：数据根经 MDF_DATA_ROOT 指向别处
         data, code = workspace.data_root.as_posix(), workspace.code_root.as_posix()
         lines.append(f"- 路径约定：下文的 `sources/…`、`output/…` 都在数据根目录 `{data}` 下；"
                      f"`scripts/…`、`agents/…`、`config/…` 在仓库 `{code}` 下。"
-                     "读写语料与产物用数据根下的绝对路径；跑命令先 cd 到数据根目录，脚本写仓库里的绝对路径。")
+                     "读写语料与产物用数据根下的绝对路径；跑命令先 cd 到数据根目录，脚本写仓库里的绝对路径。"
+                     f"`scripts/mdf.py` 的命令还要带环境变量 `MDF_DATA_ROOT={data}`：mdf 不按当前目录找数据根。"
+                     "下文「本机这样跑」的命令都已带上。")
     if classification is not None:
         lines.append(f"- 类目（用户已在阶段 0 确认，照用，不得自选或改动）：{cls.describe(classification)}"
                      f"——写进产物的 primary_category / secondary_categories 与 SKILL.md 身份卡必须与此一致"
@@ -401,23 +425,30 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
         "",
         "- 规则以 `CLAUDE.md`（v6）为准；与 `AGENTS.md` 冲突时以 `CLAUDE.md` 为准。",
         f"- 引文必须逐字来自 `sources/{slug}/raw/` 的语料，不得编造或改字；网络来源最高 confidence: medium。",
-        f"- 进度标题：开始时输出一行 `{heading}`（harness 有章节工具就改用工具）。",
+        (f"- 进度标题：开始时输出一行 `{headings[0]}`（harness 有章节工具就改用工具）。" if len(headings) == 1 else
+         f"- 进度标题：进入每个阶段时各输出一行：{'、'.join(f'`{h}`' for h in headings)}（harness 有章节工具就改用工具）。"),
         "- 换行符：写出的文本文件一律 LF（不要 CRLF）、UTF-8 无 BOM。在 Windows 上写完后自查"
         "（例如用 Python 以二进制读取，看有没有 `\\r\\n`），有就转成 LF 再跑检查点："
         "manifest 记的是字节 hash，入库时 .gitattributes 会把 CRLF 改成 LF，hash 就对不上了。",
+        # 墨子试跑第 12 条（用户 2026-10-20 决定）：review 步骤的新进程又派了一个审查子代理
+        "- **不得再派子代理**：你已经在独立的上下文里执行（新进程，或编排者派出的隔离子代理），"
+        "隔离由新进程本身保证，Stage 5 审查也不例外。不要调用 Task / Agent 等派子代理的工具，"
+        "上面列的角色由你依次扮演；再派一层会让费用翻倍、结果不可复现，`mdf run` 也会在运行记录里告警。",
     ]
-    if step.get("network") == "forbidden":
+    if unit.forbids_network:
         lines += [
             "- **禁止网络检索**：不得使用 WebSearch、WebFetch、搜索类 MCP、curl / wget / requests 等任何联网手段，"
             "也不要自己运行 `mdf acquire`。",
         ]
-        if step.get("network_note"):
-            lines.append(f"  {step['network_note'].replace('{slug}', slug)}")
-    if step_id in ISOLATED_STEPS:
+        lines += [f"  {member['network_note'].replace('{slug}', slug)}"
+                  for _, member in unit.members if member.get("network_note")]
+    if any(s in ISOLATED_STEPS for s in unit.step_ids):
         lines.append("- 你是独立审查者：没有参与生成，不得沿用生成过程的结论；只依据包内容、语料与审查标准下裁决。")
+    if unit.is_bundle:
+        lines += _bundle_sections(unit, slug, by_key, workspace, code_root)
     # 步骤自带的检查点优先：阶段检查点（如 validate sources）要等整个阶段做完才可能通过，
     # 分片抽取这类中间步骤若被要求先过它，执行者必然报「未通过」。
-    checkpoint = step.get("checkpoint") or phase.get("checkpoint")
+    checkpoint = None if unit.is_bundle else step.get("checkpoint") or phase.get("checkpoint")
     if checkpoint:
         lines += ["", "## 完成标准", "", f"- 检查点：`{checkpoint.replace('{slug}', slug)}` 必须通过。"]
         if workspace.separate:
@@ -429,7 +460,34 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
         for placeholder in SLUG_PLACEHOLDERS:
             body = body.replace(placeholder, slug)
         lines += ["", "---", "", f"## 角色定义：{role}", "", body.rstrip()]
-    return step_id, "\n".join(lines) + "\n"
+    return unit.id, "\n".join(lines) + "\n"
+
+
+def _bundle_sections(unit: Any, slug: str, by_key: dict[str, Any], workspace: Workspace,
+                     code_root: Path) -> list[str]:
+    """合并单位的「执行顺序」与「完成标准」：成员依次做，每步过了自己的检查点再往下。"""
+    lines = ["", "## 执行顺序", "",
+             "下面几步在你这一个进程里依次做完。每一步的检查点通过了才进入下一步；不通过就停下，"
+             "把检查点输出原样报告，不要带着问题往下做。", ""]
+    gates = dict((step["id"], commands) for step, commands in unit.member_checkpoints())
+    all_commands: list[str] = []
+    for i, (phase, step) in enumerate(unit.members, 1):
+        status = by_key[step["id"]]
+        lines.append(f"{i}. **{step['title']}**（{phase['chapter']['title']}；角色 {'、'.join(agent_names(step, code_root))}）")
+        if "script" in step["executor"].split("|") and step.get("command"):
+            lines.append(f"   - 先运行 `{step['command'].replace('{slug}', slug)}`"
+                         + (f"（本机这样跑：`{workspace.runnable(step['command'], slug)}`）" if workspace.separate else "")
+                         + "，再按角色定义做。")
+        lines.append(f"   - 当前状态：{status.detail or '（无）'}")
+        for command in gates[step["id"]]:
+            lines.append(f"   - 检查点：`{command.replace('{slug}', slug)}` 必须通过"
+                         + (f"（本机这样跑：`{workspace.runnable(command, slug)}`）" if workspace.separate else "") + "。")
+            all_commands.append(command)
+        if step.get("checkpoint_note"):
+            lines.append(f"   - 说明：{step['checkpoint_note'].replace('{slug}', slug)}")
+    lines += ["", "## 完成标准", "",
+              f"- 上面 {len(all_commands)} 个检查点全部通过；报告里逐个写出命令和结果。`mdf run` 结束后会把它们再跑一遍。"]
+    return lines
 
 
 def write_brief(slug: str, step_id: str, text: str, root: Path) -> Path:
@@ -461,14 +519,16 @@ def _quote(arg: str) -> str:
 
 
 def launch_commands(brief_path: str, profiles: dict[str, Any], only: str | None = None,
-                    data_dirs: Iterable[str] = (), step: dict[str, Any] | None = None) -> dict[str, str]:
-    """给人看、可复制的启动命令（bash、PowerShell 都认双引号）。"""
+                    data_dirs: Iterable[str] = (), step: dict[str, Any] | None = None, *,
+                    deny_network: bool = False) -> dict[str, str]:
+    """给人看、可复制的启动命令（bash、PowerShell 都认双引号）。合并执行单位传 deny_network。"""
     prompt = brief_prompt(brief_path)
+    deny = deny_network or forbids_network(step)
     commands = {}
     for name, profile in profiles["harnesses"].items():
         if only in (None, name):
             executable = shlex.split(profile["isolated_run"])[0]
-            argv = isolated_argv(profile, executable, prompt, data_dirs=data_dirs, deny_network=forbids_network(step))
+            argv = isolated_argv(profile, executable, prompt, data_dirs=data_dirs, deny_network=deny)
             commands[name] = " ".join(_quote(a) for a in argv)
     return commands
 
@@ -498,7 +558,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("brief", help="为 agent 步骤生成自足任务简报")
     p.add_argument("slug", type=slug_arg)
-    p.add_argument("step", nargs="?", help="步骤 id（默认下一个未完成的 agent 步骤）")
+    p.add_argument("step", nargs="?", help="步骤 id 或合并单位 id（默认下一个未完成的 agent 步骤；只有 1 个分片时抽取、合并、原则提取合成 small-corpus）")
     p.add_argument("--harness", help="只打印该 harness 的启动命令")
     p.add_argument("--stdout", action="store_true", help="只把简报打印到标准输出，不写文件")
     p.add_argument("--root", help="数据根目录（默认 MDF_DATA_ROOT，再默认仓库根）")
@@ -524,8 +584,9 @@ def main(argv: list[str] | None = None) -> int:
     path = _display_path(write_brief(args.slug, step_id, text, root), CODE_ROOT)
     print(f"[OK] 简报已写入 {path}")
     print("在有子代理的 harness 里交给子代理执行；否则在新进程里执行（各 harness 的命令）：")
-    _, step = find_step(_sibling("pipeline_status").load_stage_tree(CODE_ROOT), step_id)
-    for name, command in launch_commands(path, load_profiles(), args.harness, workspace.grants(), step).items():
+    unit = plan_unit(args.slug, step_id, root)
+    for name, command in launch_commands(path, load_profiles(), args.harness, workspace.grants(),
+                                         deny_network=unit.forbids_network).items():
         print(f"  {name}: {command}")
     return 0
 

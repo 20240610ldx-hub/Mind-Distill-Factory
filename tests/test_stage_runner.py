@@ -37,6 +37,11 @@ out.write_text("# 审查\n\n## 裁决\n\n[PASS] 假 harness 写的审查结论\n
 print("已写审查报告", flush=True)
 if mode == "usage":
     print('{"type":"result","subtype":"success","num_turns":9,"total_cost_usd":0.53,"usage":{"output_tokens":1200,"cache_read_input_tokens":880000},"result":"检查点通过"}', flush=True)
+if mode == "limit":  # 2026-10-20 实跑：额度用完，claude 退出码 1，原因只在结果对象里
+    print('{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"num_turns":1,"total_cost_usd":0,"result":"You have hit your session limit - resets 9pm"}', flush=True)
+    raise SystemExit(1)
+if mode == "spawn":  # 墨子试跑 review 步骤：新进程自己又派了子代理
+    print('{"type":"result","subtype":"success","num_turns":1,"total_cost_usd":0.69,"subagent_stats":{"spawned":2},"result":"PASS"}', flush=True)
 '''
 
 # claude 2.1.301 的真实输出形状（2026-10-18 Sonnet 5.5 实测）：结果对象以 duration_api_ms 起头，
@@ -207,6 +212,32 @@ class RunTests(RunnerFixture):
         html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
         self.assertIn("$0.53 · 9 轮", html)
 
+    def test_spawned_subagents_are_warned_about_and_recorded(self):
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
+            self.assertEqual(self.run_fake("spawn", yes=True), 0, "告警不判失败：产物要人核对，不是一律作废")
+        text = "\n".join(self.lines)
+        self.assertIn("⚠️", text)
+        self.assertIn("又派了 2 个子代理", text)
+        self.assertIn("简报禁止", text)
+        record = self.records()[0]
+        self.assertEqual(len(record["warnings"]), 1)
+        self.assertIn("子代理", record["warnings"][0])
+        html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
+        self.assertIn("⚠️ 子代理 2", html)
+
+    def test_failed_process_says_why(self):
+        self.assertEqual(self.run_fake("limit", yes=True), 1)
+        text = "\n".join(self.lines)
+        self.assertIn("❌ 进程退出码 1", text)
+        self.assertIn("原因：You have hit your session limit - resets 9pm", text, "原因不能只埋在日志里")
+
+    def test_no_subagents_no_warning(self):
+        self.assertEqual(sr.run_warnings({"cost_usd": 0.5, "turns": 3}), [])
+        self.assertEqual(sr.run_warnings(None), [])
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
+            self.run_fake("usage", yes=True)
+        self.assertEqual(self.records()[0]["warnings"], [])
+
     def test_checkpoint_runs_in_the_data_root(self):
         check = sr._checkpoint("python scripts/mdf.py validate sources {slug}", "demo", self.root)
         self.assertEqual(check["command"], "python scripts/mdf.py validate sources demo")
@@ -222,6 +253,49 @@ class RunTests(RunnerFixture):
         self.assertEqual(self.run_fake("slow", yes=True, timeout_min=0.01), 1)
         self.assertIn("⏱ 超时", "\n".join(self.lines))
         self.assertTrue(self.records()[0]["timed_out"])
+
+
+class SmallCorpusRunTests(RunnerFixture):
+    """只有 1 个分片：抽取、合并、原则提取在一个新进程里依次做完，三个检查点都跑（墨子试跑第 14 条）。"""
+
+    def setUp(self):
+        super().setUp()
+        src = self.root / "sources" / "demo"
+        (src / "raw").mkdir(parents=True)
+        (src / "raw" / "墨子.txt").write_text("兼相爱，交相利。", encoding="utf-8")
+        (src / "processed" / "local_shards").mkdir(parents=True)
+        (src / "processed" / "local_shards" / "manifest.json").write_text(
+            json.dumps({"shard_count": 1, "shards": [{"shard_id": "shard_001"}]}), encoding="utf-8")
+        (src / "classification.json").write_text(
+            json.dumps({"primary": "governance", "secondary": ["philosophy"]}), encoding="utf-8")
+
+    def run_bundle(self, **kwargs) -> int:
+        which = lambda exe: sys.executable if exe == "fakeagent" else None  # noqa: E731
+        return sr.run_step("demo", "extract", self.root, "fake", profiles=self.profiles("ok"), which=which,
+                           out=self.lines.append, heartbeat=0.2, **kwargs)
+
+    def test_plan_names_every_step_it_will_do(self):
+        self.assertEqual(self.run_bundle(), sr.NEEDS_CONSENT)
+        text = "\n".join(self.lines)
+        self.assertIn("分片抽取 → 合并与本地补充 → 原则提取", text)
+        self.assertIn("briefs/small-corpus.md", text)
+
+    def test_one_process_three_checkpoints_one_record(self):
+        calls: list[str] = []
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint(calls)):
+            self.run_bundle(yes=True)
+        self.assertEqual(calls, [
+            "python scripts/task_status.py summary sources/demo/processed/local_shards/task_status.json --strict",
+            "python scripts/mdf.py validate sources demo",
+            "python scripts/mdf.py validate principles demo",
+        ])
+        self.assertTrue((self.root / "output" / "demo" / "briefs" / "small-corpus.md").exists())
+        record = self.records()[0]
+        self.assertEqual(record["step"], "small-corpus")
+        self.assertEqual([m["step"] for m in record["members"]], ["extract", "reduce", "principles"])
+        text = "\n".join(self.lines)
+        self.assertIn("原则提取 ⬜ 待办 → ⬜ 待办", text, "结果行逐步报状态变化")
+        self.assertNotIn("阶段检查点留到阶段末尾", text)
 
 
 class RealClaudeOutputTests(RunnerFixture):

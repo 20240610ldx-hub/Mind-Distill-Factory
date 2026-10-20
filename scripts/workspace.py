@@ -75,8 +75,12 @@ class Workspace:
                 for t in tokens]
 
     def runnable(self, command: str, slug: str) -> str:
-        """给执行者看、在本机能直接运行的一行命令。"""
-        return f"cd '{self.data_root.as_posix()}' && " + shlex.join(self.checkpoint_argv(command, slug, python="python"))
+        """给执行者看、在本机能直接运行的一行命令。
+
+        连环境变量一起给：mdf 按 --root > MDF_DATA_ROOT > 仓库根找数据根，不看当前目录，只 cd 过去会落回仓库根；
+        拿到简报的 GUI 子代理没有这个变量（mdf run 的新进程有），`mdf reduce` 也不收 --root。"""
+        data = self.data_root.as_posix()
+        return f"cd '{data}' && {ENV}='{data}' " + shlex.join(self.checkpoint_argv(command, slug, python="python"))
 
 
 def data_root(root: str | os.PathLike[str] | None = None) -> Path:

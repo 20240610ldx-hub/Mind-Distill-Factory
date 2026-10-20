@@ -32,7 +32,6 @@ STATE_LABELS = {
 FINISHED = {"done", "skipped"}
 EXECUTOR_LABELS = {"script": "脚本", "agent": "agent", "human": "人工"}
 REQUIRED_REFS = ("cases.md", "evidence.md", "voice.md")
-RAW_SUFFIXES = {".pdf", ".txt", ".md"}
 
 
 @dataclass
@@ -160,7 +159,7 @@ def _stage_clean(ctx: "Ctx") -> StageStatus:
 def _stage_sources(ctx: "Ctx") -> StageStatus:
     raw = ctx.root / "sources" / ctx.slug / "raw"
     files = [p for p in raw.rglob("*") if p.is_file()] if raw.exists() else []
-    usable = [p for p in files if p.suffix.lower() in RAW_SUFFIXES]
+    usable = _sibling("source_registry").indexable_raw_files(raw)
     log = ctx.root / "sources" / ctx.slug / "processed" / "acquisition_log.jsonl"
     status = StageStatus("sources", "素材入库", "pending")
     if usable:
@@ -631,8 +630,11 @@ def progress_bar(stages: list[StageStatus], tree: dict | None = None) -> str:
     return f"{bar} {done}/{len(phases)} · " + (nxt.chapter.get("title", "") if nxt else "全部完成")
 
 
-def render_card(slug: str, stages: list[StageStatus], tree: dict | None = None, step_key: str | None = None) -> str:
-    """阶段卡：进入一个阶段时贴给用户的几行——这一步做什么、怎么做、过哪道闸门、整体走到哪。"""
+def render_card(slug: str, stages: list[StageStatus], tree: dict | None = None, step_key: str | None = None,
+                shard_count: int | None = None) -> str:
+    """阶段卡：进入一个阶段时贴给用户的几行——这一步做什么、怎么做、过哪道闸门、整体走到哪。
+
+    shard_count（run_unit.shard_count）给了且语料小到可以合并时，「怎么做」指向合并执行单位（墨子试跑第 14 条）。"""
     tree = tree or load_stage_tree()
     target = next((s for s in stages if s.key == step_key), None) if step_key else next_stage(stages)
     if target is None:
@@ -640,10 +642,20 @@ def render_card(slug: str, stages: list[StageStatus], tree: dict | None = None, 
     phase = next(p for p in tree["phases"] if p["id"] == target.phase)
     step = next(s for s in phase["steps"] if s["id"] == target.key)
     who = "、".join(EXECUTOR_LABELS.get(e, e) for e in step["executor"].split("|"))
-    how = (f"`{step['command'].replace('{slug}', slug)}`" if step.get("command") else
-           f"agent：{step.get('agent', '')}（交给子代理；没有子代理的 harness 用 "
-           f"`python scripts/mdf.py run {slug} {step['id']} --harness <名称> --yes` 交给新进程）")
-    gate = step.get("checkpoint") or phase.get("checkpoint")  # 步骤级检查点优先，与 mdf brief 一致
+    unit = _sibling("run_unit").plan(tree, step["id"], pending=[s.key for s in stages if s.state not in FINISHED],
+                                     shard_count=shard_count)
+    gates = [step.get("checkpoint") or phase.get("checkpoint")]  # 步骤级检查点优先，与 mdf brief 一致
+    if unit.is_bundle:
+        gates = unit.checkpoints(phase_finished=lambda _: True)
+        how = (f"{unit.title}——{unit.steps_text} 在一个新进程里依次做完，一份简报，{len(gates)} 个检查点都跑："
+               f"`python scripts/mdf.py run {slug} {unit.id} --harness <名称> --yes`"
+               f"（有子代理的 harness 把 `python scripts/mdf.py brief {slug} {unit.id}` 的简报交给一个子代理）")
+    elif step.get("command"):
+        how = f"`{step['command'].replace('{slug}', slug)}`"
+    else:
+        how = (f"agent：{step.get('agent', '')}（交给子代理；没有子代理的 harness 用 "
+               f"`python scripts/mdf.py run {slug} {step['id']} --harness <名称> --yes` 交给新进程）")
+    gates = [g for g in gates if g]
     lines = [
         tree["chapter_policy"]["fallback_heading"].format(order=phase["order"], title=phase["title"]),
         "",
@@ -651,7 +663,8 @@ def render_card(slug: str, stages: list[StageStatus], tree: dict | None = None, 
         "",
         f"- **这一步**：{step['title']}（{who}）——{target.next_action or target.detail or '按阶段树执行'}",
         f"- **怎么做**：{how}",
-        f"- **闸门**：" + (f"`{gate.replace('{slug}', slug)}`" if gate else "本阶段没有确定性检查点，靠独立审查"),
+        f"- **闸门**：" + ("、".join(f"`{g.replace('{slug}', slug)}`" for g in gates) if gates
+                         else "本阶段没有确定性检查点，靠独立审查"),
         f"- **进度**：{progress_bar(stages, tree)}",
     ]
     return "\n".join(lines) + "\n"
@@ -670,8 +683,8 @@ def _usage_cell(usage: dict[str, Any] | None) -> str:
         parts.append(f"${usage['cost_usd']:.2f}")
     if usage.get("turns") is not None:
         parts.append(f"{usage['turns']} 轮")
-    if usage.get("subagents"):
-        parts.append(f"子代理 {usage['subagents']}")
+    if usage.get("subagents"):  # 简报禁止新进程再派子代理，出现了就标出来
+        parts.append(f"⚠️ 子代理 {usage['subagents']}")
     return " · ".join(parts) or "—"
 
 

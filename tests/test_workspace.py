@@ -55,9 +55,11 @@ class WorkspaceTests(unittest.TestCase):
             argv = workspace.checkpoint_argv("python scripts/task_status.py summary sources/{slug}/x.json", "demo",
                                              python="py")
             self.assertEqual(argv, ["py", f"{repo}/scripts/task_status.py", "summary", "sources/demo/x.json"])
+            # mdf 按 --root > MDF_DATA_ROOT > 仓库根找数据根，不看当前目录：只 cd 过去会落回仓库根（2026-10-20 实测
+            # MISSING_DIR）。简报交给 GUI 子代理时没有这个环境变量，所以给人看的命令要自带。
             self.assertEqual(workspace.runnable("python scripts/mdf.py validate sources {slug}", "demo"),
-                             f"cd '{data}' && " + shlex.join(["python", f"{repo}/scripts/mdf.py", "validate", "sources",
-                                                              "demo"]))
+                             f"cd '{data}' && MDF_DATA_ROOT='{data}' "
+                             + shlex.join(["python", f"{repo}/scripts/mdf.py", "validate", "sources", "demo"]))
 
     def test_data_root_in_the_desktop_worktree_pool_is_ephemeral(self):
         # 2026-10-19 鲁迅 GUI 验收发现 0：worktree 被回收，被 gitignore 的 sources/、output/ 一起消失，没有提示

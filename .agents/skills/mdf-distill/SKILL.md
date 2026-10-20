@@ -25,13 +25,14 @@ description: >-
 1. **开场**：先打章节标签。harness 有章节工具就调用；没有就输出一行 H2，例如 `## 阶段 2 · 原则提取`。任务清单里这一项置为进行中。然后把 `python scripts/mdf.py next <slug> --card` 的阶段卡原样贴给用户。同一阶段内不再重复。
 2. **过程**：
    - **脚本步骤**：照阶段卡或 `python scripts/mdf.py next <slug>` 给出的命令执行。
-   - **agent 步骤**：harness 有子代理，就把 `python scripts/mdf.py brief <slug>` 生成的简报交给子代理。没有子代理，就用 `python scripts/mdf.py run <slug> --harness <codex|pi>` 交给新进程：它先打印计划，用户同意后加 `--yes` 执行，运行中自带心跳和日志，不要自己写轮询循环。分片抽取这类可以拆开的活，可以同时起多个进程。
+   - **agent 步骤**：harness 有子代理，就把 `python scripts/mdf.py brief <slug>` 生成的简报交给子代理。没有子代理，就用 `python scripts/mdf.py run <slug> --harness <codex|pi>` 交给新进程：它先打印计划，用户同意后加 `--yes` 执行，运行中自带心跳和日志，不要自己写轮询循环。分片抽取这类可以拆开的活，可以同时起多个进程。语料只有 1 个分片时，`mdf run` 会把分片抽取、合并与本地补充、原则提取合成一个执行单位 `small-corpus`：一份简报、一个进程，三个检查点都跑。开跑前打阶段 1 的标题，跑完再打阶段 2 的标题，两个阶段的结果都要看。
    - 只在有新信息时开口，每次一两句。
 3. **收尾**：每个阶段结束都跑 `python scripts/mdf.py validate <stage> <slug>`，不通过就不进入下一阶段，修好再跑。然后贴一行结果（闸门、产物、下一步），把任务清单里这一项置为完成。不另做 HTML 面板。
 
 ## 不可违反
 
 - Stage 5 审查必须在独立上下文里做（子代理，或 `python scripts/mdf.py run <slug> review --harness <名称> --yes`），编排者不得自己审自己。
+- 执行简报的新进程或子代理不得再派子代理：隔离靠它本身，简报里写着禁令。`mdf run` 结果行下出现「⚠️ 新进程又派了 N 个子代理」的告警时，告诉用户，按检查点核对产物后再决定重跑还是继续。
 - 权利声明（`sources/<slug>/rights.json`）、在世人物是否蒸馏、是否发布，都要问用户，不能替用户决定。依据见 `docs/ethics-and-legal.md`。
 - 不要自己爬网页：采集原典只用 `python scripts/mdf.py acquire`。阶段 1 的合并与补充（reduce）**禁用网络检索**，只读本地语料；缺素材就问用户要不要 `mdf acquire`。
 - 换行符一律 LF。发布前由你检查 `output/<slug>/` 里要发布的文本文件有没有 CRLF，有就转成 LF、重跑 `validate package` 再发布——manifest 记的是字节 hash，入库后 `.gitattributes` 会把 CRLF 改掉。

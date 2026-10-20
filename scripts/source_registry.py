@@ -13,6 +13,21 @@ from typing import Any, Iterable
 
 SCHEMA_VERSION = "source-registry-v2"
 SUPPORTED_SOURCE_EXTENSIONS = {".txt", ".md", ".markdown", ".pdf", ".epub"}
+# mdf index 能读的格式。登记表另收 .epub 记指纹，索引器对它报 unsupported_extension
+INDEXABLE_EXTENSIONS = frozenset({".txt", ".md", ".markdown", ".pdf"})
+
+
+def indexable_raw_files(raw_dir: Path) -> list[Path]:
+    """raw/ 下 mdf index 会处理的素材，含子目录（mdf acquire 落在 raw/acquired/<连接器>/ 下），按相对路径排序。
+
+    校验器与状态表判断「有没有本地素材」都用这一份，别再各写一个 glob。
+    """
+    if not raw_dir.exists():
+        return []
+    return sorted(
+        (p for p in raw_dir.rglob("*") if p.is_file() and p.suffix.lower() in INDEXABLE_EXTENSIONS),
+        key=lambda p: p.relative_to(raw_dir).as_posix().lower(),
+    )
 
 
 def sha256_file(path: Path) -> str:
