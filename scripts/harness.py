@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import functools
-import importlib.util
 import json
 import os
 import re
@@ -32,6 +31,7 @@ from typing import Any, Iterable
 CODE_ROOT = Path(__file__).resolve().parent.parent
 if str(CODE_ROOT / "scripts") not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
     sys.path.insert(0, str(CODE_ROOT / "scripts"))
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 from workspace import Workspace  # noqa: E402
 PROFILES_SCHEMA = "harness-profiles-v1"
 PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
@@ -44,14 +44,7 @@ DOSSIER_NAME = "人物档案.md"  # 给人看的档案，进 gallery 但不进�
 
 @functools.lru_cache(maxsize=None)
 def _sibling(name: str) -> Any:
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_harness_{name}", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_sibling(name)
 
 
 def load_profiles(code_root: Path = CODE_ROOT) -> dict[str, Any]:

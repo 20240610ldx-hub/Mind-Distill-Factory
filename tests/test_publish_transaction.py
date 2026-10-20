@@ -1,26 +1,19 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-publisher = load_module("publish_skill", ROOT / "scripts" / "publish_skill.py")
-pkg_fixtures = load_module("_package_v6_fixtures_tx", ROOT / "tests" / "test_package_v6.py")
+publisher = load_module(ROOT / "scripts" / "publish_skill.py", "publish_skill")
+pkg_fixtures = load_module(ROOT / "tests" / "test_package_v6.py", "_package_v6_fixtures_tx")
 
 CASE_INDEX = "## 案例索引\n\n| demo-c1-1 | demo-c1-2 | demo-counter-1 |\n"
 META = {
@@ -228,7 +221,7 @@ class ReviewGateTests(unittest.TestCase):
                 self.assertEqual(publisher.review_gate(verdict, force), expected)
 
     def test_covers_every_verdict_the_parser_can_emit(self) -> None:
-        pm = load_module("_pm_for_gate", ROOT / "scripts" / "package_manifest.py")
+        pm = load_module(ROOT / "scripts" / "package_manifest.py", "_pm_for_gate")
         self.assertEqual({v for v, _ in self.TABLE}, set(pm.REVIEW_VERDICTS))
 
     def test_unknown_verdict_is_refused_even_with_force(self) -> None:

@@ -9,13 +9,18 @@ Mind Distill Factory — 溯源校验器（确定性，不依赖 LLM 打分）
 from __future__ import annotations
 
 import functools
-import importlib.util
 import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, NamedTuple
+from typing import Any, Callable
+
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 sibling
+    sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 
 # Windows 控制台 UTF-8（沿用 validate_output.py:23-29 的模式）
 if sys.platform == "win32":
@@ -69,12 +74,7 @@ def normalize(text: str, fold_variants: bool = True) -> str:
 
 @functools.lru_cache(maxsize=None)
 def _text_decoding() -> Any:
-    # 本模块常被按路径加载（不在 sys.modules 里），兄弟模块也按路径取。
-    path = Path(__file__).resolve().parent / "text_decoding.py"
-    spec = importlib.util.spec_from_file_location("_provenance_text_decoding", path)
-    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
-    return module
+    return load_sibling("text_decoding")
 
 
 def read_raw_text(path: Path) -> str:
@@ -288,14 +288,12 @@ def check_p2_corpus_closure(
     return p2_scan(evidence_md, slug, corpus)[0]
 
 
-class EvidenceCoverage(NamedTuple):
+@dataclass(frozen=True)
+class EvidenceCoverage:
     """P2 的逐字覆盖：机器核对通过的卡 / 有引文的卡；adjudicated 是只靠 textual_note 人工放行的卡。
 
     闸门「通过」不等于每张卡都核对过（鲁迅验收发现 11：28 张只核对了 12 张）。覆盖率要从校验器一路带到
     状态表、manifest、发布行，文字格式与解析只在这里——别处用正则拆警告文本，改一处措辞另一处就读不出。
-
-    用 NamedTuple 而不是 dataclass：本模块常被 spec_from_file_location 按路径加载而不登记进 sys.modules，
-    dataclass 在 `from __future__ import annotations` 下会去 sys.modules 查模块而崩掉。
     """
 
     verified: int

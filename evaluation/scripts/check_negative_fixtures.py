@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import functools
-import importlib.util
 import json
 import os
 import re
@@ -26,20 +25,17 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
+if str(REPO / "scripts") not in sys.path:  # 按路径加载本模块时也能找到 scripts/ 里的 sibling
+    sys.path.insert(0, str(REPO / "scripts"))
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
+
 FIXTURE_DIR = REPO / "evaluation" / "fixtures" / "negative"
 SCHEMA = "negative-fixtures-v1"
 
 
 @functools.lru_cache(maxsize=None)
 def _script(name: str) -> Any:
-    path = REPO / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_negfx_{name}", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_sibling(name, f"_negfx_{name}")
 
 
 def load_manifest(fixture_dir: Path = FIXTURE_DIR) -> dict[str, Any]:

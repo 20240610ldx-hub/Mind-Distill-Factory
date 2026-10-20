@@ -1,26 +1,19 @@
 """流水线阶段树（config/pipeline_stages.json）与状态检测（scripts/pipeline_status.py）。"""
 
-import importlib.util
 import json
 import re
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-ps = load_module("_pipeline_status_under_test", ROOT / "scripts" / "pipeline_status.py")
-pkg_fixtures = load_module("_package_v6_fixtures_ps", ROOT / "tests" / "test_package_v6.py")
+ps = load_module(ROOT / "scripts" / "pipeline_status.py", "_pipeline_status_under_test")
+pkg_fixtures = load_module(ROOT / "tests" / "test_package_v6.py", "_package_v6_fixtures_ps")
 TREE = ps.load_stage_tree(ROOT)
 
 
@@ -62,7 +55,7 @@ class StageTreeTests(unittest.TestCase):
                     self.assertTrue(step.get("agent"), f"{step['id']} 由 agent 执行却没写 agent")
 
     def test_commands_go_through_the_unified_cli(self):
-        mdf = load_module("_mdf_for_tree", ROOT / "scripts" / "mdf.py")
+        mdf = load_module(ROOT / "scripts" / "mdf.py", "_mdf_for_tree")
         parser = mdf.build_parser()
         subcommands = set(next(a for a in parser._actions if a.dest == "command").choices)
         for phase in TREE["phases"]:

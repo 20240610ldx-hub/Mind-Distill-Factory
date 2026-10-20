@@ -32,8 +32,14 @@ import hashlib
 import json
 import os
 import re
+import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 sibling
+    sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling as _load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 
 MANIFEST_NAME = "manifest.json"
 MANIFEST_VERSION = 2
@@ -318,18 +324,6 @@ def verify_manifest(package_dir: Path, manifest: dict[str, Any], slug: str) -> l
         errors.append(f"MANIFEST_BAD_REVIEW: {where}: review={review!r}")
 
     return errors
-
-
-def _load_sibling(name: str) -> Any:
-    """按路径加载同目录的模块（scripts/ 不是包）。"""
-    import importlib.util
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def backfill(slug: str, root: Path, corpus_root: Path, force: bool = False) -> int:

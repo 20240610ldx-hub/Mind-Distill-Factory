@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import stage_runner as sr  # noqa: E402
+from sibling import load_module  # noqa: E402
 
 ps = sr.ps
 
@@ -72,11 +73,7 @@ for line in lines[2:]:
 
 
 def load_mdf():
-    spec = importlib.util.spec_from_file_location("_mdf_for_runner_test", ROOT / "scripts" / "mdf.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_module(ROOT / "scripts" / "mdf.py", "_mdf_for_runner_test")
 
 
 class RunnerFixture(unittest.TestCase):

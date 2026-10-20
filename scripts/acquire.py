@@ -23,7 +23,6 @@ import argparse
 import email.utils
 import functools
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -40,6 +39,7 @@ from urllib.parse import quote, unquote, urlsplit
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
     sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling as _load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
@@ -1026,14 +1026,6 @@ def render_results(slug: str, results: list[dict[str, Any]]) -> str:
         counts[r["event"]] = counts.get(r["event"], 0) + 1
     lines += ["", "合计：" + "，".join(f"{EVENT_LABELS.get(k, k)} {v}" for k, v in counts.items())]
     return "\n".join(lines) + "\n"
-
-
-def _load_sibling(name: str) -> Any:
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_acquire_{name}", path)
-    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
-    return module
 
 
 def targets_from_args(args: argparse.Namespace, root: Path) -> list[dict[str, Any]]:

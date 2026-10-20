@@ -21,12 +21,16 @@ Run: python scripts/audit_legacy_quotes.py <slug>
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import re
 import sys
 from pathlib import Path
+
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 sibling
+    sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_module  # noqa: E402  按路径加载兄弟模块的唯一入口
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -41,13 +45,7 @@ PRINCIPLE_TAG_RE = re.compile(r"^principle(\d+)$")
 
 
 def _load_provenance(root: Path):
-    path = root / "scripts" / "verify_provenance.py"
-    spec = importlib.util.spec_from_file_location("verify_provenance", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_module(root / "scripts" / "verify_provenance.py")
 
 
 def collect_quotes(framework: dict) -> list[tuple[str, str]]:

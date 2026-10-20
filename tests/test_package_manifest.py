@@ -1,25 +1,18 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-pm = load_module("package_manifest", ROOT / "scripts" / "package_manifest.py")
-prov = load_module("verify_provenance", ROOT / "scripts" / "verify_provenance.py")
+pm = load_module(ROOT / "scripts" / "package_manifest.py", "package_manifest")
+prov = load_module(ROOT / "scripts" / "verify_provenance.py", "verify_provenance")
 
 CORPUS_TEXT = "天下之事，不难于立法，而难于法之必行。\n其余正文若干。\n"
 EVIDENCE_OK = "# 证据\n\n### 法之必行\n\n> 不难于立法，而难于法之必行\n\n- 出处：示例奏疏\n"

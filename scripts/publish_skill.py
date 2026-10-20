@@ -30,6 +30,11 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 sibling
+    sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling as _load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
+
 
 def load_json(path: Path) -> Any:
     try:
@@ -67,21 +72,6 @@ class PublishError(RuntimeError):
     def __init__(self, message: str, errors: list[str] | None = None):
         super().__init__(message)
         self.errors = list(errors or [])
-
-
-def _load_sibling(name: str):
-    """按路径加载同目录的模块（scripts/ 不是包）。"""
-    import importlib.util
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    # 先登记再执行：workspace 等模块在 `from __future__ import annotations` 下定义 dataclass，
-    # dataclass 要到 sys.modules 里查模块，没登记就崩
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _load_validator():

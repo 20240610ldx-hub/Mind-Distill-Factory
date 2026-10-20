@@ -4,32 +4,23 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib.util
 import io
 import json
 import re
 import shutil
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    import sys
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-harness = load_module("_harness_under_test", ROOT / "scripts" / "harness.py")
-mdf = load_module("_mdf_for_harness_test", ROOT / "scripts" / "mdf.py")
-ps = load_module("_ps_for_harness_test", ROOT / "scripts" / "pipeline_status.py")
+harness = load_module(ROOT / "scripts" / "harness.py", "_harness_under_test")
+mdf = load_module(ROOT / "scripts" / "mdf.py", "_mdf_for_harness_test")
+ps = load_module(ROOT / "scripts" / "pipeline_status.py", "_ps_for_harness_test")
 
 
 def run_mdf(*argv: str) -> tuple[int, str, str]:

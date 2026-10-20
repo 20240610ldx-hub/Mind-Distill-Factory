@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import ocr_calibrate as oc  # noqa: E402
+from sibling import load_module  # noqa: E402
 
 HAVE_RENDER = all(importlib.util.find_spec(m) is not None for m in ("fitz", "PIL"))
 TRUTH = ["子曰：學而時習之，不亦說乎？有朋自遠方來，不亦樂乎？", "月有考，岁有稽，事情办没办成，到期一查便知。"]
@@ -529,10 +530,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("pip install", err.getvalue())
 
     def test_mdf_lists_ocr_subcommand(self):
-        spec = importlib.util.spec_from_file_location("_mdf_for_ocr", ROOT / "scripts" / "mdf.py")
-        mdf = importlib.util.module_from_spec(spec)
-        sys.modules["_mdf_for_ocr"] = mdf
-        spec.loader.exec_module(mdf)
+        mdf = load_module(ROOT / "scripts" / "mdf.py", "_mdf_for_ocr")
         self.assertEqual(mdf.PASSTHROUGH["ocr"][0], "ocr_calibrate")
 
 

@@ -1,26 +1,19 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-runtime = load_module("run_dialogue_eval", ROOT / "evaluation" / "runtime" / "run_dialogue_eval.py")
-collector = load_module("collect_artifacts", ROOT / "evaluation" / "scripts" / "collect_artifacts.py")
+runtime = load_module(ROOT / "evaluation" / "runtime" / "run_dialogue_eval.py", "run_dialogue_eval")
+collector = load_module(ROOT / "evaluation" / "scripts" / "collect_artifacts.py", "collect_artifacts")
 
 
 class EvaluationRuntimeTests(unittest.TestCase):

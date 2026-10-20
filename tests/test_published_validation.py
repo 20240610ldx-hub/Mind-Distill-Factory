@@ -1,32 +1,25 @@
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
 import shutil
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-validator = load_module("validate_output", ROOT / "scripts" / "validate_output.py")
-pm = load_module("package_manifest", ROOT / "scripts" / "package_manifest.py")
-prov = load_module("verify_provenance", ROOT / "scripts" / "verify_provenance.py")
+validator = load_module(ROOT / "scripts" / "validate_output.py", "validate_output")
+pm = load_module(ROOT / "scripts" / "package_manifest.py", "package_manifest")
+prov = load_module(ROOT / "scripts" / "verify_provenance.py", "verify_provenance")
 # 复用 v6 闸门测试的包夹具；按路径加载、不导入其 TestCase，避免重复收集。
-pkg_fixtures = load_module("_package_v6_fixtures", ROOT / "tests" / "test_package_v6.py")
+pkg_fixtures = load_module(ROOT / "tests" / "test_package_v6.py", "_package_v6_fixtures")
 
 CASE_INDEX = "## 案例索引\n\n| demo-c1-1 | demo-c1-2 | demo-counter-1 |\n"
 

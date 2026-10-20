@@ -254,13 +254,14 @@ mind-distill-factory/
 
 ## 9. 领域模型
 
-代码按领域划分。下面的词在文档、代码、提交信息里含义一致（通用语言）；各上下文只通过带 schema 名的文件交换数据，不互相 import 对方的内部函数（`slug_rules`、`text_decoding` 是共享内核，例外）。
+代码按领域划分。下面的词在文档、代码、提交信息里含义一致（通用语言）；各上下文只通过带 schema 名的文件交换数据，不互相 import 对方的内部函数（`slug_rules`、`text_decoding`、`sibling` 是共享内核，例外）。
 
 ### 通用语言
 
 | 术语 | 含义 | 在代码里 |
 |------|------|---------|
 | 人物 slug | 一次蒸馏的标识，小写连字符 | `slug_rules.py` |
+| 兄弟模块加载 | scripts/ 不是包，脚本与测试按路径取同目录模块；先登记 `sys.modules` 再执行 | `sibling.load_module`、`sibling.load_sibling` |
 | 来源 | 一份登记过的原典文件，带权利状态与质量分 | `source-registry-v2` |
 | 可索引素材 | `raw/` 下（含 `mdf acquire` 落下的子目录）`mdf index` 能读的文件；决定「有没有本地素材」 | `source_registry.indexable_raw_files` |
 | 分片 | 送给一个 worker 的一段语料，带输入指纹 | `local-source-manifest-v2`、`shard_NNN.json` |
@@ -290,7 +291,7 @@ flowchart LR
     D["<b>蒸馏</b><br/><small>agents/*.md · task_status<br/>build_framework_core</small>"]
     V["<b>校验与发布</b><br/><small>validate · provenance<br/>manifest · publish · metrics</small>"]
     O["<b>编排</b><br/><small>pipeline_status · harness<br/>stage_runner · workspace · mdf</small>"]
-    K["共享内核<br/><small>slug_rules · text_decoding</small>"]
+    K["共享内核<br/><small>slug_rules · text_decoding · sibling</small>"]
     A -- "分片 · cleaning-report-v1" --> D
     D -- "框架与草稿包" --> V
     A -- "原文：P2 逐字回查" --> V
@@ -315,6 +316,7 @@ flowchart LR
 - **harness 档案**：`isolated_run` 必须有独立的 `{prompt}` 参数位。没声明的能力，指定了就报错（模型、推理强度），或者跳过（目录授权）；可变参数放在提示词之后。
 - **运行**：不加 `--yes` 什么也不写。每次运行都追加一条 `run-record-v1`，含费用和被拒的工具调用数。新进程不得再派子代理：简报写明禁令，派了就记进 `warnings` 并告警（`stage_runner.run_warnings`），不判失败。
 - **发布**：事务式改名，manifest 记下构建期的证明。改了 gallery 却没重发 manifest，测试就失败。
+- **按路径加载**：scripts/ 与 evaluation/scripts/ 里只有 `sibling.py` 直接调用 `spec_from_file_location`，它先把模块登记进 `sys.modules` 再执行，失败则撤销。`from __future__ import annotations` 下的 dataclass 要到 `sys.modules[cls.__module__]` 查注解，没登记就崩——`Budget`、`Workspace`、`EvidenceCoverage` 各踩过一次。要用兄弟模块就调 `sibling.load_sibling`，别再自己写加载函数；有架构测试守着。
 - **逐字覆盖率**：覆盖率的文字格式、解析和 manifest 字段只在 `EvidenceCoverage` 定义；它随闸门通过记录和 manifest 一路传到状态表的包校验行与发布行。语料位置不在 `raw/`、只靠 textual_note 放行的证据卡不高于 medium（规则 6）。
 - **闸门通过记录**：绑定 SKILL.md 与 references/ 的指纹，产物改过即作废，附注随之作废；不随发布进入 gallery。
 - **置信度门**：`distill_confidence` < 3 的包发布被拒；`--force` 放行时审查状态记 `FORCED_LOW_CONFIDENCE`，绝不记 PASS。

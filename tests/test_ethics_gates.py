@@ -5,32 +5,25 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import shutil
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 PILOT = ROOT / "gallery" / "zhang-juzheng-v6"
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-fx_mod = load_module("_package_v6_fixtures_ethics", ROOT / "tests" / "test_package_v6.py")
+fx_mod = load_module(ROOT / "tests" / "test_package_v6.py", "_package_v6_fixtures_ethics")
 validator = fx_mod.validator
-pm = load_module("_pm_ethics", ROOT / "scripts" / "package_manifest.py")
-prov = load_module("_prov_ethics", ROOT / "scripts" / "verify_provenance.py")
-registry_mod = load_module("_registry_ethics", ROOT / "scripts" / "source_registry.py")
+pm = load_module(ROOT / "scripts" / "package_manifest.py", "_pm_ethics")
+prov = load_module(ROOT / "scripts" / "verify_provenance.py", "_prov_ethics")
+registry_mod = load_module(ROOT / "scripts" / "source_registry.py", "_registry_ethics")
 
 CASE_INDEX = "## 案例索引\n\n| demo-c1-1 | demo-c1-2 | demo-counter-1 |\n"
 LIMITS = validator.PACKAGE_SCHEMA["quote_max_chars"]

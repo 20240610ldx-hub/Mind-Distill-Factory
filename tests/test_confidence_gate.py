@@ -6,7 +6,6 @@ validate frameworks 通过、publish --dry-run 也通过，门槛只靠子代理
 
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 import os
@@ -18,18 +17,12 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-publisher = load_module("_publish_for_confidence", ROOT / "scripts" / "publish_skill.py")
-validator = load_module("_validate_for_confidence", ROOT / "scripts" / "validate_output.py")
+publisher = load_module(ROOT / "scripts" / "publish_skill.py", "_publish_for_confidence")
+validator = load_module(ROOT / "scripts" / "validate_output.py", "_validate_for_confidence")
 
 
 class ConfidenceGatePolicy(unittest.TestCase):

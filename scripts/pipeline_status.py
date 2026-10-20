@@ -9,16 +9,17 @@
 状态取值：done / in_progress / pending / failed / blocked / skipped。
 """
 
-# 刻意不写 `from __future__ import annotations`：dataclass 遇到字符串注解时要查
-# sys.modules[cls.__module__]，而测试与 mdf 都按路径加载本模块（不注册进 sys.modules），会直接崩。
 import functools
-import importlib.util
 import json
 import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 sibling / workspace
+    sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 
 SCHEMA = "pipeline-status-v1"
 STATE_LABELS = {
@@ -54,14 +55,7 @@ def load_stage_tree(code_root: Path | None = None) -> dict[str, Any]:
 
 @functools.lru_cache(maxsize=None)
 def _sibling(name: str) -> Any:
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_mdf_{name}", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module  # dataclass 在 `from __future__ import annotations` 下要按模块名查注解
-    spec.loader.exec_module(module)
-    return module
+    return load_sibling(name)
 
 
 def _rel(root: Path, path: Path) -> str:

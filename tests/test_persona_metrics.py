@@ -1,7 +1,6 @@
 """人物包确定性度量（scripts/persona_metrics.py）：主张账本、来源集中度、文体指纹、对话层检测。"""
 
 import contextlib
-import importlib.util
 import io
 import json
 import sys
@@ -10,19 +9,12 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-pm = load("_persona_metrics_ut", ROOT / "scripts" / "persona_metrics.py")
-registry = load("_source_registry_pm", ROOT / "scripts" / "source_registry.py")
+pm = load_module(ROOT / "scripts" / "persona_metrics.py", "_persona_metrics_ut")
+registry = load_module(ROOT / "scripts" / "source_registry.py", "_source_registry_pm")
 
 CORPUS_A = "月有考，岁有稽，事可责成。\n"
 CORPUS_B = "天下之事，不难于立法，而难于法之必行。不难于听言，而难于言之必效。\n"
