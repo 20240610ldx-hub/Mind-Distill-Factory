@@ -262,6 +262,15 @@ class PipelineWiringTests(unittest.TestCase):
         self.assertIn("[可改善]", section)
         self.assertIn("[不可改善]", section)
 
+    def test_nested_subagent_ban_reaches_every_orchestrator(self) -> None:
+        """墨子试跑第 12 条：简报禁止新进程再派子代理；读不到简报的编排者也要知道，并会处理 mdf run 的告警。"""
+        for name in ("commands/distill.md", ".agents/skills/mdf-distill/SKILL.md", "docs/harnesses.md"):
+            with self.subTest(file=name):
+                text = (ROOT / name).read_text(encoding="utf-8")
+                self.assertIn("不得再派子代理", text)
+                self.assertIn("告警", text)
+        self.assertIn("must not spawn", (ROOT / "AGENTS.md").read_text(encoding="utf-8"))
+
     def test_checkpoint_2_routes_too_few_principles(self) -> None:
         section = self._section("检查点 2")
         self.assertIn("原则候选不足", section)

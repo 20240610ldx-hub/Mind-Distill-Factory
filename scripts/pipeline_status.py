@@ -669,8 +669,8 @@ def _usage_cell(usage: dict[str, Any] | None) -> str:
         parts.append(f"${usage['cost_usd']:.2f}")
     if usage.get("turns") is not None:
         parts.append(f"{usage['turns']} 轮")
-    if usage.get("subagents"):
-        parts.append(f"子代理 {usage['subagents']}")
+    if usage.get("subagents"):  # 简报禁止新进程再派子代理，出现了就标出来
+        parts.append(f"⚠️ 子代理 {usage['subagents']}")
     return " · ".join(parts) or "—"
 
 

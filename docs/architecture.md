@@ -313,7 +313,7 @@ flowchart LR
 - **OCR 来源**：只要有一页靠 OCR，来源就带 `ocr_text`，该页引文不高于 medium；有可疑行的页标出漏了几行。
 - **工作区**：数据根的解析规则（`--root` > `MDF_DATA_ROOT` > 仓库根）只在 `workspace.py` 定义一次，有架构测试禁止别处再写。分离时，新进程被授权访问数据根，简报写明路径约定；检查点命令只有一种改写，`mdf run` 和简报都用它。
 - **harness 档案**：`isolated_run` 必须有独立的 `{prompt}` 参数位。没声明的能力，指定了就报错（模型、推理强度），或者跳过（目录授权）；可变参数放在提示词之后。
-- **运行**：不加 `--yes` 什么也不写。每次运行都追加一条 `run-record-v1`，含费用和被拒的工具调用数。
+- **运行**：不加 `--yes` 什么也不写。每次运行都追加一条 `run-record-v1`，含费用和被拒的工具调用数。新进程不得再派子代理：简报写明禁令，派了就记进 `warnings` 并告警（`stage_runner.run_warnings`），不判失败。
 - **发布**：事务式改名，manifest 记下构建期的证明。改了 gallery 却没重发 manifest，测试就失败。
 - **逐字覆盖率**：覆盖率的文字格式、解析和 manifest 字段只在 `EvidenceCoverage` 定义；它随闸门通过记录和 manifest 一路传到状态表的包校验行与发布行。语料位置不在 `raw/`、只靠 textual_note 放行的证据卡不高于 medium（规则 6）。
 - **闸门通过记录**：绑定 SKILL.md 与 references/ 的指纹，产物改过即作废，附注随之作废；不随发布进入 gallery。

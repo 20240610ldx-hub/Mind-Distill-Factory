@@ -405,6 +405,10 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
         "- 换行符：写出的文本文件一律 LF（不要 CRLF）、UTF-8 无 BOM。在 Windows 上写完后自查"
         "（例如用 Python 以二进制读取，看有没有 `\\r\\n`），有就转成 LF 再跑检查点："
         "manifest 记的是字节 hash，入库时 .gitattributes 会把 CRLF 改成 LF，hash 就对不上了。",
+        # 墨子试跑第 12 条（用户 2026-10-20 决定）：review 步骤的新进程又派了一个审查子代理
+        "- **不得再派子代理**：你已经在独立的上下文里执行（新进程，或编排者派出的隔离子代理），"
+        "隔离由新进程本身保证，Stage 5 审查也不例外。不要调用 Task / Agent 等派子代理的工具，"
+        "上面列的角色由你依次扮演；再派一层会让费用翻倍、结果不可复现，`mdf run` 也会在运行记录里告警。",
     ]
     if step.get("network") == "forbidden":
         lines += [

@@ -121,6 +121,16 @@ def usage_text(usage: dict[str, Any] | None) -> str:
     return " · ".join(parts)
 
 
+def run_warnings(usage: dict[str, Any] | None) -> list[str]:
+    """运行记录里要告警的事。新进程不得再派子代理（墨子试跑第 12 条，用户 2026-10-20 决定）：隔离靠新进程
+    本身，再派一层只让费用与结果不可复现。只告警、不判失败——产物可能没问题，要人核对。"""
+    spawned = (usage or {}).get("subagents")
+    if not spawned:
+        return []
+    return [f"新进程又派了 {spawned} 个子代理：简报禁止这样做（Stage 5 的隔离靠新进程本身）；"
+            "费用与结果不可复现，核对产物后再继续"]
+
+
 def _describe_tool(name: str, args: dict[str, Any]) -> str:
     if args.get("file_path"):
         return f"{name} {Path(str(args['file_path'])).name}"
@@ -268,6 +278,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     checks = [c for c in (_checkpoint(cmd, slug, root) for cmd in commands if cmd and process_ok) if c]
     ok = process_ok and state_after != "failed" and all(c["exit_code"] == 0 for c in checks)
     usage = parse_usage(log, profile.usage_parser)
+    warnings = run_warnings(usage)
 
     labels = ps.STATE_LABELS
     if timed_out:
@@ -279,6 +290,8 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     out(f"{verdict}：{label}（{_clock(seconds)}）· 步骤 {labels.get(state_before, state_before)} → "
         f"{labels.get(state_after, state_after)} · 新产物 {len(changed)} 个"
         + (f" · {usage_text(usage)}" if usage else ""))
+    for warning in warnings:
+        out(f"  ⚠️ {warning}")
     for check in checks:
         out(f"  检查点 `{check['command']}`：{'通过' if check['exit_code'] == 0 else '未通过'}"
             + ("" if check["exit_code"] == 0 else "\n    " + "\n    ".join(check["tail"])))
@@ -293,7 +306,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
         "schema": RUN_SCHEMA, "slug": slug, "step": step_id, "phase": phase["id"], "harness": harness_name,
         "model": model, "effort": effort, "started_at": f"{started:%Y-%m-%d %H:%M:%S}", "seconds": round(seconds),
         "exit_code": proc.returncode, "timed_out": timed_out, "state_before": state_before, "state_after": state_after,
-        "checkpoints": checks, "changed_files": len(changed), "ok": ok, "usage": usage,
+        "checkpoints": checks, "changed_files": len(changed), "ok": ok, "usage": usage, "warnings": warnings,
         "summary": verdict.split(" ", 1)[-1] + f" · {labels.get(state_after, state_after)}",
         "log": harness._display_path(log, CODE_ROOT), "brief": harness._display_path(brief_path, CODE_ROOT),
     }

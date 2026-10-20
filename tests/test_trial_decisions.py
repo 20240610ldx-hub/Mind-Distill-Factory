@@ -189,6 +189,18 @@ class LineEndingsRule(TempRoot):
             self.assertNotIn("\r", text)
 
 
+class NoNestedSubagents(TempRoot):
+    """墨子试跑第 12 条（用户 2026-10-20 决定）：新进程不得再派子代理，Stage 5 的隔离靠新进程本身。"""
+
+    def test_every_brief_forbids_spawning_subagents(self):
+        self.classify()
+        for step in ("extract", "principles", "attachments", "review"):
+            with self.subTest(step=step), redirect_stderr(io.StringIO()):
+                _, text = harness.build_brief("demo", step, self.root)
+            self.assertIn("不得再派子代理", text)
+            self.assertIn("新进程本身", text, "要说清隔离由谁保证，否则审查步骤会以为得再派一个审查者")
+
+
 class StrictTaskStatus(TempRoot):
     def run_summary(self, status: dict) -> int:
         path = self.root / "task_status.json"
@@ -245,7 +257,7 @@ class UsageRecords(TempRoot):
                 {"started_at": "2026-10-18 09:00:00", "step": "extract", "harness": "codex", "seconds": 90,
                  "ok": True, "summary": "y"}]
         html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=runs)
-        self.assertIn("$0.69 · 1 轮 · 子代理 1", html)
+        self.assertIn("$0.69 · 1 轮 · ⚠️ 子代理 1", html)  # 简报禁止新进程再派子代理（第 12 条）
         self.assertIn("共 2 次运行，有用量记录的 1 次合计 $0.69", html)
 
     def test_status_board_reads_older_flat_records(self):

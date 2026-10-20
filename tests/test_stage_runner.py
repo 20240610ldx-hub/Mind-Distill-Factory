@@ -37,6 +37,8 @@ out.write_text("# 审查\n\n## 裁决\n\n[PASS] 假 harness 写的审查结论\n
 print("已写审查报告", flush=True)
 if mode == "usage":
     print('{"type":"result","subtype":"success","num_turns":9,"total_cost_usd":0.53,"usage":{"output_tokens":1200,"cache_read_input_tokens":880000},"result":"检查点通过"}', flush=True)
+if mode == "spawn":  # 墨子试跑 review 步骤：新进程自己又派了子代理
+    print('{"type":"result","subtype":"success","num_turns":1,"total_cost_usd":0.69,"subagent_stats":{"spawned":2},"result":"PASS"}', flush=True)
 '''
 
 # claude 2.1.301 的真实输出形状（2026-10-18 Sonnet 5.5 实测）：结果对象以 duration_api_ms 起头，
@@ -206,6 +208,26 @@ class RunTests(RunnerFixture):
         self.assertEqual((usage["cost_usd"], usage["turns"], usage["cache_read_tokens"]), (0.53, 9, 880000))
         html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
         self.assertIn("$0.53 · 9 轮", html)
+
+    def test_spawned_subagents_are_warned_about_and_recorded(self):
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
+            self.assertEqual(self.run_fake("spawn", yes=True), 0, "告警不判失败：产物要人核对，不是一律作废")
+        text = "\n".join(self.lines)
+        self.assertIn("⚠️", text)
+        self.assertIn("又派了 2 个子代理", text)
+        self.assertIn("简报禁止", text)
+        record = self.records()[0]
+        self.assertEqual(len(record["warnings"]), 1)
+        self.assertIn("子代理", record["warnings"][0])
+        html = ps.render_html("demo", ps.collect_status("demo", self.root), runs=ps.load_runs(self.root, "demo"))
+        self.assertIn("⚠️ 子代理 2", html)
+
+    def test_no_subagents_no_warning(self):
+        self.assertEqual(sr.run_warnings({"cost_usd": 0.5, "turns": 3}), [])
+        self.assertEqual(sr.run_warnings(None), [])
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint([])):
+            self.run_fake("usage", yes=True)
+        self.assertEqual(self.records()[0]["warnings"], [])
 
     def test_checkpoint_runs_in_the_data_root(self):
         check = sr._checkpoint("python scripts/mdf.py validate sources {slug}", "demo", self.root)

@@ -197,7 +197,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
   - ~~9 发布后 next 仍指向包校验~~ **已修（`2973239`）**：包校验通过即写 `.gates/package.json`，发布只复制、不改 output 里的包文件，记录保持有效。早于这份记录发布的包，跑一次 `mdf validate package <slug>` 即可
   - ~~10 `validate sources` 的 raw 用非递归 glob~~ **已修（`e141b11`）**：「raw/ 里有哪些素材」只由 `source_registry.indexable_raw_files` 判定（递归，格式与索引器一致，有测试钉住），检查点 1 与状态表都用它；顺带修了状态表漏认 `.markdown`、检查点 1 把 .docx 之类也当素材
   - ~~11 reduce 简报没禁网~~ **已修（`b080dd4`）**：`network: forbidden` + `--disallowedTools WebSearch,WebFetch`
-  - **12 新进程会再派子代理：待决定**。运行记录已写子代理数（`subagents`），但简报仍没说允不允许；影响费用与可复现性，不影响 Stage 5 隔离
+  - ~~12 新进程会再派子代理~~ **已处理（用户 2026-10-20 决定，本 PR）**：每份简报写明不得再派（Stage 5 隔离靠新进程本身）；`mdf run` 在子代理数 >0 时于结果行下告警，写进运行记录 `warnings`、面板用量列标 ⚠️，不判失败；编排协议、编排 skill、`AGENTS.md`、`docs/harnesses.md` 同步
   - ~~13 CRLF 致 hash 不符~~ **已修（`a46bac5`，改判）**：原决定「交由运行时 agent，不加脚本闸门」。GUI 实跑里 Claude Code 子代理根本看不到简报那句，上游 cases.md 带 465 处 CRLF 进了检查点 4，于是加硬闸门 `PKG_CRLF`
   - **14 小语料合并 extract/reduce/principles：未做**。只有 1 个分片时三步分三个进程，费用大头是反复的缓存读
 - `gallery/mozi` 已入库，但 3 篇出处篇名标错（维基文库页眉混入正文，`acquire.py` 已修），包里标了「篇次待核」；要更正需重采 → 重抽取 → 重跑后续阶段
@@ -273,7 +273,7 @@ claude plugin validate .
 ## 六、建议的下一动作顺序
 
 1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
-2. 墨子试跑第 12、14 条先问用户（第 10 条已修）
+2. 墨子试跑第 14 条（小语料合并三步）先问用户（第 10、12 条已处理）
 3. P5 两张任务卡：DNA 禁忌词对语料核对、统一按路径加载 helper
 4. P2 runtime `read_reference` + trace + judge schema
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
