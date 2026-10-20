@@ -1133,6 +1133,86 @@ def check_review_status_line(skill_md: Path) -> list[str]:
             f"这行写在技能里必然过期；删掉，审查结论以 manifest 与 gallery/index.json 为准"]
 
 
+DNA_BANNED_TERM_THRESHOLD = 3
+# 「不用「X」」「从不说“X”」「避免使用『X』」……X 可以连写多个（“应当”“必须”）。只认引号里的词：
+# 不带引号的「不用大白话」是风格描述，不是可数的词。
+_BAN_CLAUSE_RE = re.compile(
+    r"(?:(?:从不|绝不|决不|不会|不要|不)(?:使用|用|说|讲)|避免(?:使用|用|说)|忌用|禁用)"
+    r"[\s：:]*"
+    r"((?:[「“『\"][^」”』\"\n]{1,12}[」”』\"][\s、，,/和或与及]*)+)"
+)
+_QUOTED_RE = re.compile(r"[「“『\"]([^」”』\"\n]{1,12})[」”』\"]")
+
+
+def banned_clauses_from_dna(skill_text: str) -> list[tuple[str, list[str]]]:
+    """表达风格 DNA 表里声称「不用」的词，按声明分组，返回 (维度, [词…])。
+
+    一句里并列的词（「不用“应当”“必须”之类说教词」）是作者点名的一类，后面按一类计数。
+    只扫表格行：语感校准里的 ❌ 反例本来就写着禁词。单字词（「的」）噪声太大，不查。
+    """
+    dna = _h2_body(skill_text, "表达风格 DNA")
+    if dna is None:
+        return []
+    found: list[tuple[str, list[str]]] = []
+    for dim, text in re.findall(r"^\|\s*([^|\n]+?)\s*\|\s*([^|\n]*?)\s*\|", dna, re.M):
+        for clause in _BAN_CLAUSE_RE.finditer(text):
+            terms = list(dict.fromkeys(t for t in _QUOTED_RE.findall(clause.group(1)) if len(t) >= 2))
+            if terms and (dim, terms) not in found:
+                found.append((dim, terms))
+    return found
+
+
+def banned_terms_from_dna(skill_text: str) -> list[tuple[str, str]]:
+    """banned_clauses_from_dna 的拍平形式：(维度, 词)。"""
+    return [(dim, term) for dim, terms in banned_clauses_from_dna(skill_text) for term in terms]
+
+
+def check_dna_banned_terms(skill_md: Path, slug: str, root: Path = Path(".")) -> list[str]:
+    """DNA 声称「不用 X」而语料里 X 出现 ≥3 次——自相矛盾，提醒改成描述语气（WARNING，不挡路）。
+
+    2026-10-20 鲁迅：「不用应当/必须」对着《熱風》里「應當」2 处、「必須」4 处（另有「應該」16 处）。
+    两次都靠 LLM 审查员才发现。并称的词按一类合计（单看「应当」只有 2 处，凑不满阈值）。
+    计数走 verify_provenance 的 normalize，繁简折叠，OCR 无标点的语料也能数。
+    """
+    if not skill_md.exists():
+        return []
+    clauses = banned_clauses_from_dna(skill_md.read_text(encoding="utf-8"))
+    if not clauses:
+        return []
+    prov = _load_provenance()
+    corpus = prov.load_corpus(slug, root)
+    if not corpus:
+        return []
+    dims_by_class: dict[tuple[str, ...], list[str]] = {}
+    for dim, terms in clauses:
+        dims = dims_by_class.setdefault(tuple(terms), [])
+        if dim not in dims:
+            dims.append(dim)
+    warnings = []
+    for terms, dims in dims_by_class.items():
+        counts: dict[str, int] = {}
+        per_file: dict[str, int] = {}
+        for term in terms:
+            needle = prov.normalize(term)
+            if not needle:
+                continue
+            for name, text in corpus:
+                n = text.count(needle)
+                counts[term] = counts.get(term, 0) + n
+                per_file[name] = per_file.get(name, 0) + n
+        total = sum(counts.values())
+        if total < DNA_BANNED_TERM_THRESHOLD:
+            continue
+        by_term = "、".join(f"{t} {c}" for t, c in counts.items())
+        where = "、".join(f"{n} {c} 处" for n, c in sorted(per_file.items(), key=lambda kv: -kv[1])[:3] if c)
+        warnings.append(
+            f"WARNING: PKG_DNA_BANNED_TERM: {skill_md}: 表达风格 DNA「{'/'.join(dims)}」称不用"
+            f"「{'」「'.join(terms)}」，但语料里合计出现 {total} 次（{by_term}；{where}）——禁词与语料矛盾；"
+            f"改成描述语气，如「不摆居高临下的训示腔」，并同步改 references/voice.md 里的同类注释"
+        )
+    return warnings
+
+
 def validate_package(slug: str, strict: bool = False) -> list[str]:
     """构建期 v6 包校验（output/{slug}/）：结构 + P1–P6，P2 现场比对语料。
 
@@ -1169,6 +1249,7 @@ def validate_package(slug: str, strict: bool = False) -> list[str]:
     errors.extend(_check_v6_package(output_dir, slug, root, cluster_ids, run_p2=True))
     errors.extend(check_line_endings(output_dir))
     errors.extend(check_review_status_line(skill_md))
+    errors.extend(check_dna_banned_terms(skill_md, slug, root))
     card = _load_sibling("publish_skill").extract_v6_metadata(skill_md)
     errors.extend(check_classification(slug, root, card["primary_category"], card["secondary_categories"],
                                        skill_md, where="身份卡"))
