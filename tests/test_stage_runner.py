@@ -246,6 +246,49 @@ class RunTests(RunnerFixture):
         self.assertTrue(self.records()[0]["timed_out"])
 
 
+class SmallCorpusRunTests(RunnerFixture):
+    """只有 1 个分片：抽取、合并、原则提取在一个新进程里依次做完，三个检查点都跑（墨子试跑第 14 条）。"""
+
+    def setUp(self):
+        super().setUp()
+        src = self.root / "sources" / "demo"
+        (src / "raw").mkdir(parents=True)
+        (src / "raw" / "墨子.txt").write_text("兼相爱，交相利。", encoding="utf-8")
+        (src / "processed" / "local_shards").mkdir(parents=True)
+        (src / "processed" / "local_shards" / "manifest.json").write_text(
+            json.dumps({"shard_count": 1, "shards": [{"shard_id": "shard_001"}]}), encoding="utf-8")
+        (src / "classification.json").write_text(
+            json.dumps({"primary": "governance", "secondary": ["philosophy"]}), encoding="utf-8")
+
+    def run_bundle(self, **kwargs) -> int:
+        which = lambda exe: sys.executable if exe == "fakeagent" else None  # noqa: E731
+        return sr.run_step("demo", "extract", self.root, "fake", profiles=self.profiles("ok"), which=which,
+                           out=self.lines.append, heartbeat=0.2, **kwargs)
+
+    def test_plan_names_every_step_it_will_do(self):
+        self.assertEqual(self.run_bundle(), sr.NEEDS_CONSENT)
+        text = "\n".join(self.lines)
+        self.assertIn("分片抽取 → 合并与本地补充 → 原则提取", text)
+        self.assertIn("briefs/small-corpus.md", text)
+
+    def test_one_process_three_checkpoints_one_record(self):
+        calls: list[str] = []
+        with mock.patch.object(sr, "_checkpoint", passing_checkpoint(calls)):
+            self.run_bundle(yes=True)
+        self.assertEqual(calls, [
+            "python scripts/task_status.py summary sources/demo/processed/local_shards/task_status.json --strict",
+            "python scripts/mdf.py validate sources demo",
+            "python scripts/mdf.py validate principles demo",
+        ])
+        self.assertTrue((self.root / "output" / "demo" / "briefs" / "small-corpus.md").exists())
+        record = self.records()[0]
+        self.assertEqual(record["step"], "small-corpus")
+        self.assertEqual([m["step"] for m in record["members"]], ["extract", "reduce", "principles"])
+        text = "\n".join(self.lines)
+        self.assertIn("原则提取 ⬜ 待办 → ⬜ 待办", text, "结果行逐步报状态变化")
+        self.assertNotIn("阶段检查点留到阶段末尾", text)
+
+
 class RealClaudeOutputTests(RunnerFixture):
     """按实测的真实输出形状解析用量与进展，不依赖字段顺序，也不假定结果在最后一行。"""
 

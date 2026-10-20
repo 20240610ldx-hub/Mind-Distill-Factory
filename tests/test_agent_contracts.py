@@ -271,6 +271,12 @@ class PipelineWiringTests(unittest.TestCase):
                 self.assertIn("告警", text)
         self.assertIn("must not spawn", (ROOT / "AGENTS.md").read_text(encoding="utf-8"))
 
+    def test_small_corpus_bundle_reaches_every_orchestrator(self) -> None:
+        """墨子试跑第 14 条：单分片时三步合成 small-corpus。读 distill.md 的、读编排 skill 的、读 AGENTS.md 的都要知道。"""
+        for name in ("commands/distill.md", ".agents/skills/mdf-distill/SKILL.md", "AGENTS.md", "docs/harnesses.md"):
+            with self.subTest(file=name):
+                self.assertIn("small-corpus", (ROOT / name).read_text(encoding="utf-8"))
+
     def test_checkpoint_2_routes_too_few_principles(self) -> None:
         section = self._section("检查点 2")
         self.assertIn("原则候选不足", section)

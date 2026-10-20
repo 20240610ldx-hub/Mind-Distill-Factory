@@ -94,7 +94,7 @@ class SeparateDataRootBriefTests(unittest.TestCase):
         root = self.root.resolve().as_posix()
         self.assertIn("路径约定", text)
         self.assertIn(f"`sources/…`、`output/…` 都在数据根目录 `{root}` 下", text)
-        runnable = f"cd '{root}' && " + shlex.join(
+        runnable = f"cd '{root}' && MDF_DATA_ROOT='{root}' " + shlex.join(  # mdf 不按当前目录找数据根
             ["python", f"{ROOT.as_posix()}/scripts/task_status.py", "summary",
              "sources/demo/processed/local_shards/task_status.json"])
         self.assertIn(runnable, text)

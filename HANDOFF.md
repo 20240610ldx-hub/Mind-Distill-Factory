@@ -8,7 +8,7 @@
 - 鲁迅 GUI 验收与修复（2026-10-19/20）：PR #9（`b080dd4` 等，墨子试跑决策 + 值对象）、PR #10（`0963022`、`89f593d`）、PR #11（`9e9ef17` → `58cc872`）均已合入 main（`3ed4e0c`），明细见「〇-2」
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 709 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
+结果：`Ran 732 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -199,7 +199,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
   - ~~11 reduce 简报没禁网~~ **已修（`b080dd4`）**：`network: forbidden` + `--disallowedTools WebSearch,WebFetch`
   - ~~12 新进程会再派子代理~~ **已处理（用户 2026-10-20 决定，本 PR）**：每份简报写明不得再派（Stage 5 隔离靠新进程本身）；`mdf run` 在子代理数 >0 时于结果行下告警，写进运行记录 `warnings`、面板用量列标 ⚠️，不判失败；编排协议、编排 skill、`AGENTS.md`、`docs/harnesses.md` 同步
   - ~~13 CRLF 致 hash 不符~~ **已修（`a46bac5`，改判）**：原决定「交由运行时 agent，不加脚本闸门」。GUI 实跑里 Claude Code 子代理根本看不到简报那句，上游 cases.md 带 465 处 CRLF 进了检查点 4，于是加硬闸门 `PKG_CRLF`
-  - **14 小语料合并 extract/reduce/principles：未做**。只有 1 个分片时三步分三个进程，费用大头是反复的缓存读
+  - ~~14 小语料分三个进程~~ **已处理（用户 2026-10-20 决定，本 PR）**：只有 1 个分片时，三步合成执行单位 `small-corpus`（阶段树 `bundles`，`run_unit.RunUnit`）：一份简报、三个角色依次执行、三个检查点都跑；多分片照旧。还没用真实模型跑过合并单位
 - `gallery/mozi` 已入库，但 3 篇出处篇名标错（维基文库页眉混入正文，`acquire.py` 已修），包里标了「篇次待核」；要更正需重采 → 重抽取 → 重跑后续阶段
 - ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比（8 页 52 句 × 4 字体 × 横竖排 × 4 档退化，64 次运行），数字与结论见 `docs/methodology.md`「OCR 校准」；`mdf ocr survey` 已对本机六个人物的 raw 目录做过整书抽样体检。真实扫描件已抽查七类页面（民国竖排、明刻本对开、透墨国图本、手稿、横排简体、英文），结论见同节「真实扫描件抽查」。整本端到端也跑过：《熱風》1947 年版 134 页纯图片竖排，`mdf index` 空闲时 80 秒，判 flagged（`ocr_text`、`ocr_lines_dropped`、`ocr_incomplete`），52 页共 70 行可疑行，见同节「整本端到端」。遗留：样张仍是系统字体画的合成图，没有真实古籍的纸色、刻工字形与版框；竖排漏检列按列距推算、偏保守，横排漏检的行仍只靠低置信度兜底；刻本双行小注页逐字存活只有约三成，要在识别前切分小注列（未做）；CI 不装引擎，真实引擎路径只在本机验证过
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
@@ -246,6 +246,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **测试夹具的行尾**：Windows 上 `write_text` 写 CRLF，`PKG_CRLF` 加上后共享夹具 15 个测试一起红。夹具写 .md 一律传 `newline="\n"`
 - **GUI 里的项目 agent**：桌面版 Agent 工具可能列不出 `.claude/agents` 里的项目角色（`claude -p` 能）。协议的兜底是 `mdf brief` + general-purpose 子代理
 - **数据根放在 worktree 外**：桌面版会回收 worktree，被 gitignore 的 `sources/`、`output/` 一起消失（鲁迅第一轮因此丢到 3A）。验收与实跑一律把 `MDF_DATA_ROOT` 指到 worktree 之外，publish 也认它（`af5883d`）
+- **mdf 不按当前目录找数据根**：顺序是 `--root` > `MDF_DATA_ROOT` > 仓库根。`cd <数据根> && python <仓库>/scripts/mdf.py …` 会落回仓库根，而 `validate_output.py`、`task_status.py` 这类脚本按当前目录解析，两者行为不同。简报里「本机这样跑」的命令现在都带 `MDF_DATA_ROOT=`；`mdf reduce` 不收 `--root`
 - **PR 合并早于推送**：PR #10 合并时最后两个提交还没推上去，不在 main 里，只能由下一个 PR 带进去。合并前核对 PR 的 head 提交是不是本地最新
 
 ---
@@ -273,7 +274,7 @@ claude plugin validate .
 ## 六、建议的下一动作顺序
 
 1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
-2. 墨子试跑第 14 条（小语料合并三步）先问用户（第 10、12 条已处理）
+2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` 还缺一次真实模型实跑（单分片人物，用户同意后 `mdf run <slug> --harness claude-code --yes`）
 3. P5 两张任务卡：DNA 禁忌词对语料核对、统一按路径加载 helper
 4. P2 runtime `read_reference` + trace + judge schema
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
