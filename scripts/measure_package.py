@@ -7,12 +7,16 @@ v6 包验收度量。Run: python scripts/measure_package.py <slug>
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import re
 import sys
 from pathlib import Path
+
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 sibling
+    sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -24,17 +28,9 @@ if sys.platform == "win32":
 
 
 def _load_module(name: str):
-    # 注意：不用传入的 root 拼路径——measure() 的 root 参数在测试中指向一个
-    # 临时目录（不含 scripts/），若照抄 root/scripts/{name}.py 会
-    # FileNotFoundError。同目录模块永远和本文件在同一目录下，改用
-    # __file__ 定位，与 validate_output.py:_load_provenance() 的做法一致。
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    # 同目录模块永远和本文件在同一目录下；不用传入的 root 拼路径——measure() 的 root 在测试中
+    # 指向不含 scripts/ 的临时目录。sibling.load_sibling 按 sibling.py 自己的位置定位。
+    return load_sibling(name)
 
 
 def _load_provenance(root: Path):

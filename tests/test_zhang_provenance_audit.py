@@ -1,22 +1,15 @@
 from __future__ import annotations
 
-import importlib.util
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-audit_mod = load_module("audit_legacy_quotes", ROOT / "scripts" / "audit_legacy_quotes.py")
+audit_mod = load_module(ROOT / "scripts" / "audit_legacy_quotes.py", "audit_legacy_quotes")
 
 
 @unittest.skipUnless(

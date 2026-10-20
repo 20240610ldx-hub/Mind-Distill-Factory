@@ -38,6 +38,7 @@ from typing import Any, Callable
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
     sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 from workspace import Workspace, data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
@@ -45,16 +46,7 @@ CODE_ROOT = Path(__file__).resolve().parent.parent
 
 @functools.lru_cache(maxsize=None)
 def _module(name: str) -> Any:
-    path = CODE_ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_mdf_cli_{name}", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    # 先登记到 sys.modules：被转交的脚本里有 dataclass + `from __future__ import
-    # annotations`，dataclasses 要按 cls.__module__ 回查模块，查不到就崩。
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_sibling(name, f"_mdf_cli_{name}")
 
 
 def _delegate(module: str, argv: list[str], cwd: Path | None = None) -> int:

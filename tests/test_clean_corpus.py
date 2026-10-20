@@ -1,6 +1,5 @@
 """语料清洗与质量闸门（scripts/clean_corpus.py）、统一解码（text_decoding.py）及其在 index / P2 中的接线。"""
 
-import importlib.util
 import json
 import os
 import sys
@@ -9,21 +8,14 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-decoding = load("_text_decoding_ut", ROOT / "scripts" / "text_decoding.py")
-cc = load("_clean_corpus_ut", ROOT / "scripts" / "clean_corpus.py")
-prov = load("_verify_provenance_cc", ROOT / "scripts" / "verify_provenance.py")
-ps = load("_pipeline_status_cc", ROOT / "scripts" / "pipeline_status.py")
+decoding = load_module(ROOT / "scripts" / "text_decoding.py", "_text_decoding_ut")
+cc = load_module(ROOT / "scripts" / "clean_corpus.py", "_clean_corpus_ut")
+prov = load_module(ROOT / "scripts" / "verify_provenance.py", "_verify_provenance_cc")
+ps = load_module(ROOT / "scripts" / "pipeline_status.py", "_pipeline_status_cc")
 
 PROSE = "子曰：「學而時習之，不亦說乎？有朋自遠方來，不亦樂乎？人不知而不慍，不亦君子乎？」"
 
@@ -339,7 +331,7 @@ class IndexIntegrationTests(unittest.TestCase):
         os.environ["MDF_DATA_ROOT"] = str(self.root)
         self.raw = self.root / "sources" / "demo" / "raw"
         self.raw.mkdir(parents=True)
-        self.pipeline = load("_local_source_pipeline_cc", ROOT / "scripts" / "local_source_pipeline.py")
+        self.pipeline = load_module(ROOT / "scripts" / "local_source_pipeline.py", "_local_source_pipeline_cc")
 
     def tearDown(self):
         if self._old is None:

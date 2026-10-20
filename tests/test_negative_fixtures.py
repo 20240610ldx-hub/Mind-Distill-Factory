@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import shutil
 import sys
@@ -11,19 +10,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-neg = load_module("_negative_fixtures_under_test", ROOT / "evaluation" / "scripts" / "check_negative_fixtures.py")
+neg = load_module(ROOT / "evaluation" / "scripts" / "check_negative_fixtures.py", "_negative_fixtures_under_test")
 
 
 class NegativeFixtureTests(unittest.TestCase):

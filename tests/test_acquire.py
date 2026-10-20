@@ -1,26 +1,19 @@
 """合规采集（scripts/acquire.py）：全部离线，用假 fetcher 模拟各站点。"""
 
 import copy
-import importlib.util
 import json
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-acq = load_module("_acquire_under_test", ROOT / "scripts" / "acquire.py")
-registry = load_module("_source_registry_acq", ROOT / "scripts" / "source_registry.py")
+acq = load_module(ROOT / "scripts" / "acquire.py", "_acquire_under_test")
+registry = load_module(ROOT / "scripts" / "source_registry.py", "_source_registry_acq")
 POLICY = acq.load_policy(ROOT / "config" / "acquisition_policy.json")
 
 WIKISOURCE_ROBOTS = """

@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-import importlib.util
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-measure_mod = load_module("measure_package", ROOT / "scripts" / "measure_package.py")
-prov_mod = load_module("verify_provenance", ROOT / "scripts" / "verify_provenance.py")
+measure_mod = load_module(ROOT / "scripts" / "measure_package.py", "measure_package")
+prov_mod = load_module(ROOT / "scripts" / "verify_provenance.py", "verify_provenance")
 
 
 class MeasureTests(unittest.TestCase):

@@ -24,6 +24,11 @@ import os
 from pathlib import Path
 from collections import Counter
 
+_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 sibling
+    sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
+
 # Fix Windows console encoding for Unicode output
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
@@ -1313,14 +1318,7 @@ def _load_sibling(name: str):
     缓存：verify_provenance 在模块加载时构造 OpenCC 转换器，开销不小；一次校验会
     多处调用，每次重新执行模块会让整套校验慢上一倍。
     """
-    import importlib.util
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_sibling(name)
 
 
 def _load_provenance():

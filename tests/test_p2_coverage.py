@@ -7,6 +7,7 @@ P2 无从逐字核对，只能逐张降级为 WARNING。闸门照样「通过」
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import package_manifest as pm  # noqa: E402
 import verify_provenance as prov  # noqa: E402
+from sibling import load_module  # noqa: E402
 
 
 WIKI = "`sources/demo/processed/primary_sources.json`（维基文库转录；不在 `sources/demo/raw/` 内）"
@@ -102,6 +104,18 @@ class CoverageValueObject(unittest.TestCase):
         coverage = prov.EvidenceCoverage(verified=5, total=7, adjudicated=2)
         self.assertEqual(prov.EvidenceCoverage.from_attestation(coverage.to_attestation()), coverage)
         self.assertIsNone(prov.EvidenceCoverage.from_attestation({"status": "pass"}), "旧 manifest 没有覆盖率")
+
+    def test_is_a_frozen_dataclass_like_the_other_value_objects(self):
+        coverage = prov.EvidenceCoverage(verified=1, total=2)
+        self.assertTrue(dataclasses.is_dataclass(coverage))
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            coverage.verified = 2  # type: ignore[misc]
+
+    def test_survives_a_by_path_load_under_future_annotations(self):
+        """按路径加载本模块（测试与 mdf 都这么做）时 dataclass 不能崩——靠 sibling.load_module 先登记。"""
+        module = load_module(ROOT / "scripts" / "verify_provenance.py", "_p2_cov_by_path")
+        self.addCleanup(sys.modules.pop, "_p2_cov_by_path", None)
+        self.assertEqual(module.EvidenceCoverage(1, 2).total, 2)
 
     def test_gap_is_only_reported_when_cards_were_waved_through(self):
         self.assertEqual(prov.EvidenceCoverage(verified=3, total=3).gap(), "")

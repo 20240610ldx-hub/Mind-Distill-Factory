@@ -1,29 +1,21 @@
 from __future__ import annotations
 
-import importlib.util
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-pipeline = load("local_source_pipeline", ROOT / "scripts" / "local_source_pipeline.py")
-pdf_quality = load("pdf_quality", ROOT / "scripts" / "pdf_quality.py")
-registry = load("source_registry", ROOT / "scripts" / "source_registry.py")
-sampling = load("sampling", ROOT / "scripts" / "sampling.py")
-dispatch = load("worker_dispatch", ROOT / "scripts" / "worker_dispatch.py")
-cost = load("cost_estimator", ROOT / "scripts" / "cost_estimator.py")
+pipeline = load_module(ROOT / "scripts" / "local_source_pipeline.py", "local_source_pipeline")
+pdf_quality = load_module(ROOT / "scripts" / "pdf_quality.py", "pdf_quality")
+registry = load_module(ROOT / "scripts" / "source_registry.py", "source_registry")
+sampling = load_module(ROOT / "scripts" / "sampling.py", "sampling")
+dispatch = load_module(ROOT / "scripts" / "worker_dispatch.py", "worker_dispatch")
+cost = load_module(ROOT / "scripts" / "cost_estimator.py", "cost_estimator")
 
 
 class PdfClassificationTests(unittest.TestCase):

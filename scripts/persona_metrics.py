@@ -16,7 +16,6 @@
 
 import argparse
 import functools
-import importlib.util
 import json
 import os
 import re
@@ -28,6 +27,7 @@ from typing import Any
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
     sys.path.insert(0, _SCRIPTS_DIR)
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 CODE_ROOT = Path(__file__).resolve().parent.parent
@@ -49,12 +49,7 @@ LIMITS = {
 
 @functools.lru_cache(maxsize=None)
 def _sibling(name: str) -> Any:
-    path = Path(__file__).resolve().parent / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"_persona_metrics_{name}", path)
-    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-    sys.modules[spec.name] = module  # type: ignore[union-attr]
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
-    return module
+    return load_sibling(name)
 
 
 # ── 解析包 ────────────────────────────────────────────────────────────

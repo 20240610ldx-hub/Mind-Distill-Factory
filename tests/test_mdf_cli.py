@@ -1,7 +1,6 @@
 """统一入口 scripts/mdf.py：子命令解析、--root、JSON 输出、对旧脚本的原样转交。"""
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -12,19 +11,12 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 MDF = ROOT / "scripts" / "mdf.py"
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-mdf = load_module("_mdf_under_test", MDF)
+mdf = load_module(MDF, "_mdf_under_test")
 
 
 def run(*argv: str) -> tuple[int, str, str]:

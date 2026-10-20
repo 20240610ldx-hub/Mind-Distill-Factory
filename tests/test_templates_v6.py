@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-import importlib.util
 import re
 import unittest
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 CORE_SECTIONS = [
     "身份卡", "响应策略", "核心原则", "决策框架",
     "已知盲区", "表达风格 DNA", "价值取向与反模式", "溯源",
 ]
-
-
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 class V6CoreTemplateTests(unittest.TestCase):
@@ -73,7 +66,7 @@ class EnglishTemplateIsLegacyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.path = ROOT / "templates" / "skill-template.en.md"
         self.text = self.path.read_text(encoding="utf-8")
-        self.validator = load_module("validate_output", ROOT / "scripts" / "validate_output.py")
+        self.validator = load_module(ROOT / "scripts" / "validate_output.py", "validate_output")
 
     def test_does_not_declare_format_version_6(self) -> None:
         self.assertNotRegex(self.text, r"(?m)^format_version:\s*6\s*$")
