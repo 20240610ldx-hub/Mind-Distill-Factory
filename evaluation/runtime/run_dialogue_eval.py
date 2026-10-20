@@ -412,18 +412,89 @@ def build_judge_prompt(
     )
 
 
+JUDGMENT_SCHEMA = "MindDistillRuntimeJudgment-v1"
+SEVERITIES = ("none", "P2", "P1", "P0")
+COVERAGES = ("standard", "partial", "imported")
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
+    """judge 的最终回答 → dict。只认整段 JSON（允许外面包一层 ```json 围栏），不从文字里捞：
+    原来的贪婪正则 `\\{.*\\}` 会把半截回答、或前后两个对象之间的一大段当成裁决。"""
     text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
-        raise
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    data = json.loads(fenced.group(1) if fenced else text)
+    if not isinstance(data, dict):
+        raise ValueError(f"judge 的回答不是 JSON 对象，而是 {type(data).__name__}")
+    return data
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def validate_judgment(judgment: dict[str, Any], rubric: dict[str, Any], case_ids: list[str]) -> list[str]:
+    """按评分表逐项核对 judge 的裁决，返回错误清单（空 = 合格）。不补任何默认值。
+
+    每条记录恰好评一次；维度与评分表一致、分数在 0–max；严重度与失败标记取自评分表；
+    aggregate 的总分在 0–25，P0/P1 计数等于严重度为 P0/P1 的条数。
+    """
+    errors: list[str] = []
+    if judgment.get("schema_version") != JUDGMENT_SCHEMA:
+        errors.append(f"schema_version 应为 {JUDGMENT_SCHEMA}，实际 {judgment.get('schema_version')!r}")
+    metrics = rubric["per_case_metrics"]
+    known_flags = set(rubric["failure_flags"])
+    items = judgment.get("case_judgments")
+    if not isinstance(items, list):
+        errors.append("case_judgments 不是列表")
+        items = []
+    seen: list[str] = []
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            errors.append(f"case_judgments[{i}] 不是对象")
+            continue
+        cid = item.get("case_id")
+        if cid not in case_ids:
+            errors.append(f"case_judgments[{i}]：记录里没有 case_id {cid!r}")
+        elif cid in seen:
+            errors.append(f"{cid}：重复评分")
+        seen.append(cid)
+        scores = item.get("scores")
+        if not isinstance(scores, dict):
+            errors.append(f"{cid}：scores 不是对象")
+        else:
+            if set(scores) != set(metrics):
+                errors.append(f"{cid}：scores 的维度应为 {sorted(metrics)}，实际 {sorted(scores)}")
+            for name, value in scores.items():
+                top = (metrics.get(name) or {}).get("max")
+                if top is not None and not (_is_number(value) and 0 <= value <= top):
+                    errors.append(f"{cid}：{name}={value!r} 不是 0–{top} 的数")
+        if item.get("severity") not in SEVERITIES:
+            errors.append(f"{cid}：severity={item.get('severity')!r} 不在 {SEVERITIES}")
+        flags = item.get("failure_flags")
+        if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
+            errors.append(f"{cid}：failure_flags 应为字符串列表")
+        else:
+            unknown = [f for f in flags if f not in known_flags]
+            if unknown:
+                errors.append(f"{cid}：评分表里没有这些失败标记 {unknown}")
+    missing = [c for c in case_ids if c not in seen]
+    if missing:
+        errors.append(f"这些记录没有评分：{'、'.join(missing)}")
+    aggregate = judgment.get("aggregate")
+    if not isinstance(aggregate, dict):
+        return errors + ["缺 aggregate"]
+    top = rubric["runtime_score_mapping"]["max_runtime_points"]
+    score = aggregate.get("runtime_score_25")
+    if not (_is_number(score) and 0 <= score <= top):
+        errors.append(f"aggregate.runtime_score_25={score!r} 不是 0–{top} 的数")
+    if aggregate.get("coverage") not in COVERAGES:
+        errors.append(f"aggregate.coverage={aggregate.get('coverage')!r} 不在 {COVERAGES}")
+    for level in ("P0", "P1"):
+        key = f"{level.lower()}_count"
+        expected = sum(1 for item in items if isinstance(item, dict) and item.get("severity") == level)
+        if aggregate.get(key) != expected or isinstance(aggregate.get(key), bool):
+            errors.append(f"aggregate.{key}={aggregate.get(key)!r}，但严重度为 {level} 的有 {expected} 条")
+    return errors
 
 
 def judge_records(
@@ -436,52 +507,54 @@ def judge_records(
     rubric: dict[str, Any],
     records: list[dict[str, Any]],
     standard_case_count: int,
+    chat: Any = None,
 ) -> dict[str, Any]:
+    """让 judge 按评分表打分。回答必须是整段 JSON 且通过 validate_judgment；不合格时带着错误清单重答一次，
+    仍不合格就抛 RuntimeError——不补默认值，免得半截裁决的分数流进 collect_artifacts 的总分。"""
+    chat = chat or deepseek_chat
     prompt = build_judge_prompt(
         skill_text=skill_text,
         rubric=rubric,
         records=records,
         standard_case_count=standard_case_count,
     )
-    response = deepseek_chat(
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        messages=[
-            {"role": "system", "content": "You are a strict JSON-only evaluation judge."},
-            {"role": "user", "content": prompt},
-        ],
-        reasoning_effort=reasoning_effort,
-        json_mode=True,
-        max_tokens=12000,
-    )
-    content = assistant_content(response)
-    if not content:
-        response = deepseek_chat(
+    case_ids = [str(r.get("case_id")) for r in records]
+    messages = [
+        {"role": "system", "content": "You are a strict JSON-only evaluation judge. Return compact valid JSON."},
+        {"role": "user", "content": prompt},
+    ]
+    problems: list[str] = []
+    for attempt in range(2):
+        response = chat(
             api_key=api_key,
             base_url=base_url,
             model=model,
-            messages=[
-                {"role": "system", "content": "You are a strict JSON-only evaluation judge. Return compact valid JSON."},
-                {"role": "user", "content": prompt},
-            ],
+            messages=messages,
             reasoning_effort=reasoning_effort,
             json_mode=True,
             max_tokens=16000,
         )
         content = assistant_content(response)
-    try:
-        judgment = parse_json_object(content)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("DeepSeek judge did not return parseable JSON final content.") from exc
-    judgment.setdefault("schema_version", "MindDistillRuntimeJudgment-v1")
-    judgment.setdefault("metadata", {})
-    judgment["metadata"].update({
-        "model": model,
-        "reasoning_effort": reasoning_effort,
-        "judged_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-    })
-    return judgment
+        try:
+            judgment = parse_json_object(content)
+        except ValueError as exc:
+            problems = [f"回答不是一整段 JSON 对象：{exc}"]
+        else:
+            problems = validate_judgment(judgment, rubric, case_ids)
+            if not problems:
+                judgment["metadata"] = {
+                    "model": model,
+                    "reasoning_effort": reasoning_effort,
+                    "judged_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "judge_attempts": attempt + 1,
+                }
+                return judgment
+        messages = messages[:2] + [
+            {"role": "assistant", "content": content},
+            {"role": "user", "content": "Your JSON does not pass the schema check. Fix every problem below and "
+                                        "return the complete JSON again, nothing else:\n- " + "\n- ".join(problems)},
+        ]
+    raise RuntimeError("Judge output failed the schema check twice: " + "; ".join(problems))
 
 
 def skipped_judgment(*, reason: str, records: list[dict[str, Any]]) -> dict[str, Any]:
