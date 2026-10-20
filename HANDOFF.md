@@ -4,10 +4,11 @@
 
 - 阶段 1（来源与抽样链）：`4dda010`
 - 阶段 2 / P0（发布与校验事务化，M1–M4）：`296b05e` → `861feb8` → `7b5e436` → `655a82f`
-- 阶段 3（流水线自动化）：`effcb3f` → … → `21334b5` 经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑、文档分支合并与《熱風》整本 OCR 修正（`66c0537`）经 PR #5、#7 合入；OCR 后续 `df08946` → `e01044e` → `b829b9f` 经 PR #6 合入；本次（刻本双行小注、`doubtful_lines`、补回 methodology 四段）在分支 `claude/wonderful-hodgkin-bde0f1` 的新 PR
+- 阶段 3（流水线自动化）：`effcb3f` → … → `21334b5` 经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑、文档分支合并与《熱風》整本 OCR 修正（`66c0537`）经 PR #5、#7 合入；OCR 后续 `df08946` → `e01044e` → `b829b9f` 经 PR #6 合入；刻本双行小注 `3856504` 经 PR #8 合入
+- 鲁迅 GUI 验收与修复（2026-10-19/20）：PR #9（`b080dd4` 等，墨子试跑决策 + 值对象）、PR #10（`0963022`、`89f593d`）、PR #11（`9e9ef17` → `58cc872`）均已合入 main（`3ed4e0c`），明细见「〇-2」
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 563 tests ... OK (skipped=11)`（skipped 为依赖私有 raw corpus 的 `test_zhang_provenance_audit.py`，属预期）
+结果：`Ran 698 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -32,11 +33,80 @@
 | `b829b9f` | 明刻本抽查的两处修正：`mdf ocr scan --pages`/`survey` 改在原文件上逐页读（分层压缩扫描件拷进临时 PDF 后渲染不同，置信度与识别文字都变，导出的图也对不上）；被音注撑宽的被丢框按本页字号折算字数，限宽 ≤1.5 字宽且读出 ≥3 个汉字，排除馆藏印章与插图标注 | `scripts/local_source_pipeline.py`、`scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`docs/methodology.md` |
 | `3801fb3` | 墨子试跑的可视化反馈（没有章节标签、叙述没节奏、全是无头脚本）：`mdf run` 把「简报→新进程→心跳→状态变化→阶段检查点→运行记录」收成一条命令（不加 `--yes` 只打印计划）；阶段卡 `mdf next --card`、进度条、自包含可视化面板 `mdf status --html`；编排协议写明三拍叙述与章节工具确切名 `mcp__ccd_session__mark_chapter`，驱动无头进程的会话也算编排者 | `scripts/stage_runner.py`、`scripts/pipeline_status.py`、`commands/distill.md`、`.agents/skills/mdf-distill/SKILL.md`、`config/harnesses.json`、`docs/harnesses.md` |
 | `66c0537` | 整本扫描书端到端（《熱風》134 页竖排，`mdf index` → `mdf clean`）暴露的两处页眉页脚漏删：字距拉开的页眉拆成单字框插进正文列（竖排页里落在正文列起止线之外的单字框归页首页尾，起止线取四分位）；页码短横认成「一」或丢一边（页边纯数字加横线的行一律按页码计数）。页眉页脚删除 41→171 行，无正文误删；rapidocr 日志降到 error。另 8 本竖排书各抽 8 页审计：被归到页边的 44 个单字框全是页眉页码，没有正文 | `scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`docs/methodology.md` |
-| 本次 | 刻本双行小注：校准台按〔…〕画双行小注（先右后左，跨列续排），新样张 `sample_notes_zh.txt` 量出 rapidocr 逐字存活只有 25%（整列被并成一个框读成乱码，重排救不回）；识别分 <0.7 的长行计为可疑行（`doubtful_lines`），64 次校准里逐字存活 <60% 的运行被标出 28→32 次，体检新增标出的 4 份文件逐条核过都是真认错 | `scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`evaluation/fixtures/ocr/sample_notes_zh.txt`、`docs/methodology.md` |
+| `3856504` | 刻本双行小注：校准台按〔…〕画双行小注（先右后左，跨列续排），新样张 `sample_notes_zh.txt` 量出 rapidocr 逐字存活只有 25%（整列被并成一个框读成乱码，重排救不回）；识别分 <0.7 的长行计为可疑行（`doubtful_lines`），64 次校准里逐字存活 <60% 的运行被标出 28→32 次，体检新增标出的 4 份文件逐条核过都是真认错 | `scripts/ocr_calibrate.py`、`scripts/pdf_quality.py`、`scripts/clean_corpus.py`、`agents/local-source-worker.md`、`evaluation/fixtures/ocr/sample_notes_zh.txt`、`docs/methodology.md` |
 
 文档入口：[架构](docs/architecture.md) · [方法论](docs/methodology.md) · [伦理与法律](docs/ethics-and-legal.md) · [harness 适配](docs/harnesses.md)。
 
 CI：`.github/workflows/tests.yml`（PR #3 合入）在 ubuntu + windows × Python 3.12 / 3.13 上跑 `py_compile` 与全套单测，触发于所有 PR 及 push 到 main；不装 extras、无网络/OCR/API key 依赖。
+
+## 〇-2、鲁迅 GUI 验收与修复（PR #9–#11，2026-10-19/20）
+
+鲁迅（`lu-xun`）在桌面版 GUI 里由编排者按 `commands/distill.md` 跑完阶段 0–5（审查 PASS 4.07，`distill_confidence`=2），阶段 6 按用户要求只做 dry-run。验收笔记在只读的 `.claude/worktrees/lu-xun-acceptance/output/lu-xun/acceptance_notes.md`（临时 worktree，会被回收）。修复原则：**每个修复都要接进管线的全部入口**（编排协议、角色定义、阶段树 `checkpoint_note`、状态表/阶段卡、模板），不做单项目最优。
+
+| 提交 | PR | 内容 |
+|---|---|---|
+| `b080dd4` | #9 | 墨子试跑决策：`mdf classify` 类目通道（`CLASSIFICATION_MISMATCH`）、reduce 禁网（`--disallowedTools WebSearch,WebFetch`）、运行记录写费用/轮数/子代理数 |
+| `cb10d3e` | #9 | Sonnet 5.5 high 实跑 extract 暴露的：`mdf run --effort`、数据根授权、stream-json 心跳显示最近一次工具调用 |
+| `fe89e48` | #9 | 值对象 `Workspace`（数据根解析只此一处，架构测试禁止别处读 `MDF_DATA_ROOT`）与 `HarnessProfile` |
+| `05a5a9b` | #9 | GUI 里项目 agent 不在 Agent 工具类型中时：`mdf brief` 生成简报交给 general-purpose 子代理 |
+| `617ad75` | #9 | 清洗报告的标记改短标签 + 注释表 |
+| `e52c870` | #9 | 发现 7：阶段 3A scaffold 从文件级读推理模式/名言，候选 id 带来源类型，仅 secondary 支撑的簇标 `secondary_only`，核心层盲区主题 <2 报 `TOO_FEW_BLIND_SPOTS` |
+| `349d73b` | #9 | 进度走原生任务清单，不生成/发送 HTML 看板（`mdf status --html` 只留作手动命令） |
+| `0963022` | #10 | 发现 0：数据根在 `.claude/worktrees/<name>/` 下时（会被回收）阶段卡、`mdf status`、`mdf run` 计划都警告，协议在阶段 0 停下先挪数据根 |
+| `89f593d` | #10 | 发现 5：按 token 的预算闸门，超预算时抽取步骤「受阻」，用户同意后 `mdf budget <slug> --approve` |
+| `9e9ef17` | #11 | 发现 10：`distill_confidence` <3 拒发布（`BLOCKED_LOW_CONFIDENCE`），`--force` 记 `FORCED_LOW_CONFIDENCE` |
+| `2973239` | #11 | 发现 15：`validate package` 通过后写 `output/<slug>/.gates/package.json`（包文件指纹），状态表不加 `--check` 也能推进 |
+| `f321bbf` | #11 | 发现 6、8：high 占比警告与 reduce 抽取不足分 `[不可改善]`/`[可改善]`；`validate principles` 加下限（`[原则候选不足]`，评论者观点不计） |
+| `ba1e941` | #11 | 发现 11：`P2_COVERAGE` 覆盖率行；语料外的卡标 high 报 `P2_UNVERIFIED_HIGH` |
+| `3b4baf9` | #11 | 发现 12、13：P5 的 `case_id` 列一格可放多个 id；Stage 4.5 写明回写归属与行数预算 |
+| `bcc78ba` | #11 | 把以上接进编排协议检查点 1/2/4、evidence-carder/quality-reviewer、阶段树 `checkpoint_note`、状态表 |
+| `4ad1372` | #11 | 值对象 `EvidenceCoverage`；`attest_p2` 只扫一遍语料 |
+| `55a8acb` | #11 | 恢复执行时附件步骤只派缺的角色，已有的写明「不要重做」 |
+| `c5ebf35` | #11 | 反例在案例索引里单独一行 |
+| `c666045` | #11 | `docs/architecture.md` 第 9 节通用语言补四个概念，测试逐个解析表里的 `模块.名字` |
+| `a46bac5` | #11 | `PKG_CRLF`：包内 .md 有 CRLF 即硬错误（墨子第 13 条改判，见下） |
+| `af5883d` | #11 | `mdf publish` 认 `MDF_DATA_ROOT`（经 `Workspace`） |
+| `06ca3a1` | #11 | 未发布且置信度不够时状态表发布行「受阻」并给 AskUserQuestion；模板删「质量审查：{review_status}」 |
+| `58cc872` | #11 | CI（ubuntu）修复：`validate_principles` 变量遮蔽 + glob 顺序依赖 |
+
+### 本轮新增的闸门
+
+| 代码 | 级别 | 触发 | 处置（`commands/distill.md` 有对应行） |
+|---|---|---|---|
+| `PKG_CRLF` | 硬错误 | SKILL.md、人物档案.md、`references/*.md` 含 CRLF | 转 LF 后重跑包校验。manifest 按字节记 hash，入库时 `eol=lf` 会改写，发布后校验必然失败 |
+| `P2_UNVERIFIED_HIGH` | 硬错误 | 卡只靠 `textual_note` 放行，`语料位置` 首路径不在 `sources/<slug>/raw/`，却标 high | 降为 medium（规则 6）；原文在 `raw/` 里的底本讹字卡可保留 high |
+| `P2_COVERAGE` | 警告 | 逐字核对未覆盖全部证据卡 | 不挡路；写进 review.md 准确性一节与 Stage 6.1 摘要；补救是 `mdf acquire` 采原文进 `raw/` |
+| `PKG_REVIEW_STATUS_LINE` | 警告 | 技能正文还写着「质量审查：…」 | 删掉这一行；审查结论以 manifest 与 index.json 为准 |
+| `[原则候选不足]` / `NO_PRINCIPLES` | 警告 / 硬错误 | 单文件 <6 条或本人来源合计 <8 条 / 一条都没有 | 不许拿评论者观点凑数；先看是不是语料薄（`[不可改善]`） |
+| `TOO_FEW_BLIND_SPOTS` | 硬错误 | 核心层盲区主题 <2 | 回 3A 补 |
+| `CLASSIFICATION_MISMATCH` | 硬错误 | 框架/身份卡的类目与 `classification.json` 不一致 | 以用户确认的记录为准 |
+| 置信度门 | 发布拒绝 | `distill_confidence` <3 | 发布前状态表就显示「受阻」，用 AskUserQuestion 让用户选：补素材 / 接受不入 gallery / `--force` |
+| 预算门 | 步骤受阻 | 选中输入 token 超过上限（默认 500,000） | 问用户，同意后 `mdf budget <slug> --approve` |
+| 临时数据根 | 警告 | 数据根在 `.claude/worktrees/<name>/` 下 | 阶段 0 先把 `MDF_DATA_ROOT` 挪到 worktree 之外 |
+
+闸门通过记录 `.gates/package.json` 存指纹与 `notes`（目前只带 `P2_COVERAGE`），状态表不加 `--check` 时据此判断「通过且未改动」并显示覆盖率。
+
+### 领域值对象（DDD）
+
+通用语言与不变式在 `docs/architecture.md` 第 9 节，测试会解析表里每个 `模块.名字`，改名或删类时套件直接失败。
+
+| 值对象 | 负责 |
+|---|---|
+| `workspace.Workspace` | 数据根解析（`--root` > `MDF_DATA_ROOT` > 仓库根）、新进程授权与环境、临时 worktree 判定（`ephemeral`） |
+| `harness.HarnessProfile` | `config/harnesses.json` 一项的能力声明与 argv 构造 |
+| `cost_estimator.Budget` | 按选中 token（必知）与费用上界（有价格时）判定是否超预算 |
+| `verify_provenance.EvidenceCoverage` | 逐字覆盖率（verified / total / adjudicated）：警告文本的生成与解析、manifest 字段、状态表那句话。用 `NamedTuple` 而非 dataclass，原因见第四节 |
+
+### 实跑结论
+
+| 实跑 | 方式 | 结果 |
+|---|---|---|
+| extract（2026-10-19） | `mdf run` 简报路径，Sonnet 5.5 high，《熱風》OCR 语料 | 15 条抽取，全部按 OCR 规则封顶 medium、逐字在分片里，检查点通过；暴露费用解析与心跳问题（`cb10d3e` 已修） |
+| attachments（scratchpad/realrun） | `mdf run lu-xun attachments --harness claude-code`，Sonnet 5.5 high | 3 分 11 秒，$0.78，0 次权限拒绝；cases.md、evidence.md 字节未变（只做了缺的）；voice.md 24 条；33 个案例回写成 23 行索引，SKILL.md 485 行 |
+| Stage 4.5 → 6 dry-run（scratchpad/guirun） | 本会话当编排者，角色由 Sonnet 5.5 high 子代理担任 | 索引 17 行（6 条反例各一行），SKILL.md 479 行，voice.md 28 条；检查点 4 先被 `PKG_CRLF` 拦下（cases.md 465 处 CRLF）；隔离审查 PASS 4.24；dry-run 给出 `BLOCKED_LOW_CONFIDENCE`。暴露 `a46bac5`、`af5883d` 两个 bug |
+| GUI 复验（用户启动的会话，笔记 `%TEMP%/claude/D--mind-distill-factory/acceptance-pr11-root/acceptance_notes_pr11.md`） | 按 `bcc78ba` 从 Stage 4.5 复验到 6 dry-run | (a)–(f) 全过：SKILL.md 472 行，覆盖率 12/24（carder 合并了补充卡，分母从 28 变 24），审查 PASS 3.87。问题 1 = `af5883d`，2、3 = `06ca3a1`，4 = `55a8acb`，5、7 只是提示 |
+
+鲁迅包的内容问题（不在管线范围，没改）：表达 DNA 写「不用应当/必须」但语料里出现 22 次（发现 14）；边界规则「已逐字核对」对 12 张网络卡说过头；部分反例案例偏推演。
 
 ---
 
@@ -98,6 +168,8 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 ## 三、未完成（按优先级）
 
 ### 待人工决定
+- **鲁迅 `distill_confidence`=2**：审查 PASS，但低于质量门 3，发布会被拒（`BLOCKED_LOW_CONFIDENCE`）。三选一：补一手素材重跑 / 接受不入 gallery / `--force`（记 `FORCED_LOW_CONFIDENCE`）。验收要求只做 dry-run，目前没发布
+- **鲁迅 16 张语料外证据卡**（GUI 复验里合并成 12 张）：原文是维基文库转录，不在 `raw/`，逐字核对只覆盖 12/28。是否用 `mdf acquire` 把《坟》《华盖集》《且介亭杂文》等原典采进来，再让 evidence-carder 改卡
 - **charlie-munger**：按 v5 模板补齐 8 个章节，或重新蒸馏
 - **张居正 v6 过 strict**：缺 review.md（S2/S3），且 manifest 早于 S4、没有权利汇总（`STRICT_NO_RIGHTS_RECORD`）。要过 strict：补做 Stage 5 审查 → 写 `sources/zhang-juzheng-v6/rights.json` → 重跑 `mdf index` → 重新发布
 - **`--install`**：发布时同步装入 `~/.claude/skills`。曾在评审中被**刻意删除**（写仓库外，见 `test_publish_v6.py` 的 `test_install_paths_helper_removed`），恢复需重新拍板。现有替代：`mdf harness plan <slug> --target <harness>` 只打印命令
@@ -120,10 +192,22 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - CI 尚未跑 `validate_output.py published` 全量 gallery；要加这一步，需先处理 charlie-munger
 
 ### P4：阶段 3 留下的缺口
-- **Codex / pi 端到端实测**：墨子试跑（`docs/harness-trial-mozi.md`，已合并）用 `claude -p` 新进程把简报路径跑到发布（9 次调用 $6.04，审查 PASS 4.04/5），修了 7 处简报/闸门缺口。Codex、pi 本身仍没跑过：用户 2026-10-18 选择暂不真跑（Codex 按量计费；pi 本机只有 9B 本地模型）。试跑报告「未修、需要决策」第 8–14 条（类目传递通道、发布后 next 仍指向包校验、raw 非递归 glob、reduce 简报未禁网、新进程再派子代理、CRLF、合并小语料步骤）尚未处理
+- **Codex / pi 端到端实测**：墨子试跑（`docs/harness-trial-mozi.md`，已合并）用 `claude -p` 新进程把简报路径跑到发布（9 次调用 $6.04，审查 PASS 4.04/5），修了 7 处简报/闸门缺口。Codex、pi 本身仍没跑过：用户 2026-10-18 选择暂不真跑（Codex 按量计费；pi 本机只有 9B 本地模型）。试跑报告「未修、需要决策」第 8–14 条：
+  - ~~8 类目没有传递通道~~ **已修（`b080dd4`）**：`mdf classify` 写 `classification.json`，下游简报只读不选，不一致报 `CLASSIFICATION_MISMATCH`
+  - ~~9 发布后 next 仍指向包校验~~ **已修（`2973239`）**：包校验通过即写 `.gates/package.json`，发布只复制、不改 output 里的包文件，记录保持有效。早于这份记录发布的包，跑一次 `mdf validate package <slug>` 即可
+  - **10 `validate sources` 的 raw 用非递归 glob：未修**。`scripts/validate_output.py` 的 `raw_dir.glob("*")` 仍只看第一层，采集落在 `raw/acquired/…/` 的语料不会触发「必须有 manifest」检查。可直接按 TDD 修
+  - ~~11 reduce 简报没禁网~~ **已修（`b080dd4`）**：`network: forbidden` + `--disallowedTools WebSearch,WebFetch`
+  - **12 新进程会再派子代理：待决定**。运行记录已写子代理数（`subagents`），但简报仍没说允不允许；影响费用与可复现性，不影响 Stage 5 隔离
+  - ~~13 CRLF 致 hash 不符~~ **已修（`a46bac5`，改判）**：原决定「交由运行时 agent，不加脚本闸门」。GUI 实跑里 Claude Code 子代理根本看不到简报那句，上游 cases.md 带 465 处 CRLF 进了检查点 4，于是加硬闸门 `PKG_CRLF`
+  - **14 小语料合并 extract/reduce/principles：未做**。只有 1 个分片时三步分三个进程，费用大头是反复的缓存读
 - `gallery/mozi` 已入库，但 3 篇出处篇名标错（维基文库页眉混入正文，`acquire.py` 已修），包里标了「篇次待核」；要更正需重采 → 重抽取 → 重跑后续阶段
 - ~~OCR 真实引擎校准~~ **已完成**：rapidocr 3.10 与 Umi-OCR 自带 PaddleOCR-json 同图对比（8 页 52 句 × 4 字体 × 横竖排 × 4 档退化，64 次运行），数字与结论见 `docs/methodology.md`「OCR 校准」；`mdf ocr survey` 已对本机六个人物的 raw 目录做过整书抽样体检。真实扫描件已抽查七类页面（民国竖排、明刻本对开、透墨国图本、手稿、横排简体、英文），结论见同节「真实扫描件抽查」。整本端到端也跑过：《熱風》1947 年版 134 页纯图片竖排，`mdf index` 空闲时 80 秒，判 flagged（`ocr_text`、`ocr_lines_dropped`、`ocr_incomplete`），52 页共 70 行可疑行，见同节「整本端到端」。遗留：样张仍是系统字体画的合成图，没有真实古籍的纸色、刻工字形与版框；竖排漏检列按列距推算、偏保守，横排漏检的行仍只靠低置信度兜底；刻本双行小注页逐字存活只有约三成，要在识别前切分小注列（未做）；CI 不装引擎，真实引擎路径只在本机验证过
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
+
+### P5：鲁迅验收留下的（已有任务卡，未开工）
+- **表达 DNA 禁忌词对语料核对**（发现 14 管线化）：DNA 写「不用 X」时，确定性地数 X 在本人语料里出现几次，超过阈值就警告。鲁迅包写「不用应当/必须」，语料里有 22 次，审查员是凭读才发现的
+- **统一按路径加载模块的 helper**：`spec_from_file_location` 不登记 `sys.modules` 的坑本轮踩了 3 次（见第四节），现在各模块各写一份 `_load_sibling`
+- Stage 6.1 成品摘要（覆盖率 + `distill_confidence`）仍只靠协议文字要求编排者写，没有机器闸门；状态表的发布行已能在发布前显示置信度门
 
 ---
 
@@ -156,6 +240,14 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **`codex exec`** 默认只读沙箱，写产物要 `--sandbox workspace-write`；`--full-auto` 已不再支持
 - **采集的 User-Agent** 会把 `contact` 发给对方站点：只填愿意公开的联系方式
 
+**鲁迅验收新增（2026-10-19/20）**
+- **按路径加载 + dataclass**：`spec_from_file_location` 加载的模块如果不登记进 `sys.modules`，其中的 dataclass 在 `from __future__ import annotations` 下会崩（解析注解时找不到模块）。`EvidenceCoverage` 因此用 `NamedTuple`；`publish_skill._load_sibling` 已改为先登记再执行
+- **glob 顺序随平台变**：`Path.glob` 在 Linux 与 Windows 上的顺序不同。依赖顺序的逻辑（如「只报第一个」）在本机绿、CI 的 ubuntu 红。遍历文件一律 `sorted(...)`，测试要断言「每个都报」
+- **测试夹具的行尾**：Windows 上 `write_text` 写 CRLF，`PKG_CRLF` 加上后共享夹具 15 个测试一起红。夹具写 .md 一律传 `newline="\n"`
+- **GUI 里的项目 agent**：桌面版 Agent 工具可能列不出 `.claude/agents` 里的项目角色（`claude -p` 能）。协议的兜底是 `mdf brief` + general-purpose 子代理
+- **数据根放在 worktree 外**：桌面版会回收 worktree，被 gitignore 的 `sources/`、`output/` 一起消失（鲁迅第一轮因此丢到 3A）。验收与实跑一律把 `MDF_DATA_ROOT` 指到 worktree 之外，publish 也认它（`af5883d`）
+- **PR 合并早于推送**：PR #10 合并时最后两个提交还没推上去，不在 main 里，只能由下一个 PR 带进去。合并前核对 PR 的 head 提交是不是本地最新
+
 ---
 
 ## 五、验收命令
@@ -169,6 +261,9 @@ python scripts/package_manifest.py backfill <slug> [--corpus-root DIR]
 python scripts/publish_skill.py --slug <slug> --dry-run
 python scripts/mdf.py doctor
 python scripts/mdf.py status <slug> [--check] [--json]
+python scripts/mdf.py classify <slug> --primary <类目> [--secondary <类目>,<类目>]
+python scripts/mdf.py budget <slug> [--approve]
+python scripts/mdf.py run <slug> <step> --harness claude-code [--yes]   # 不加 --yes 只打印计划；--yes 是付费调用，先问用户
 python scripts/mdf.py harness
 python scripts/mdf.py stages --mermaid
 python evaluation/scripts/check_negative_fixtures.py
@@ -177,8 +272,9 @@ claude plugin validate .
 
 ## 六、建议的下一动作顺序
 
-1. 人工决定项：charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式
-2. PR #2、#4 已于 2026-10-17 合入 main；之后的提交（OCR 收尾、`mdf run`、墨子试跑与文档分支合并）走新 PR
-3. 处理墨子试跑报告第 8–14 条；用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
+1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
+2. 墨子试跑第 10 条（raw 递归 glob，可直接 TDD 修）；第 12、14 条先问用户
+3. P5 两张任务卡：DNA 禁忌词对语料核对、统一按路径加载 helper
 4. P2 runtime `read_reference` + trace + judge schema
-5. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验
+5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
+6. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验

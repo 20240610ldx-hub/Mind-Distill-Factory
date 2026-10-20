@@ -77,7 +77,7 @@ agent 步骤（每步一个新进程；表中「简报是否自足」指新进�
 |---|---|---|
 | 8 类目没有传递通道 | 沿用「编排者用 AskUserQuestion 问用户、回传决策」 | 新增 `mdf classify <slug> --primary … --secondary …`，写 `sources/<slug>/classification.json`（校验 1 主 + ≤2 副）；阶段 0 多一个「类目确认」步骤；原则提取 / 框架合成 / 核心层组装的简报带上类目，缺记录就拒绝生成；`validate frameworks` 与 `validate package`（身份卡）不一致报 `CLASSIFICATION_MISMATCH`。早于此通道的旧人物不检查 |
 | 11 reduce 没禁网 | reduce 禁用网络检索 | 步骤改名「合并与本地补充」，`network: forbidden`：简报写明禁令，Claude Code 新进程加 `--disallowedTools WebSearch,WebFetch`；`distill.md` 子代理 B/C/D 与 `source-researcher.md` 改为只读本地语料，缺素材由编排者问用户是否 `mdf acquire` |
-| 13 CRLF 致 hash 不符 | 交由运行时 agent 解决 | 不加脚本闸门。每份简报写「一律 LF，写完自查」；`distill.md` 6.3 与编排 skill 要求发布前由执行者检查并转 LF |
+| 13 CRLF 致 hash 不符 | 交由运行时 agent 解决 | 不加脚本闸门。每份简报写「一律 LF，写完自查」；`distill.md` 6.3 与编排 skill 要求发布前由执行者检查并转 LF。**2026-10-20 改判**：鲁迅 GUI 实跑里 Claude Code 子代理看不到简报那句，上游 cases.md 带 465 处 CRLF 进了检查点 4，`a46bac5` 加包闸门硬错误 `PKG_CRLF` |
 | V1–V4 进度可见性 | 按建议办 | 上游已加 `mdf run`、阶段卡与 `status --html`（3801fb3）。本次补：`mdf run` 跑步骤级检查点（extract 的 `task_status.py summary --strict`——原先 summary 永远返回 0，当闸门无效）；Claude Code 新进程带 `--output-format json`，运行记录写入费用 / 轮数 / token / 子代理数，结果行与面板显示，面板有合计费用；阶段卡的「闸门」改用步骤级检查点 |
 
 测试：`tests/test_trial_decisions.py`（23 个）。
