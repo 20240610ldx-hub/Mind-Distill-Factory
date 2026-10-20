@@ -8,7 +8,7 @@
 - 鲁迅 GUI 验收与修复（2026-10-19/20）：PR #9（`b080dd4` 等，墨子试跑决策 + 值对象）、PR #10（`0963022`、`89f593d`）、PR #11（`9e9ef17` → `58cc872`）均已合入 main（`3ed4e0c`），明细见「〇-2」
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 698 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
+结果：`Ran 705 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -195,7 +195,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **Codex / pi 端到端实测**：墨子试跑（`docs/harness-trial-mozi.md`，已合并）用 `claude -p` 新进程把简报路径跑到发布（9 次调用 $6.04，审查 PASS 4.04/5），修了 7 处简报/闸门缺口。Codex、pi 本身仍没跑过：用户 2026-10-18 选择暂不真跑（Codex 按量计费；pi 本机只有 9B 本地模型）。试跑报告「未修、需要决策」第 8–14 条：
   - ~~8 类目没有传递通道~~ **已修（`b080dd4`）**：`mdf classify` 写 `classification.json`，下游简报只读不选，不一致报 `CLASSIFICATION_MISMATCH`
   - ~~9 发布后 next 仍指向包校验~~ **已修（`2973239`）**：包校验通过即写 `.gates/package.json`，发布只复制、不改 output 里的包文件，记录保持有效。早于这份记录发布的包，跑一次 `mdf validate package <slug>` 即可
-  - **10 `validate sources` 的 raw 用非递归 glob：未修**。`scripts/validate_output.py` 的 `raw_dir.glob("*")` 仍只看第一层，采集落在 `raw/acquired/…/` 的语料不会触发「必须有 manifest」检查。可直接按 TDD 修
+  - ~~10 `validate sources` 的 raw 用非递归 glob~~ **已修（`e141b11`）**：「raw/ 里有哪些素材」只由 `source_registry.indexable_raw_files` 判定（递归，格式与索引器一致，有测试钉住），检查点 1 与状态表都用它；顺带修了状态表漏认 `.markdown`、检查点 1 把 .docx 之类也当素材
   - ~~11 reduce 简报没禁网~~ **已修（`b080dd4`）**：`network: forbidden` + `--disallowedTools WebSearch,WebFetch`
   - **12 新进程会再派子代理：待决定**。运行记录已写子代理数（`subagents`），但简报仍没说允不允许；影响费用与可复现性，不影响 Stage 5 隔离
   - ~~13 CRLF 致 hash 不符~~ **已修（`a46bac5`，改判）**：原决定「交由运行时 agent，不加脚本闸门」。GUI 实跑里 Claude Code 子代理根本看不到简报那句，上游 cases.md 带 465 处 CRLF 进了检查点 4，于是加硬闸门 `PKG_CRLF`
@@ -273,7 +273,7 @@ claude plugin validate .
 ## 六、建议的下一动作顺序
 
 1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
-2. 墨子试跑第 10 条（raw 递归 glob，可直接 TDD 修）；第 12、14 条先问用户
+2. 墨子试跑第 12、14 条先问用户（第 10 条已修）
 3. P5 两张任务卡：DNA 禁忌词对语料核对、统一按路径加载 helper
 4. P2 runtime `read_reference` + trace + judge schema
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
