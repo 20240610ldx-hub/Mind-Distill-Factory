@@ -32,7 +32,6 @@ STATE_LABELS = {
 FINISHED = {"done", "skipped"}
 EXECUTOR_LABELS = {"script": "脚本", "agent": "agent", "human": "人工"}
 REQUIRED_REFS = ("cases.md", "evidence.md", "voice.md")
-RAW_SUFFIXES = {".pdf", ".txt", ".md"}
 
 
 @dataclass
@@ -160,7 +159,7 @@ def _stage_clean(ctx: "Ctx") -> StageStatus:
 def _stage_sources(ctx: "Ctx") -> StageStatus:
     raw = ctx.root / "sources" / ctx.slug / "raw"
     files = [p for p in raw.rglob("*") if p.is_file()] if raw.exists() else []
-    usable = [p for p in files if p.suffix.lower() in RAW_SUFFIXES]
+    usable = _sibling("source_registry").indexable_raw_files(raw)
     log = ctx.root / "sources" / ctx.slug / "processed" / "acquisition_log.jsonl"
     status = StageStatus("sources", "素材入库", "pending")
     if usable:

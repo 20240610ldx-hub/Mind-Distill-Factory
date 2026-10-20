@@ -230,9 +230,7 @@ def validate_sources(slug: str) -> list[str]:
                 pass
 
     # ── Stage 1A local sharding checks ──
-    raw_files = list(raw_dir.glob("*")) if raw_dir.exists() else []
-    raw_files = [p for p in raw_files if p.is_file()]
-    if raw_files:
+    if _load_sibling("source_registry").indexable_raw_files(raw_dir):
         manifest_path = processed_dir / "local_shards" / "manifest.json"
         if not manifest_path.exists():
             errors.append(

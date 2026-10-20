@@ -262,6 +262,7 @@ mind-distill-factory/
 |------|------|---------|
 | 人物 slug | 一次蒸馏的标识，小写连字符 | `slug_rules.py` |
 | 来源 | 一份登记过的原典文件，带权利状态与质量分 | `source-registry-v2` |
+| 可索引素材 | `raw/` 下（含 `mdf acquire` 落下的子目录）`mdf index` 能读的文件；决定「有没有本地素材」 | `source_registry.indexable_raw_files` |
 | 分片 | 送给一个 worker 的一段语料，带输入指纹 | `local-source-manifest-v2`、`shard_NNN.json` |
 | 清洗结论 | 每个来源通过 / 待复核 / 被拒，以及原因与标记 | `cleaning-report-v1` |
 | 可疑行 | OCR 检测到却没认全的行，页码标记写作 `(OCR, k unread)` | `pdf_quality.summarize_lines` |
@@ -300,13 +301,14 @@ flowchart LR
 
 | 上下文 | 拥有的概念 | 模块 | 对外发布 |
 |--------|-----------|------|---------|
-| 采集与语料 | 来源、页、分片、清洗结论、可疑行 | `acquire`、`local_source_pipeline`、`pdf_quality`、`ocr_calibrate`、`clean_corpus`、`sampling`、`cost_estimator`、`worker_dispatch`、`source_registry` | `source-registry-v2`、`local-source-manifest-v2`、`cleaning-report-v1`、`sampling-plan-v1`、`cost-estimate-v1`、`worker-dispatch-plan-v1`、`acquisition-log-v1` |
+| 采集与语料 | 来源、可索引素材、页、分片、清洗结论、可疑行 | `acquire`、`local_source_pipeline`、`pdf_quality`、`ocr_calibrate`、`clean_corpus`、`sampling`、`cost_estimator`、`worker_dispatch`、`source_registry` | `source-registry-v2`、`local-source-manifest-v2`、`cleaning-report-v1`、`sampling-plan-v1`、`cost-estimate-v1`、`worker-dispatch-plan-v1`、`acquisition-log-v1` |
 | 蒸馏 | 摘录、原则、框架、草稿包 | `agents/*.md`、`task_status`、`build_framework_core` | `task-status-v2`、`framework_core.json` |
 | 校验与发布 | 闸门、证据、逐字覆盖率、闸门通过记录、置信度门、发布包、清单 | `validate_output`、`verify_provenance`、`gate_records`、`package_manifest`、`publish_skill`、`measure_package`、`persona_metrics` | manifest（`manifest_version` 2）、`persona-metrics-v1`、`claim-ledger-v1` |
 | 编排 | 阶段与步骤、简报、运行、工作区、harness 档案 | `pipeline_status`、`harness`、`stage_runner`、`workspace`、`mdf` | `pipeline-status-v1`、`run-record-v1`、`mdf-harness-v1`、`mdf-doctor-v1` |
 
 ### 不变式（由测试守住）
 
+- **可索引素材**：「`raw/` 里有哪些素材」只由 `indexable_raw_files` 判定（递归，格式与索引器一致），检查点 1 与状态表都用它；采集落在子目录里的语料同样要求先 `mdf index`。
 - **证据链**：清洗只删不改；index、清洗、P2 共用同一个解码器。所以包里的引文总能在语料里逐字回查。
 - **OCR 来源**：只要有一页靠 OCR，来源就带 `ocr_text`，该页引文不高于 medium；有可疑行的页标出漏了几行。
 - **工作区**：数据根的解析规则（`--root` > `MDF_DATA_ROOT` > 仓库根）只在 `workspace.py` 定义一次，有架构测试禁止别处再写。分离时，新进程被授权访问数据根，简报写明路径约定；检查点命令只有一种改写，`mdf run` 和简报都用它。
