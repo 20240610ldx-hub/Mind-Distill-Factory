@@ -6,9 +6,10 @@
 - 阶段 2 / P0（发布与校验事务化，M1–M4）：`296b05e` → `861feb8` → `7b5e436` → `655a82f`
 - 阶段 3（流水线自动化）：`effcb3f` → … → `21334b5` 经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑、文档分支合并与《熱風》整本 OCR 修正（`66c0537`）经 PR #5、#7 合入；OCR 后续 `df08946` → `e01044e` → `b829b9f` 经 PR #6 合入；刻本双行小注 `3856504` 经 PR #8 合入
 - 鲁迅 GUI 验收与修复（2026-10-19/20）：PR #9（`b080dd4` 等，墨子试跑决策 + 值对象）、PR #10（`0963022`、`89f593d`）、PR #11（`9e9ef17` → `58cc872`）均已合入 main（`3ed4e0c`），明细见「〇-2」
+- P2 runtime evaluator（2026-10-21）：分支 `claude/runtime-evaluator`（`1ee2079` 起 6 个提交，基于 `d2d066d`），明细见第三节 P2
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 766 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
+结果：`Ran 803 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -181,10 +182,17 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - `mdf metrics <slug> --write` 输出 `output/{slug}/claim_ledger.json` 与 `persona_metrics.json`；闸门与盲区记为 `basis: synthesis`（综合判断，不假装逐字可溯）
 - 指标是**代理指标，只提示不拦截**；校准数据与阈值依据见 `docs/methodology.md` 第六节
 
-### P2：runtime evaluator 与附件读取轨迹
-- `evaluation/runtime/run_dialogue_eval.py`：受限 `read_reference`（仅 `references/{cases,evidence,voice}.md`，拒绝绝对路径/`..`）+ `runtime-trace.jsonl`；judge 严格 schema，禁止 `setdefault` 与贪婪正则捞 JSON
-- `collect_artifacts.py`：接入 `package` 校验；v6 用 8–11 原则区间；zh-only 不被跨语言指标扣分
-- 两个 evaluation 脚本的 `--slug` 尚未接 `slug_rules`
+### ~~P2：runtime evaluator 与附件读取轨迹~~ 已完成（分支 `claude/runtime-evaluator`）
+- **judge 严格 schema**：`parse_json_object` 只认整段 JSON（允许一层 ```json 围栏），不再用贪婪正则从文字里捞。`validate_judgment` 按评分表逐项核对：每条记录恰好评一次、维度与 0–max 分数、严重度与失败标记取自评分表、`runtime_score_25` 在 0–25、P0/P1 计数等于严重度条数。不合格就带着错误清单让 judge 重答一次，仍不合格中止；不再用 `setdefault` 补字段
+- **附件读取**：生成回答时给模型 `read_reference` 工具，只放行 `references/{cases,evidence,voice}.md`。绝对路径、`..`、包里其他文件（如 `人物档案.md`）、指到包外的链接一律拒绝，只回原因、不回内容。每次调用写一行 `runtime-trace.jsonl`，每条记录带 `references_read`（judge 能看到）。每题最多 4 轮工具，之后 `tool_choice=none` 逼它作答。读过的附件留在多轮对话上下文里，和真实运行时一致
+- **`collect_artifacts.py`**：
+  - 原则数区间跟框架的 `format_version` 走（v6 8–11，legacy 5–8）；
+  - 没要英文分支的 v6 包不因缺英文扣分，要了就查 `frameworks.en.json` 与 `output/{slug}-en/SKILL.md`；
+  - v6 包闸门经 `validate_output skill` 转入（`package` 命令通过时会往 output/ 写闸门记录，评测必须只读），不过就是关键闸门 `package_gate_failed`；
+  - 校验器总用仓库那份，在 `--root` 下跑，数据根可以在仓库外。
+- **`--slug`**：两个脚本都用 `slug_rules.slug_arg`，非法 slug 写盘前退出码 2；按路径加载走 `sibling.load_sibling`，`test_sibling` 的扫描范围扩到 `evaluation/runtime`
+- **未实测**：没有用真实 DeepSeek 跑过工具调用。思考模式下「同一轮工具调用要回传 `reasoning_content`」是按接口约定写的，`tool_choice: none` 是否被 `deepseek-v4-pro` 接受也没验证。下次跑评测时先 `--smoke` 看一题的轨迹
+- 拿主仓库 `zhang-juzheng-v6` 冒烟：package 闸门过、跨语言项无英文扣分、output/ 无任何写入。主仓库检出停在旧分支 `v6-package`，其 gallery 的 manifest 还是 v1，所以 `gallery` 阶段报 `MANIFEST_OUTDATED`（main 上已是 v2，不是评测器的问题）
 
 ### P3：负面 fixtures、CI、文档收敛
 - ~~`evaluation/fixtures/negative/` 不存在~~ **已完成**：10 个单点缺陷负例 + 合规基准包阳性对照，`tests/test_negative_fixtures.py` 进 CI；`regression-protocol.md` 已勘误
@@ -207,7 +215,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 ### P5：鲁迅验收留下的（已有任务卡，未开工）
 - ~~状态文件按绝对路径判定分片完成~~ **已完成**（分支 `claude/portable-data-root`，基于 PR #12）：复制/挪动数据根后 `mdf status` 按新位置如实反映，见第四节。遗留：磁盘上已有的旧 `task_status.json` 要等下一次 `mark-*` 才会被改写成相对路径（读取时已兼容，不影响判定）；`validate_output` 的 Stage 1A/3 状态一致性检查本来就按数据根拼路径，未改
 - **表达 DNA 禁忌词对语料核对**（发现 14 管线化）：DNA 写「不用 X」时，确定性地数 X 在本人语料里出现几次，超过阈值就警告。鲁迅包写「不用应当/必须」，语料里有 22 次，审查员是凭读才发现的
-- **统一按路径加载模块的 helper**：`spec_from_file_location` 不登记 `sys.modules` 的坑本轮踩了 3 次（见第四节），现在各模块各写一份 `_load_sibling`
+- ~~统一按路径加载模块的 helper~~ **已完成（PR #14）**：`scripts/sibling.py` 的 `load_module` / `load_sibling` 先登记 `sys.modules` 再执行，`tests/test_sibling.py` 守着 scripts/ 与 evaluation/ 下不得再直接调 `spec_from_file_location`
 - Stage 6.1 成品摘要（覆盖率 + `distill_confidence`）仍只靠协议文字要求编排者写，没有机器闸门；状态表的发布行已能在发布前显示置信度门
 
 ---
@@ -277,7 +285,7 @@ claude plugin validate .
 
 1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
 2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` 还缺一次真实模型实跑。2026-10-20 在鲁迅副本上试过（Sonnet 5.5 high，鲁迅正好 1 个分片），Claude Code 会话额度用完（429），没跑起来，花费 $0；结果行此后会把这类原因打出来
-3. P5 两张任务卡：DNA 禁忌词对语料核对、统一按路径加载 helper
-4. P2 runtime `read_reference` + trace + judge schema
+3. P5：DNA 禁忌词对语料核对（PR #13，CI 待修绿）
+4. P2 已完成，还差一次真实 DeepSeek 冒烟（`run_dialogue_eval.py --smoke`），确认工具调用与 `runtime-trace.jsonl`
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
 6. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验
