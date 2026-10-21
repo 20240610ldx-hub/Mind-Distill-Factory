@@ -23,7 +23,7 @@ from typing import Any
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:  # 按路径加载本模块时也能找到同目录的 workspace
     sys.path.insert(0, _SCRIPTS_DIR)
-from workspace import data_root  # noqa: E402  数据根解析规则只在 workspace.py 定义
+from workspace import Workspace  # noqa: E402  数据根解析规则只在 workspace.py 定义
 
 try:
     from slug_rules import slug_arg
@@ -43,11 +43,6 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8")
     except AttributeError:
         pass
-
-
-def repo_root() -> Path:
-    """数据根目录：MDF_DATA_ROOT 优先（mdf 的 --root 与测试用），否则仓库根（规则见 workspace.py）。"""
-    return data_root()
 
 
 def now_iso() -> str:
@@ -75,12 +70,20 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
             os.unlink(temporary_name)
 
 
-def stage1a_status_path(slug: str) -> Path:
-    return repo_root() / "sources" / slug / "processed" / "local_shards" / "task_status.json"
+def workspace_of(status_path: Path | None = None, root: Path | None = None) -> Workspace:
+    """状态文件属于哪个数据根：显式给的 > 状态文件所在的 `<根>/sources|output/…` > 环境（规则见 workspace.py）。
+    状态里的路径一律相对这个根解析，数据根被复制或挪走后进度跟着走，不会读到旧位置的产物。"""
+    if root is not None:
+        return Workspace.resolve(root)
+    return (Workspace.containing(status_path) if status_path is not None else None) or Workspace.resolve()
 
 
-def stage3_status_path(slug: str) -> Path:
-    return repo_root() / "output" / slug / "stage3_status.json"
+def stage1a_status_path(slug: str, root: Path | None = None) -> Path:
+    return workspace_of(root=root).data_root / "sources" / slug / "processed" / "local_shards" / "task_status.json"
+
+
+def stage3_status_path(slug: str, root: Path | None = None) -> Path:
+    return workspace_of(root=root).data_root / "output" / slug / "stage3_status.json"
 
 
 def base_status(task_id: str, stage: str, agent_role: str, input_units: list[dict[str, Any]]) -> dict[str, Any]:
@@ -137,8 +140,10 @@ def refresh_status(status: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
-def init_stage1a(slug: str) -> Path:
-    manifest_path = repo_root() / "sources" / slug / "processed" / "local_shards" / "manifest.json"
+def init_stage1a(slug: str, root: Path | None = None) -> Path:
+    ws = workspace_of(root=root)
+    shard_dir = f"sources/{slug}/processed/local_shards"
+    manifest_path = ws.locate(f"{shard_dir}/manifest.json")
     if not manifest_path.exists():
         raise SystemExit(f"Missing Stage 1A manifest: {manifest_path}")
     manifest = read_json(manifest_path)
@@ -151,8 +156,8 @@ def init_stage1a(slug: str) -> Path:
             {
                 "unit_id": shard_id,
                 "unit_type": "local_source_shard",
-                "input_path": str(repo_root() / "sources" / slug / "processed" / shard.get("path", "")),
-                "expected_output": str(repo_root() / "sources" / slug / "processed" / "local_shards" / f"{shard_id}_extracts.json"),
+                "input_path": ws.portable(f"sources/{slug}/processed/{shard.get('path', '')}"),
+                "expected_output": f"{shard_dir}/{shard_id}_extracts.json",
                 "token_estimate": shard.get("token_estimate", 0),
                 "input_fingerprint": manifest.get("input_fingerprint"),
                 "shard_fingerprint": shard.get("shard_fingerprint"),
@@ -160,62 +165,82 @@ def init_stage1a(slug: str) -> Path:
             }
         )
     status = base_status(f"{slug}:stage1a", "stage1a", "local-source-worker", input_units)
-    status["manifest_path"] = str(manifest_path)
-    status = sync_outputs(status)
-    path = stage1a_status_path(slug)
+    status["manifest_path"] = f"{shard_dir}/manifest.json"
+    status = sync_outputs(status, ws)
+    path = stage1a_status_path(slug, ws.data_root)
     write_json(path, status)
     return path
 
 
-def init_stage3(slug: str) -> Path:
-    root = repo_root()
-    output_dir = root / "output" / slug
-    english_requested = (output_dir / "en_requested.flag").exists()
+def init_stage3(slug: str, root: Path | None = None) -> Path:
+    ws = workspace_of(root=root)
+    output_dir = f"output/{slug}"  # 相对数据根：状态文件不记绝对路径
+    english_requested = ws.locate(f"{output_dir}/en_requested.flag").exists()
     units = [
         {
             "unit_id": "framework_core",
             "unit_type": "framework_core",
-            "input_path": str(output_dir),
-            "expected_output": str(output_dir / "framework_core.json"),
+            "input_path": output_dir,
+            "expected_output": f"{output_dir}/framework_core.json",
             "agent_role": "framework-core-synthesizer",
         },
         {
             "unit_id": "framework_zh",
             "unit_type": "language_framework",
-            "input_path": str(output_dir / "framework_core.json"),
-            "expected_output": str(output_dir / "frameworks.zh.json"),
+            "input_path": f"{output_dir}/framework_core.json",
+            "expected_output": f"{output_dir}/frameworks.zh.json",
             "agent_role": "framework-synthesizer-zh",
             "depends_on": ["framework_core"],
         },
         *([{
             "unit_id": "framework_en",
             "unit_type": "language_framework",
-            "input_path": str(output_dir / "framework_core.json"),
-            "expected_output": str(output_dir / "frameworks.en.json"),
+            "input_path": f"{output_dir}/framework_core.json",
+            "expected_output": f"{output_dir}/frameworks.en.json",
             "agent_role": "framework-synthesizer-en",
             "depends_on": ["framework_core"],
         }] if english_requested else []),
         {
             "unit_id": "alignment_review",
             "unit_type": "alignment_review" if english_requested else "zh_self_check",
-            "input_path": str(output_dir),
-            "expected_output": str(output_dir / "framework_alignment_review.md"),
+            "input_path": output_dir,
+            "expected_output": f"{output_dir}/framework_alignment_review.md",
             "agent_role": "framework-alignment-reviewer",
             "depends_on": ["framework_zh", "framework_en"] if english_requested else ["framework_zh"],
         },
     ]
     status = base_status(f"{slug}:stage3", "stage3", "framework-stage", units)
-    status = sync_outputs(status)
-    path = stage3_status_path(slug)
+    status = sync_outputs(status, ws)
+    path = stage3_status_path(slug, ws.data_root)
     write_json(path, status)
     return path
 
 
-def _output_matches_unit(unit: dict[str, Any]) -> bool:
+PATH_FIELDS = ("input_path", "expected_output")
+
+
+def portable_status(status: dict[str, Any], ws: Workspace) -> dict[str, Any]:
+    """旧版状态文件存的是写入时的绝对路径：读进来就改成相对数据根的形式，下次保存即完成迁移。"""
+    for unit in status.get("input_units", []):
+        for field in PATH_FIELDS:
+            if unit.get(field):
+                unit[field] = ws.portable(unit[field])
+    if status.get("manifest_path"):
+        status["manifest_path"] = ws.portable(status["manifest_path"])
+    status["output_paths"] = {unit_id: ws.portable(path) for unit_id, path in status.get("output_paths", {}).items()}
+    return status
+
+
+def display_unit(unit: dict[str, Any], ws: Workspace) -> dict[str, Any]:
+    """给 `next` 的读者（编排者、worker）看的单元：路径换成当前数据根下的真实位置，不改状态文件。"""
+    return {**unit, **{f: str(ws.locate(unit[f])) for f in PATH_FIELDS if unit.get(f)}}
+
+
+def _output_matches_unit(unit: dict[str, Any], ws: Workspace) -> bool:
     expected = unit.get("expected_output")
-    if not expected or not Path(expected).is_file():
+    output_path = ws.locate(expected) if expected else None
+    if output_path is None or not output_path.is_file():
         return False
-    output_path = Path(expected)
     unit_type = unit.get("unit_type")
     if unit_type != "local_source_shard":
         if output_path.suffix.lower() == ".json":
@@ -227,7 +252,8 @@ def _output_matches_unit(unit: dict[str, Any]) -> bool:
                 return False
             person_slug = output.get("person_slug")
             if person_slug:
-                expected_slug = unit.get("input_path", "").split("output/")[-1].split("/")[0]
+                parts = ws.portable(unit.get("input_path", "")).split("/")
+                expected_slug = parts[1] if parts[0] == "output" and len(parts) > 1 else ""
                 if expected_slug and person_slug != expected_slug:
                     return False
         else:
@@ -253,19 +279,19 @@ def _output_matches_unit(unit: dict[str, Any]) -> bool:
     return True
 
 
-def sync_outputs(status: dict[str, Any]) -> dict[str, Any]:
+def sync_outputs(status: dict[str, Any], ws: Workspace | None = None) -> dict[str, Any]:
+    ws = ws or workspace_of()
     for unit in status.get("input_units", []):
         unit_id = unit["unit_id"]
-        expected = unit.get("expected_output")
-        if _output_matches_unit(unit) and unit_id not in status.get("completed_units", []):
+        if _output_matches_unit(unit, ws) and unit_id not in status.get("completed_units", []):
             status.setdefault("completed_units", []).append(unit_id)
-            status.setdefault("output_paths", {})[unit_id] = expected
+            status.setdefault("output_paths", {})[unit_id] = ws.portable(unit["expected_output"])
     return refresh_status(status)
 
 
 def load_status(path: Path) -> dict[str, Any]:
-    status = read_json(path)
-    return sync_outputs(status)
+    ws = workspace_of(path)
+    return sync_outputs(portable_status(read_json(path), ws), ws)
 
 
 def save_status(path: Path, status: dict[str, Any]) -> None:
@@ -285,7 +311,7 @@ def mark_completed(path: Path, unit_id: str, output: str | None) -> None:
     if unit_id in status.get("blocked_units", []):
         status["blocked_units"] = [u for u in status["blocked_units"] if u != unit_id]
     if output:
-        status.setdefault("output_paths", {})[unit_id] = output
+        status.setdefault("output_paths", {})[unit_id] = workspace_of(path).portable(output)
     status["last_error"] = ""
     save_status(path, status)
 
@@ -338,7 +364,8 @@ def runnable_units(status: dict[str, Any]) -> list[dict[str, Any]]:
 
 def cmd_next(path: Path) -> None:
     status = load_status(path)
-    print(json.dumps(runnable_units(status), ensure_ascii=False, indent=2))
+    ws = workspace_of(path)
+    print(json.dumps([display_unit(u, ws) for u in runnable_units(status)], ensure_ascii=False, indent=2))
 
 
 def cmd_summary(path: Path) -> None:

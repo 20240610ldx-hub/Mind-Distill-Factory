@@ -25,6 +25,25 @@ CODE_ROOT = Path(__file__).resolve().parents[1]
 ENV = "MDF_DATA_ROOT"
 
 
+def _parts(text: str) -> list[str]:
+    return [p for p in re.split(r"[\\/]+", text) if p]
+
+
+def _is_absolute(text: str) -> bool:  # 跨平台判断：Windows 写下的路径可能在 posix 上读回，反之亦然
+    return bool(re.match(r"[\\/]|[A-Za-z]:", text))
+
+
+def _anchor(parts: list[str]) -> int | None:
+    """数据根之下的第一级目录在路径里的位置：`sources/<slug>/processed/…` 或 `output/…`。
+    取最后一处匹配：旧数据根的上级目录叫 output / sources 时，不会被误认成锚点。"""
+    found = None
+    for i, part in enumerate(parts[:-1]):
+        name = part.lower()
+        if name == "output" or (name == "sources" and len(parts) > i + 2 and parts[i + 2].lower() == "processed"):
+            found = i
+    return found
+
+
 @dataclass(frozen=True)
 class Workspace:
     data_root: Path
@@ -39,6 +58,38 @@ class Workspace:
                 code_root: Path = CODE_ROOT) -> "Workspace":
         environ = os.environ if environ is None else environ
         return cls(Path(root or environ.get(ENV) or code_root), code_root)
+
+    @classmethod
+    def containing(cls, artifact: str | os.PathLike[str], code_root: Path = CODE_ROOT) -> "Workspace | None":
+        """产物文件（`<数据根>/sources|output/…`）所在的工作区；路径不在这个布局里就返回 None。
+        状态文件据此认出自己属于哪个数据根，不看环境变量，所以数据根被复制或挪走后仍然自洽。"""
+        parts = list(Path(artifact).resolve().parts)
+        i = _anchor(parts)
+        return cls(Path(*parts[:i]), code_root) if i else None
+
+    def locate(self, stored: str | os.PathLike[str]) -> Path:
+        """产物里存的路径 → 当前数据根下的真实路径。相对路径挂到数据根下；旧版存的绝对路径只取
+        `sources/…` 或 `output/…` 起的部分重新挂上，不信任写入时的那个位置；认不出布局的绝对路径原样返回。"""
+        text = os.fspath(stored)
+        parts = _parts(text)
+        if not _is_absolute(text):
+            return self.data_root.joinpath(*parts)
+        i = _anchor(parts)
+        return self.data_root.joinpath(*parts[i:]) if i is not None else Path(text)
+
+    def portable(self, path: str | os.PathLike[str]) -> str:
+        """写进产物的路径：相对数据根的 posix 形式，数据根复制或挪走后依然有效。"""
+        text = os.fspath(path)
+        if not text:
+            return ""
+        parts = _parts(text)
+        if _is_absolute(text):
+            try:
+                return Path(text).resolve().relative_to(self.data_root).as_posix()
+            except ValueError:
+                i = _anchor(parts)
+                return "/".join(parts[i:]) if i is not None else Path(text).as_posix()
+        return "/".join(parts)
 
     @property
     def separate(self) -> bool:

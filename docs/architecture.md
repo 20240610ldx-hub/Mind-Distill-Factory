@@ -281,6 +281,7 @@ mind-distill-factory/
 | 执行单位 | 一份简报、一个新进程做的事：通常一个步骤；单分片时抽取、合并、原则提取合成 `small-corpus` | `run_unit.RunUnit`、阶段树 `bundles` |
 | 运行 | 一次新进程执行：命令、心跳、用量、检查点结果 | `run-record-v1` |
 | 工作区 | 代码根（仓库）+ 数据根（语料与产物），可以分离 | `workspace.Workspace` |
+| 产物路径 | 状态文件里存的路径：相对数据根的 posix 形式；旧版存的绝对路径读回时重新挂到当前数据根 | `workspace.Workspace.locate`、`workspace.Workspace.portable` |
 | harness 档案 | 一个 harness 怎样起新进程、声明了哪些能力 | `harness.HarnessProfile`、`harness-profiles-v1` |
 | 权利声明 | 人写的来源使用许可 | `rights-declaration-v1` |
 
@@ -314,6 +315,7 @@ flowchart LR
 - **证据链**：清洗只删不改；index、清洗、P2 共用同一个解码器。所以包里的引文总能在语料里逐字回查。
 - **OCR 来源**：只要有一页靠 OCR，来源就带 `ocr_text`，该页引文不高于 medium；有可疑行的页标出漏了几行。
 - **工作区**：数据根的解析规则（`--root` > `MDF_DATA_ROOT` > 仓库根）只在 `workspace.py` 定义一次，有架构测试禁止别处再写。分离时，新进程被授权访问数据根，简报写明路径约定；检查点命令只有一种改写，`mdf run` 和简报都用它。
+- **数据根可整体挪动**：产物里不依赖绝对路径。`task_status`（`input_path`、`expected_output`、`manifest_path`、`output_paths`）和 manifest 的目录字段只存相对数据根的路径，读取一律经 `Workspace.locate`；旧版存的绝对路径只取 `sources/…` 或 `output/…` 起的部分重新挂到当前数据根，不信任写入时的位置。状态文件的数据根由它自己所在的目录认出（`Workspace.containing`），不看环境变量，所以复制到别处的副本只认副本里的产物，挪走后进度也跟着走。`tests/test_portable_data_root.py` 扫描 index 之后 `processed/` 下的每个 JSON，出现数据根的绝对路径即失败。
 - **harness 档案**：`isolated_run` 必须有独立的 `{prompt}` 参数位。没声明的能力，指定了就报错（模型、推理强度），或者跳过（目录授权）；可变参数放在提示词之后。
 - **运行**：不加 `--yes` 什么也不写。每次运行都追加一条 `run-record-v1`，含费用和被拒的工具调用数。新进程不得再派子代理：简报写明禁令，派了就记进 `warnings` 并告警（`stage_runner.run_warnings`），不判失败。
 - **执行单位**：「这次做哪几步、扮演哪些角色、跑哪些检查点」只由 `run_unit.plan` 判定，简报、`mdf run` 与阶段卡共用。合并单位只在分片数 ≤ `max_shards`、所请求的步骤本身未完成、且剩下至少两步时成立；成员的检查点一律都跑，单个步骤的阶段检查点仍等本阶段做完再跑。

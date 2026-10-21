@@ -729,8 +729,8 @@ def write_index(slug: str) -> None:
         "person_slug": slug,
         "created_at": date.today().isoformat(),
         "input_fingerprint": input_fingerprint,
-        "raw_dir": str(raw_dir(slug)),
-        "shard_dir": str(out_dir),
+        "raw_dir": f"sources/{slug}/raw",  # 相对数据根：数据根可整体复制或挪动
+        "shard_dir": f"sources/{slug}/processed/local_shards",
         "source_registry": "../source_registry.json",
         "sampling_plan": "local_shards/sampling_plan.json",
         "dispatch_plan": "local_shards/dispatch_plan.json",
