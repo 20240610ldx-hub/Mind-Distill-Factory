@@ -168,6 +168,8 @@ def deepseek_chat(
     json_mode: bool = False,
     max_tokens: int | None = None,
     retries: int = 2,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | None = None,
 ) -> dict[str, Any]:
     endpoint = base_url.rstrip("/") + "/chat/completions"
     body: dict[str, Any] = {
@@ -180,6 +182,10 @@ def deepseek_chat(
         body["max_tokens"] = max_tokens
     if json_mode:
         body["response_format"] = {"type": "json_object"}
+    if tools:
+        body["tools"] = tools
+        if tool_choice:
+            body["tool_choice"] = tool_choice
 
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     headers = {
@@ -212,15 +218,146 @@ def assistant_content(response: dict[str, Any]) -> str:
     return (message.get("content") or "").strip()
 
 
-def build_system_prompt(skill_text: str) -> str:
-    return (
+# v6 技能包的附件。运行时模型照 SKILL.md 里的相对路径按需读它们；评测只放行这三个，包里其他文件（人物档案.md 等）不给看。
+REFERENCE_FILES = ("references/cases.md", "references/evidence.md", "references/voice.md")
+READ_REFERENCE = "read_reference"
+MAX_TOOL_ROUNDS = 4
+
+
+def reference_name(requested: Any) -> str:
+    """把模型给的路径规整成 REFERENCE_FILES 里的一项；绝对路径、`..`、清单外的文件一律 ValueError。"""
+    if not isinstance(requested, str) or not requested.strip():
+        raise ValueError("path 必须是非空字符串")
+    text = requested.strip().replace("\\", "/")
+    if text.startswith("/") or re.match(r"^[A-Za-z]:", text):
+        raise ValueError(f"不接受绝对路径：{requested}")
+    if ".." in text.split("/"):
+        raise ValueError(f"不接受 `..`：{requested}")
+    name = text[2:] if text.startswith("./") else text
+    if name not in REFERENCE_FILES:
+        raise ValueError(f"只能读 {'、'.join(REFERENCE_FILES)}，不能读 {requested}")
+    return name
+
+
+def read_reference(skill_dir: Path, requested: Any) -> str:
+    """读一个附件。清单外 → ValueError；清单内但包里没有 → FileNotFoundError；链接指到包外 → ValueError。"""
+    path = skill_dir / reference_name(requested)
+    if not path.resolve().is_relative_to(skill_dir.resolve()):
+        raise ValueError(f"{requested} 指到了技能包外面")
+    if not path.is_file():
+        raise FileNotFoundError(str(path))
+    return read_text(path)
+
+
+def available_references(skill_dir: Path | None) -> list[str]:
+    if skill_dir is None:
+        return []
+    return [name for name in REFERENCE_FILES if (skill_dir / name).is_file()]
+
+
+def reference_tool(references: list[str]) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": READ_REFERENCE,
+            "description": "Read one reference file of this skill package, by the relative path SKILL.md uses.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "enum": list(references)}},
+                "required": ["path"],
+            },
+        },
+    }
+
+
+def run_reference_call(skill_dir: Path | None, call: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """执行模型的一次工具调用，返回（轨迹事件, 回给模型的内容）。拒绝时只回原因，不回任何文件内容。"""
+    function = call.get("function") or {}
+    name = function.get("name")
+    event: dict[str, Any] = {"tool": name, "path": None, "status": "denied", "chars": 0, "reason": None}
+    if name != READ_REFERENCE or skill_dir is None:
+        event["reason"] = f"没有这个工具：{name}"
+        return event, f"ERROR: {event['reason']}"
+    try:
+        arguments = json.loads(function.get("arguments") or "{}")
+    except json.JSONDecodeError as exc:
+        event["reason"] = f"参数不是 JSON：{exc}"
+        return event, f"ERROR: {event['reason']}"
+    requested = arguments.get("path") if isinstance(arguments, dict) else None
+    event["path"] = requested
+    try:
+        event["path"] = reference_name(requested)
+        text = read_reference(skill_dir, requested)
+    except FileNotFoundError:
+        event.update(status="missing", reason="这个附件不在包里")
+    except ValueError as exc:
+        event["reason"] = str(exc)
+    else:
+        event.update(status="ok", chars=len(text))
+        return event, text
+    return event, f"ERROR: {event['reason']}"
+
+
+def answer_with_references(
+    *,
+    chat: Any,
+    messages: list[dict[str, Any]],
+    skill_dir: Path | None,
+    case_id: Any,
+    trace: list[dict[str, Any]],
+    **call: Any,
+) -> tuple[str, list[dict[str, Any]], list[str]]:
+    """答一轮，期间模型可以按需读附件。返回（最终回答, 这一轮要接进对话的消息, 读成功的附件）。
+
+    同一轮里的工具调用把 reasoning_content 原样带回（DeepSeek 思考模式的要求）；最多 MAX_TOOL_ROUNDS 轮工具，
+    之后 tool_choice=none 逼它作答，仍要调工具就失败。
+    """
+    references = available_references(skill_dir)
+    tools = [reference_tool(references)] if references else None
+    turn: list[dict[str, Any]] = []
+    read: list[str] = []
+    for round_no in range(1, MAX_TOOL_ROUNDS + 2):
+        last = round_no > MAX_TOOL_ROUNDS
+        response = chat(messages=messages + turn, tools=tools,
+                        tool_choice="none" if tools and last else None, **call)
+        message = ((response.get("choices") or [{}])[0].get("message")) or {}
+        calls = message.get("tool_calls") or []
+        if not calls:
+            answer = assistant_content(response)
+            return answer, turn + [{"role": "assistant", "content": answer}], read
+        if last:
+            raise RuntimeError(f"{case_id}：读了 {MAX_TOOL_ROUNDS} 轮附件还不作答")
+        assistant: dict[str, Any] = {"role": "assistant", "content": message.get("content") or "", "tool_calls": calls}
+        if message.get("reasoning_content"):
+            assistant["reasoning_content"] = message["reasoning_content"]
+        turn.append(assistant)
+        for item in calls:
+            event, content = run_reference_call(skill_dir, item)
+            trace.append({"case_id": case_id, "round": round_no, **event})
+            if event["status"] == "ok" and event["path"] not in read:
+                read.append(event["path"])
+            turn.append({"role": "tool", "tool_call_id": item.get("id"), "content": content})
+    raise AssertionError("unreachable")
+
+
+def build_system_prompt(skill_text: str, references: list[str] | tuple[str, ...] = ()) -> str:
+    prompt = (
         "You are executing the following Mind Distill Factory SKILL.md. "
         "Follow it as the active instruction for every answer. "
         "Answer the user's language. Do not reveal hidden reasoning.\n\n"
-        "===== SKILL.md =====\n"
-        f"{skill_text}\n"
-        "===== END SKILL.md ====="
     )
+    if references:
+        prompt += (
+            f"This skill package also ships reference files that SKILL.md may point to: {', '.join(references)}. "
+            f"Read one with the {READ_REFERENCE} tool when SKILL.md says to or when you need its content; "
+            "no other files are available.\n\n"
+        )
+    return prompt + "===== SKILL.md =====\n" f"{skill_text}\n" "===== END SKILL.md ====="
+
+
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
 
 
 def run_generation(
@@ -232,23 +369,34 @@ def run_generation(
     skill_text: str,
     cases: list[dict[str, Any]],
     limit: int | None = None,
+    skill_dir: Path | None = None,
+    trace: list[dict[str, Any]] | None = None,
+    chat: Any = None,
 ) -> list[dict[str, Any]]:
-    messages: list[dict[str, str]] = [{"role": "system", "content": build_system_prompt(skill_text)}]
+    """逐题生成回答，一整段多轮对话。skill_dir 有附件时模型可用 read_reference 读，每次读写进 trace。"""
+    chat = chat or deepseek_chat
+    trace = trace if trace is not None else []
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": build_system_prompt(skill_text, available_references(skill_dir))}
+    ]
     records: list[dict[str, Any]] = []
     selected_cases = cases[:limit] if limit else cases
     for idx, case in enumerate(selected_cases, start=1):
         prompt = case["prompt"]
         messages.append({"role": "user", "content": prompt})
-        response = deepseek_chat(
+        answer, turn, read = answer_with_references(
+            chat=chat,
+            messages=messages,
+            skill_dir=skill_dir,
+            case_id=case.get("id"),
+            trace=trace,
             api_key=api_key,
             base_url=base_url,
             model=model,
-            messages=messages,
             reasoning_effort=reasoning_effort,
             max_tokens=2500,
         )
-        answer = assistant_content(response)
-        messages.append({"role": "assistant", "content": answer})
+        messages.extend(turn)
         records.append({
             "case_number": idx,
             "case_id": case.get("id"),
@@ -256,6 +404,7 @@ def run_generation(
             "category": case.get("category"),
             "question": prompt,
             "answer": answer,
+            "references_read": read,
             "source": "generated",
         })
     return records
@@ -1095,7 +1244,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     records: list[dict[str, Any]]
     source: str
+    trace: list[dict[str, Any]] | None = None
     dialogue_path = out_dir / "runtime-dialogue-test.md"
+    trace_path = out_dir / "runtime-trace.jsonl"
     if args.judge_existing_runtime:
         if not dialogue_path.exists():
             print(f"ERROR: runtime dialogue file not found at {dialogue_path}", file=sys.stderr)
@@ -1128,6 +1279,7 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
             return 2
+        trace = []
         records = run_generation(
             api_key=api_key,
             base_url=args.base_url,
@@ -1136,10 +1288,15 @@ def main(argv: list[str] | None = None) -> int:
             skill_text=skill_text,
             cases=cases,
             limit=limit,
+            skill_dir=skill_path.parent,
+            trace=trace,
         )
         source = "generated"
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    if trace is not None:
+        # 只在本次真的生成了回答时写；导入旧对话、重评已有对话时不碰上一次的轨迹
+        write_jsonl(trace_path, trace)
     dialogue_md = render_dialogue_markdown(
         slug=args.slug,
         model=args.model,
@@ -1170,11 +1327,11 @@ def main(argv: list[str] | None = None) -> int:
             standard_case_count=len(cases),
         )
 
-    judgment.setdefault("metadata", {})
-    judgment["metadata"].update({
+    judgment["metadata"].update({  # judge_records 与 skipped_judgment 都会建 metadata
         "slug": args.slug,
         "skill_path": str(skill_path),
         "dialogue_path": str(dialogue_path),
+        "trace_path": str(trace_path) if trace is not None else None,
         "source": source,
         "record_count": len(records),
         "standard_case_count": len(cases),
@@ -1190,6 +1347,8 @@ def main(argv: list[str] | None = None) -> int:
     runtime_eval_path.write_text(render_runtime_evaluation(args.slug, records, judgment), encoding="utf-8")
 
     print(f"Wrote {dialogue_path}")
+    if trace is not None:
+        print(f"Wrote {trace_path} ({len(trace)} reference calls)")
     print(f"Wrote {judgment_path}")
     print(f"Wrote {runtime_eval_path}")
     if should_run_soul_questions(
