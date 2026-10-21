@@ -131,6 +131,8 @@ sources/{slug}/processed/user_sources.json
 
 `evaluation/` 是独立评估系统，不嵌入 `/distill` 主流程。它可以做静态 artifact 汇总、DeepSeek runtime 对话测试、judge 打分和 scorecard 生成。这样做的原因很简单：生产和评估不能互相替自己背书。
 
+对 v6 包，runtime 测试给模型一个受限的 `read_reference` 工具，只能读 `references/{cases,evidence,voice}.md`。每次读取都记进 `runtime-trace.jsonl`，能看出技能该查证据时有没有真去查。judge 的裁决按评分表逐项校验，不合格不收。记分卡按 v6 包本来的样子评：中文单语、原则 8–11 条，并且要过 P1–P6 包闸门。
+
 这次更新新增了非 benchmark 的 **灵魂十问** 附录：
 
 <p align="center">

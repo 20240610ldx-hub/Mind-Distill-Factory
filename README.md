@@ -102,6 +102,8 @@ Full details live in [sources/README.md](sources/README.md). In short:
 
 The evaluator is intentionally separate from the distillation pipeline. It can inspect static artifacts, run DeepSeek-compatible dialogue tests, judge runtime behavior, and produce scorecards without mutating the Skill itself.
 
+For v6 packages, the runtime test gives the model a guarded `read_reference` tool, limited to `references/{cases,evidence,voice}.md`. Every read is logged to `runtime-trace.jsonl`, so you can see whether the Skill actually opened its evidence. The judge's verdict is checked against the rubric and rejected if it doesn't match. The scorecard grades a v6 package as what it is: a Chinese-only package with 8–11 principles. That package must also pass the P1–P6 gates.
+
 The newest appendix is the non-benchmark **Soul Ten Questions** artifact. After a full generated runtime test, DeepSeek can ask and answer ten tailored questions about regret, alternate history, contradiction, compromise, misunderstood principles, decisive moments, unique personality wisdom, warnings against imitation, modern-use boundaries, and final self-judgment.
 
 <p align="center">

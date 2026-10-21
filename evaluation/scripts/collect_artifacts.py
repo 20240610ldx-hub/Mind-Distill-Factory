@@ -12,10 +12,25 @@ import datetime as dt
 import hashlib
 import json
 import re
+import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+# 校验器总用仓库里这一份：数据根（--root）可以在仓库外，那里没有 scripts/
+CODE_ROOT = Path(__file__).resolve().parents[2]
+if str(CODE_ROOT / "scripts") not in sys.path:  # 按路径加载本模块时也能找到 scripts/ 里的 sibling
+    sys.path.insert(0, str(CODE_ROOT / "scripts"))
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
+V6_FORMAT = 6
+# 原则数区间跟框架的 format_version 走，与 scripts/validate_output.py 的 FRAMEWORK_SCHEMA(_V6_PRINCIPLES) 一致
+PRINCIPLE_RANGES = {V6_FORMAT: (8, 11), None: (5, 8)}
+
+
+def repo_slug_arg():
+    """--slug 的 argparse type：与 mdf 其他入口共用 scripts/slug_rules.py。"""
+    return load_sibling("slug_rules").slug_arg
 
 
 METRICS = [
@@ -130,7 +145,8 @@ def bar(score: float, maximum: float, cells: int = 15) -> str:
 
 
 def run_validation(root: Path, stage: str, slug: str) -> dict[str, Any]:
-    validator = root / "scripts" / "validate_output.py"
+    """在数据根下跑仓库的 validate_output.py（它按当前目录找 output/、sources/）。"""
+    validator = CODE_ROOT / "scripts" / "validate_output.py"
     if not validator.exists():
         return {
             "stage": stage,
@@ -145,6 +161,7 @@ def run_validation(root: Path, stage: str, slug: str) -> dict[str, Any]:
         errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
     )
     return {
         "stage": stage,
@@ -189,6 +206,7 @@ def summarize_framework(path: Path) -> dict[str, Any]:
         "exists": True,
         "parseable": True,
         "lang": data.get("lang"),
+        "format_version": data.get("format_version"),
         "principle_count": len(data.get("core_principles") or []),
         "reasoning_pattern_count": len(data.get("reasoning_patterns") or []),
         "decision_step_count": len(decision_steps),
@@ -204,6 +222,10 @@ def summarize_framework(path: Path) -> dict[str, Any]:
         "unresolved_tension_count": len(values.get("unresolved_tensions") or []),
         "distill_confidence_score": (data.get("distill_confidence") or {}).get("score"),
     }
+
+
+def principle_range(framework: dict[str, Any]) -> tuple[int, int]:
+    return PRINCIPLE_RANGES[V6_FORMAT if framework.get("format_version") == V6_FORMAT else None]
 
 
 def summarize_principles(paths: list[Path]) -> dict[str, Any]:
@@ -281,6 +303,8 @@ def collect_facts(root: Path, slug: str) -> dict[str, Any]:
     selected_skill = output_skill if output_skill.exists() else gallery_skill
     skill_text = read_text(selected_skill)
     fm = parse_frontmatter(skill_text)
+    is_v6 = fm.get("format_version") == str(V6_FORMAT)
+    en_skill = root / "output" / f"{slug}-en" / "SKILL.md"
 
     framework_paths = {
         "zh": output_dir / "frameworks.zh.json",
@@ -347,6 +371,10 @@ def collect_facts(root: Path, slug: str) -> dict[str, Any]:
         "has_structural_naturalness_rules": bool(re.search(r"Structural Naturalness|结构自然", skill_text, re.IGNORECASE)),
         "has_voice_calibration": bool(re.search(r"Voice calibration|Aligned|Misaligned|语感校准", skill_text, re.IGNORECASE)),
         "has_placeholders": bool(re.search(r"\{[A-Za-z_][A-Za-z0-9_-]*\}", skill_text)),
+        # v6：中文单语包；英文是 Stage 6.5 按需另出的 {slug}-en 技能（en_requested.flag 标记要了）
+        "is_v6_package": is_v6,
+        "en_branch_requested": (output_dir / "en_requested.flag").exists(),
+        "has_en_branch_skill": en_skill.exists(),
     }
 
     dialogue_turns = len(re.findall(r"\*\*\*Q\*\*\*|^#\s*\*\*\*Q", dialogue_text, re.MULTILINE))
@@ -357,11 +385,14 @@ def collect_facts(root: Path, slug: str) -> dict[str, Any]:
         "sources": source_dir.exists(),
         "principles": bool(principle_paths),
         "frameworks": any(path.exists() for path in framework_paths.values()),
-        "skill": output_skill.exists(),
+        "skill": output_skill.exists() and not is_v6,
         "gallery": gallery_skill.exists(),
     }.items():
         if should_run:
             validation[stage] = run_validation(root, stage, slug)
+    if output_skill.exists() and is_v6:
+        # v6 包闸门 P1–P6。经 skill 阶段转入：`validate_output package` 通过时会往 output/ 写闸门记录，评测必须只读
+        validation["package"] = {**run_validation(root, "skill", slug), "stage": "package", "via": "skill"}
 
     critical_gates = {
         "missing_skill_md": not checks["has_skill_md"],
@@ -369,6 +400,7 @@ def collect_facts(root: Path, slug: str) -> dict[str, Any]:
         "unsafe_or_manipulative_advice_detected": bool(
             re.search(r"harm others|伤害他人|教.*操控|teach.*manipulat", skill_text, re.IGNORECASE)
         ),
+        "package_gate_failed": (validation.get("package") or {}).get("passed") is False,
     }
 
     if runtime_judgment and runtime_judgment.get("aggregate", {}).get("runtime_score_25") is not None:
@@ -466,6 +498,51 @@ def named_metric(name: str, score: float, maximum: int, evidence: list[str], ded
     return item
 
 
+def cross_lingual_v6(
+    checks: dict[str, Any],
+    fw: dict[str, Any],
+    desc: str,
+    skill_text: str,
+    evidence: list[str],
+    deductions: list[str],
+) -> float:
+    """v6 的语言结构分（满分 5，与 legacy 的英文段 1 + 中文段 1 + 双框架 2 + 双语描述 1 对齐）。
+
+    v6 默认只出中文；英文是 Stage 6.5 按需另出的 {slug}-en 技能，不是同一文件里的 `## English`。
+    没要英文分支就不因缺英文扣分；要了，就查 frameworks.en.json 与 output/{slug}-en/SKILL.md。
+    """
+    score = 0.0
+    cjk = re.compile(r"[一-鿿]")
+    if fw["zh"].get("parseable"):
+        score += 2
+        evidence.append("Chinese framework JSON is parseable.")
+    else:
+        deductions.append("frameworks.zh.json is missing or unparseable.")
+    if cjk.search(skill_text):
+        score += 1
+        evidence.append("SKILL.md is written in Chinese (v6 single-language package).")
+    else:
+        deductions.append("v6 SKILL.md has no Chinese text.")
+    if cjk.search(desc):
+        score += 1
+        evidence.append("Frontmatter description is Chinese.")
+    else:
+        deductions.append("Frontmatter description is not Chinese.")
+    if not checks.get("en_branch_requested"):
+        score += 1
+        evidence.append("English branch not requested; v6 ships Chinese only by design (not penalised).")
+    else:
+        missing = [name for name, ok in (("frameworks.en.json", fw["en"].get("parseable")),
+                                         ("output/{slug}-en/SKILL.md", checks.get("has_en_branch_skill"))) if not ok]
+        if missing:
+            score += 0.5 * (2 - len(missing))
+            deductions.append(f"English branch requested but missing: {', '.join(missing)}.")
+        else:
+            score += 1
+            evidence.append("Requested English branch exists as a separate skill.")
+    return score
+
+
 def score_facts(facts: dict[str, Any]) -> dict[str, Any]:
     weights = dict(METRICS)
     checks = facts["checks"]
@@ -515,12 +592,17 @@ def score_facts(facts: dict[str, Any]) -> dict[str, Any]:
     score = 0.0
     evidence = []
     deductions = []
-    principle_counts = [item.get("principle_count", 0) for item in fw.values() if item.get("parseable")]
-    if principle_counts and all(5 <= count <= 8 for count in principle_counts):
+    parsed = [item for item in fw.values() if item.get("parseable")]
+    bounds = sorted({principle_range(item) for item in parsed}) or [
+        PRINCIPLE_RANGES[V6_FORMAT if checks.get("is_v6_package") else None]]
+    label = "/".join(f"{lo}-{hi}" for lo, hi in bounds)
+    principle_counts = [item.get("principle_count", 0) for item in parsed]
+    if parsed and all(principle_range(item)[0] <= item.get("principle_count", 0) <= principle_range(item)[1]
+                      for item in parsed):
         score += 2
-        evidence.append(f"Framework principle counts are in range: {principle_counts}.")
+        evidence.append(f"Framework principle counts are in range ({label}): {principle_counts}.")
     else:
-        deductions.append("Core principle counts are missing or outside the 5-8 target.")
+        deductions.append(f"Core principle counts are missing or outside the {label} target: {principle_counts}.")
     avg_unique = principles.get("average_uniqueness_score")
     if avg_unique:
         score += min(2, max(0, (avg_unique - 2) / 3 * 2))
@@ -707,27 +789,30 @@ def score_facts(facts: dict[str, Any]) -> dict[str, Any]:
     score = 0.0
     evidence = []
     deductions = []
-    if checks["has_english_section"]:
-        score += 1
-        evidence.append("English section exists.")
-    else:
-        deductions.append("English section missing.")
-    if checks["has_chinese_section"]:
-        score += 1
-        evidence.append("Chinese section exists.")
-    else:
-        deductions.append("Chinese section missing.")
-    if fw["zh"].get("parseable") and fw["en"].get("parseable"):
-        score += 2
-        evidence.append("Both zh/en framework JSON files are parseable.")
-    else:
-        deductions.append("One or both zh/en framework JSON files are missing.")
     desc = facts.get("frontmatter", {}).get("description", "")
-    if re.search(r"[A-Za-z]{3,}", desc) and re.search(r"[\u4e00-\u9fff]", desc):
-        score += 1
-        evidence.append("Frontmatter description is bilingual.")
+    if checks.get("is_v6_package"):
+        score += cross_lingual_v6(checks, fw, desc, skill_text, evidence, deductions)
     else:
-        deductions.append("Frontmatter description does not appear bilingual.")
+        if checks["has_english_section"]:
+            score += 1
+            evidence.append("English section exists.")
+        else:
+            deductions.append("English section missing.")
+        if checks["has_chinese_section"]:
+            score += 1
+            evidence.append("Chinese section exists.")
+        else:
+            deductions.append("Chinese section missing.")
+        if fw["zh"].get("parseable") and fw["en"].get("parseable"):
+            score += 2
+            evidence.append("Both zh/en framework JSON files are parseable.")
+        else:
+            deductions.append("One or both zh/en framework JSON files are missing.")
+        if re.search(r"[A-Za-z]{3,}", desc) and re.search(r"[\u4e00-\u9fff]", desc):
+            score += 1
+            evidence.append("Frontmatter description is bilingual.")
+        else:
+            deductions.append("Frontmatter description does not appear bilingual.")
     if re.search(r"Cultural context|文化|cultural", skill_text, re.IGNORECASE):
         score += 2
         evidence.append("Cultural context is represented.")
@@ -1030,13 +1115,13 @@ def roadmap(scorecard: dict[str, Any]) -> str:
     ])
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--slug", required=True)
+    parser.add_argument("--slug", required=True, type=repo_slug_arg())
     parser.add_argument("--root", default=".")
     parser.add_argument("--out", required=True)
     parser.add_argument("--facts-only", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
     out = Path(args.out)

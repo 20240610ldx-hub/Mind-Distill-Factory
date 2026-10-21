@@ -19,6 +19,8 @@ Prefer evidence in this order:
 6. `gallery/{slug}/SKILL.md`
 7. `gallery/index.json`
 
+A v6 package (`format_version: 6` in the `SKILL.md` frontmatter) also has `output/{slug}/framework_core.json` and the on-demand attachments `references/{cases,evidence,voice}.md`. It is Chinese-only by design: it has no `## English` section and no `frameworks.en.json` unless the English branch was requested (`output/{slug}/en_requested.flag`), in which case the English Skill is a separate `output/{slug}-en/SKILL.md`. Its frameworks hold 8–11 core principles (legacy: 5–8).
+
 If only `SKILL.md` is available, perform a `Design-Only Evaluation`. If DeepSeek runtime judgment is available, perform a `Full Runtime Evaluation`. If only imported or legacy dialogue logs are available, mark runtime claims as provisional. If the Skill has just been distilled and no dialogue logs exist, perform an `Initial Evaluation`.
 
 ## Rubric
@@ -90,6 +92,14 @@ The script reads artifacts, runs existing validation checks when available, and 
 
 It must not modify `output/`, `gallery/`, `sources/`, `commands/`, or `agents/`.
 
+How it treats v6 packages:
+
+- The principle-count range follows each framework's `format_version` (v6 8–11, legacy 5–8).
+- `Cross-Lingual & Cultural Fit` does not deduct for missing English when the English branch was not requested. When it was requested, `frameworks.en.json` and `output/{slug}-en/SKILL.md` must exist.
+- The package gates P1–P6 run through `validate_output.py skill`, which hands a v6 `SKILL.md` to the package checks. The script does not call `validate_output.py package`, because that command writes a gate record into `output/`. A failed package gate is the critical gate `package_gate_failed` (total capped at `C`).
+- The validator is always the repo's own `scripts/validate_output.py`, run with `--root` as its working directory, so a data root outside the repo can be evaluated.
+- `--slug` goes through `scripts/slug_rules.py`. An invalid slug exits with code 2 before anything is written.
+
 ## DeepSeek Runtime Test
 
 To run the 12-case runtime pressure test:
@@ -113,7 +123,15 @@ Environment:
 Runtime output contract:
 
 - `runtime-dialogue-test.md` is the authoritative human-readable test set. It must contain only visible `Q` / `A` dialogue, never `reasoning_content`.
-- `runtime-judgment.json` stores judge scores and metadata with English JSON keys.
+- `runtime-judgment.json` stores judge scores and metadata with English JSON keys. The judge's answer must be one whole JSON object (one ```json fence allowed) and must pass `validate_judgment`:
+  - every record is judged exactly once;
+  - the score keys and the 0–max ranges match the rubric;
+  - severities and failure flags come from the rubric;
+  - `runtime_score_25` is within 0–25;
+  - `p0_count` / `p1_count` equal the number of P0 / P1 severities.
+
+  An invalid answer is sent back once with the error list. A second failure aborts the run. Nothing is filled in with defaults.
+- `runtime-trace.jsonl` (written only by a generated run) has one line per attachment read. Generation offers a `read_reference` tool that serves only `references/{cases,evidence,voice}.md`. Absolute paths, `..`, other package files and links leaving the package are refused, and the model sees only the reason. Each line records `case_id`, `round`, `tool`, `path`, `status` (`ok` / `denied` / `missing`), `chars` and `reason`. Each record also carries `references_read`, which the judge sees. Tool use is capped at 4 rounds per case; the next round forces an answer.
 - `runtime-evaluation.md` summarizes runtime failure modes.
 
 ## Soul Ten Questions Appendix
