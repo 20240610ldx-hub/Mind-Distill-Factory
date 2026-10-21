@@ -17,6 +17,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+# 夹具一律用简体：繁简折叠依赖可选依赖 opencc，CI 不装它（见 pyproject 的 provenance extra），
+# 折叠只在专门的、带 skipIf 的用例里测。
 
 import validate_output as v  # noqa: E402
 
@@ -95,9 +97,8 @@ class CorpusInDataRoot(unittest.TestCase):
 class BannedTermAgainstCorpus(CorpusInDataRoot):
     ROWS = {"禁忌表达": "不用“应当”“必须”之类说教词。"}
 
-    def test_traditional_corpus_hits_fold_to_the_simplified_term(self):
-        # 語料是繁体、OCR 无标点；DNA 写简体。「應當」2 + 「應该」…折叠后都算「应当」。
-        self.write_corpus("熱風.txt", "我們應當努力" + "凡事應當三思" + "此事應當如此" + "其餘無關")
+    def test_simplified_corpus_hits_are_counted(self):
+        self.write_corpus("热风.txt", "我们应当努力" + "凡事应当三思" + "此事应当如此" + "其余无关")
         self.write_skill(self.ROWS)
         out = self.warnings()
         self.assertEqual(len(out), 1, out)
@@ -105,12 +106,21 @@ class BannedTermAgainstCorpus(CorpusInDataRoot):
         self.assertIn("PKG_DNA_BANNED_TERM", out[0])
         self.assertIn("应当", out[0])
         self.assertIn("3", out[0])
-        self.assertIn("熱風.txt", out[0], "说出在哪份语料里数到的，方便核对")
+        self.assertIn("热风.txt", out[0], "说出在哪份语料里数到的，方便核对")
         self.assertIn("描述", out[0], "给出处置方向：改成描述语气")
 
+    @unittest.skipIf(v._load_provenance()._FOLDER is None, "繁简折叠需要可选依赖 opencc（pyproject 的 provenance extra）")
+    def test_traditional_corpus_folds_to_the_simplified_term(self):
+        # 語料是繁体、OCR 无标点；DNA 写简体。
+        self.write_corpus("熱風.txt", "我們應當努力凡事應當三思此事應當如此其餘無關")
+        self.write_skill(self.ROWS)
+        out = self.warnings()
+        self.assertEqual(len(out), 1, out)
+        self.assertIn("应当 3", out[0])
+
     def test_counts_add_up_across_corpus_files(self):
-        self.write_corpus("a.txt", "你必須去，他必須來。")
-        self.write_corpus("b.txt", "必須如此。")
+        self.write_corpus("a.txt", "你必须去，他必须来。")
+        self.write_corpus("b.txt", "必须如此。")
         self.write_skill(self.ROWS)
         out = self.warnings()
         self.assertEqual(len(out), 1, out)
@@ -118,7 +128,7 @@ class BannedTermAgainstCorpus(CorpusInDataRoot):
         self.assertIn("3", out[0])
 
     def test_below_threshold_is_silent(self):
-        self.write_corpus("a.txt", "你應當去，他應當來。")  # 2 次
+        self.write_corpus("a.txt", "你应当去，他应当来。")  # 2 次
         self.write_skill(self.ROWS)
         self.assertEqual(self.warnings(), [])
 
@@ -127,7 +137,7 @@ class BannedTermAgainstCorpus(CorpusInDataRoot):
 
     def test_terms_banned_together_count_as_one_class(self):
         # 鲁迅：「应当」2 处、「必须」4 处——单看「应当」不到阈值，但他把二者并称「说教词」，按一类数。
-        self.write_corpus("a.txt", "此事應當如此，彼事應當如彼，你必須去。")
+        self.write_corpus("a.txt", "此事应当如此，彼事应当如彼，你必须去。")
         self.write_skill(self.ROWS)
         out = self.warnings()
         self.assertEqual(len(out), 1, out)
@@ -135,14 +145,14 @@ class BannedTermAgainstCorpus(CorpusInDataRoot):
         self.assertIn("必须 1", out[0])
 
     def test_the_same_class_named_in_two_dimensions_warns_once(self):
-        self.write_corpus("a.txt", "應當應當應當")
+        self.write_corpus("a.txt", "应当应当应当")
         self.write_skill({"句式偏好": "不用“应当”“必须”。", "禁忌表达": "不用“应当”“必须”之类说教词。"})
         out = self.warnings()
         self.assertEqual(len(out), 1, out)
         self.assertIn("句式偏好/禁忌表达", out[0])
 
     def test_separately_banned_terms_each_get_their_own_warning(self):
-        self.write_corpus("a.txt", "應當應當應當，必須必須必須。")
+        self.write_corpus("a.txt", "应当应当应当，必须必须必须。")
         self.write_skill({"句式偏好": "不用“应当”。", "禁忌表达": "从不说“必须”。"})
         self.assertEqual(len(self.warnings()), 2)
 
@@ -156,7 +166,7 @@ class BannedTermAgainstCorpus(CorpusInDataRoot):
 
 class WiredIntoPackageGate(CorpusInDataRoot):
     def test_validate_package_reports_it_as_a_warning_only(self):
-        self.write_corpus("熱風.txt", "應當應當應當")
+        self.write_corpus("热风.txt", "应当应当应当")
         self.write_skill({"禁忌表達": "不用“应当”之类说教词。"})
         cwd = os.getcwd()
         os.chdir(self.root)
