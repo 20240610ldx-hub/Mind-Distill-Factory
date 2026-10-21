@@ -217,7 +217,7 @@ def build_registry(
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "root": str(raw_dir),
+        "root": raw_dir.name,  # relative_path 相对 sources/<slug>/ 下的这个目录；不存绝对路径，数据根可整体挪动
         "sources": records,
     }
 

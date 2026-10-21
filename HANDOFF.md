@@ -8,7 +8,7 @@
 - 鲁迅 GUI 验收与修复（2026-10-19/20）：PR #9（`b080dd4` 等，墨子试跑决策 + 值对象）、PR #10（`0963022`、`89f593d`）、PR #11（`9e9ef17` → `58cc872`）均已合入 main（`3ed4e0c`），明细见「〇-2」
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 733 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
+结果：`Ran 766 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -92,7 +92,7 @@ CI：`.github/workflows/tests.yml`（PR #3 合入）在 ubuntu + windows × Pyth
 
 | 值对象 | 负责 |
 |---|---|
-| `workspace.Workspace` | 数据根解析（`--root` > `MDF_DATA_ROOT` > 仓库根）、新进程授权与环境、临时 worktree 判定（`ephemeral`） |
+| `workspace.Workspace` | 数据根解析（`--root` > `MDF_DATA_ROOT` > 仓库根）、新进程授权与环境、临时 worktree 判定（`ephemeral`）、产物路径的存取（`portable` 存相对路径，`locate` 读回，`containing` 由产物位置认数据根） |
 | `harness.HarnessProfile` | `config/harnesses.json` 一项的能力声明与 argv 构造 |
 | `cost_estimator.Budget` | 按选中 token（必知）与费用上界（有价格时）判定是否超预算 |
 | `verify_provenance.EvidenceCoverage` | 逐字覆盖率（verified / total / adjudicated）：警告文本的生成与解析、manifest 字段、状态表那句话。用 `NamedTuple` 而非 dataclass，原因见第四节 |
@@ -205,6 +205,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **对话层指标的人类基线**：`mdf metrics --dialogue` 的阈值来自 25 份已有压测报告，没有人工标注的金标准
 
 ### P5：鲁迅验收留下的（已有任务卡，未开工）
+- ~~状态文件按绝对路径判定分片完成~~ **已完成**（分支 `claude/portable-data-root`，基于 PR #12）：复制/挪动数据根后 `mdf status` 按新位置如实反映，见第四节。遗留：磁盘上已有的旧 `task_status.json` 要等下一次 `mark-*` 才会被改写成相对路径（读取时已兼容，不影响判定）；`validate_output` 的 Stage 1A/3 状态一致性检查本来就按数据根拼路径，未改
 - **表达 DNA 禁忌词对语料核对**（发现 14 管线化）：DNA 写「不用 X」时，确定性地数 X 在本人语料里出现几次，超过阈值就警告。鲁迅包写「不用应当/必须」，语料里有 22 次，审查员是凭读才发现的
 - **统一按路径加载模块的 helper**：`spec_from_file_location` 不登记 `sys.modules` 的坑本轮踩了 3 次（见第四节），现在各模块各写一份 `_load_sibling`
 - Stage 6.1 成品摘要（覆盖率 + `distill_confidence`）仍只靠协议文字要求编排者写，没有机器闸门；状态表的发布行已能在发布前显示置信度门
@@ -247,6 +248,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **GUI 里的项目 agent**：桌面版 Agent 工具可能列不出 `.claude/agents` 里的项目角色（`claude -p` 能）。协议的兜底是 `mdf brief` + general-purpose 子代理
 - **数据根放在 worktree 外**：桌面版会回收 worktree，被 gitignore 的 `sources/`、`output/` 一起消失（鲁迅第一轮因此丢到 3A）。验收与实跑一律把 `MDF_DATA_ROOT` 指到 worktree 之外，publish 也认它（`af5883d`）
 - **mdf 不按当前目录找数据根**：顺序是 `--root` > `MDF_DATA_ROOT` > 仓库根。`cd <数据根> && python <仓库>/scripts/mdf.py …` 会落回仓库根，而 `validate_output.py`、`task_status.py` 这类脚本按当前目录解析，两者行为不同。简报里「本机这样跑」的命令现在都带 `MDF_DATA_ROOT=`；`mdf reduce` 不收 `--root`
+- **状态文件里不存绝对路径**（2026-10-20 发现）：`task_status.init` 曾把 `input_path`/`expected_output`/`manifest_path` 写成数据根下的绝对路径，复制数据根后删掉副本里的抽取结果、重置状态，`mdf status` 仍显示「分片抽取 ✅ 1/1」（原位置的产物还在）；数据根挪走后又一直停在 pending。现在新写入的一律相对数据根，读取经 `Workspace.locate`，旧的绝对路径只取 `sources/…`/`output/…` 起的部分重新挂上（`Workspace.containing` 用状态文件自己的位置认数据根，不看环境变量）。同时 manifest 的 `raw_dir`/`shard_dir`、`source_registry.json` 的 `root` 不再存绝对路径。写新的 JSON 产物时同理：要被读回当真相的路径存相对路径
 - **PR 合并早于推送**：PR #10 合并时最后两个提交还没推上去，不在 main 里，只能由下一个 PR 带进去。合并前核对 PR 的 head 提交是不是本地最新
 
 ---
