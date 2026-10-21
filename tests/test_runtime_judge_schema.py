@@ -9,22 +9,17 @@
 from __future__ import annotations
 
 import copy
-import importlib.util
 import json
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-runtime = load_module("run_dialogue_eval_judge", ROOT / "evaluation" / "runtime" / "run_dialogue_eval.py")
+runtime = load_module(ROOT / "evaluation" / "runtime" / "run_dialogue_eval.py", "run_dialogue_eval_judge")
 RUBRIC = json.loads((ROOT / "evaluation" / "runtime" / "judge_rubric.json").read_text(encoding="utf-8"))
 METRICS = list(RUBRIC["per_case_metrics"])
 CASES = ["case_01", "case_02"]

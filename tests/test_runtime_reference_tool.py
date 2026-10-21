@@ -9,25 +9,20 @@ v6 技能包 = SKILL.md + references/{cases,evidence,voice}.md。真实运行时
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-runtime = load_module("run_dialogue_eval_refs", ROOT / "evaluation" / "runtime" / "run_dialogue_eval.py")
+runtime = load_module(ROOT / "evaluation" / "runtime" / "run_dialogue_eval.py", "run_dialogue_eval_refs")
 
 CASES_MD = "# 案例\n\n## 案例 1 守城\n正文"
 

@@ -11,24 +11,19 @@ v6 包在「跨语言」一项被系统性压分；包闸门 P1–P6 也没进�
 
 from __future__ import annotations
 
-import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from sibling import load_module  # noqa: E402  按路径加载模块的唯一入口（先登记 sys.modules）
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-collector = load_module("collect_artifacts_v6", ROOT / "evaluation" / "scripts" / "collect_artifacts.py")
+collector = load_module(ROOT / "evaluation" / "scripts" / "collect_artifacts.py", "collect_artifacts_v6")
 
 V6_SKILL = """---
 name: demo-wisdom

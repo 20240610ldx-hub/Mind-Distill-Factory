@@ -105,9 +105,9 @@ class LoadSiblingTests(unittest.TestCase):
 
 
 class SingleLoaderArchitectureTests(unittest.TestCase):
-    """scripts/ 与 evaluation/scripts/ 里，只有 sibling.py 能直接碰 spec_from_file_location。"""
+    """scripts/ 与 evaluation/ 的脚本里，只有 sibling.py 能直接碰 spec_from_file_location。"""
 
-    SCANNED = ("scripts", "evaluation/scripts")
+    SCANNED = ("scripts", "evaluation/scripts", "evaluation/runtime")
     ALLOWED = {Path("scripts/sibling.py")}
 
     def _offenders(self) -> list[str]:

@@ -20,18 +20,17 @@ from typing import Any
 
 # 校验器总用仓库里这一份：数据根（--root）可以在仓库外，那里没有 scripts/
 CODE_ROOT = Path(__file__).resolve().parents[2]
+if str(CODE_ROOT / "scripts") not in sys.path:  # 按路径加载本模块时也能找到 scripts/ 里的 sibling
+    sys.path.insert(0, str(CODE_ROOT / "scripts"))
+from sibling import load_sibling  # noqa: E402  按路径加载兄弟模块的唯一入口
 V6_FORMAT = 6
 # 原则数区间跟框架的 format_version 走，与 scripts/validate_output.py 的 FRAMEWORK_SCHEMA(_V6_PRINCIPLES) 一致
 PRINCIPLE_RANGES = {V6_FORMAT: (8, 11), None: (5, 8)}
 
 
 def repo_slug_arg():
-    """--slug 的 argparse type：与 mdf 其他入口共用 scripts/slug_rules.py（本脚本不在 scripts/ 下，按路径加载）。"""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("mdf_slug_rules", CODE_ROOT / "scripts" / "slug_rules.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.slug_arg
+    """--slug 的 argparse type：与 mdf 其他入口共用 scripts/slug_rules.py。"""
+    return load_sibling("slug_rules").slug_arg
 
 
 METRICS = [
