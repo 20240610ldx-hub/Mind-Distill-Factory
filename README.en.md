@@ -162,6 +162,8 @@ Before a Skill enters `gallery/`, it must pass checks for:
 
 The `evaluation/` subtree is deliberately separate from the distillation pipeline. It can collect artifact facts, run DeepSeek-compatible runtime dialogue tests, judge outputs, and produce scorecards without changing the target Skill.
 
+For v6 packages, the runtime test gives the model a guarded `read_reference` tool, limited to `references/{cases,evidence,voice}.md`. Every read is logged to `runtime-trace.jsonl`, so you can see whether the Skill actually opened its evidence. The judge's verdict is checked against the rubric and rejected if it doesn't match. The scorecard grades a v6 package as what it is: a Chinese-only package with 8–11 principles. That package must also pass the P1–P6 gates.
+
 The newest runtime extension is the non-benchmark **Soul Ten Questions** appendix:
 
 <p align="center">

@@ -13,7 +13,8 @@
 | 资产 | 路径 | 作用 |
 |------|------|------|
 | 标准测试集（中文） | `runtime/test_sets/mind_distill_standard_zh.json` | 12 用例：六输入类型 + 身后/在世边界 + 滥用抵抗 + 格式遵从 + 多轮口号/序数压力 |
-| 裁判规则 | `runtime/judge_rubric.json` | 7 指标×5 分 + 10 失败旗标 + P0-P2 严重度 + 25 分制 |
+| 裁判规则 | `runtime/judge_rubric.json` | 7 指标×5 分 + 10 失败旗标 + P0-P2 严重度 + 25 分制。judge 的回答按它逐项校验（`validate_judgment`）：不合格带错误清单重答一次，仍不合格就中止，不补默认值 |
+| 附件读取轨迹 | `reports/{slug}/runtime-trace.jsonl` | 生成回答时每次 `read_reference` 调用一行（只放行 `references/{cases,evidence,voice}.md`），v6 附加检查第 1 条据此核对 |
 | 记分卡 | `reports/{slug}/scorecard.json` | 8 维加权百分制 + gate cap |
 | 负面 fixtures | `fixtures/negative/` | 合规基准包 `_base/` + `fixtures.json` 里 10 个单点缺陷（编造引文、改字、调度器化核心、盲区无缓解、开放式闸门、语感缺反例、在世人物无声明、整页照抄、strict 低置信、strict 权利未核实）；`python evaluation/scripts/check_negative_fixtures.py` 运行，单测 `tests/test_negative_fixtures.py` 在 CI 里跑 |
 | 评测执行 | `runtime/.env`（凭证，**不入库**）+ `scripts/collect_artifacts.py` | 运行时对话 + 裁判调用 |
@@ -41,6 +42,7 @@ v6 包多了一层按需附件，而**附件不被读＝附件层无效**。因�
    `references/evidence.md`）、2 道描述具体处境且命中案例索引的题（应触发
    `references/cases.md`）。记录模型是否真的打开了对应文件。
    **通过线：附件至少 2 次被正确触发读取。**
+   核对来源是 `reports/{slug}/runtime-trace.jsonl`。`run_dialogue_eval.py` 生成回答时，给模型的 `read_reference` 工具只放行这三个附件，每次调用（包括被拒的）记一行：`case_id`、`path`、`status`。每条记录的 `references_read` 也会进 judge 输入。不靠人工翻对话。
 2. **未读附件的轮次质量不得下降。** 其余轮次模型只用核心层作答，
    其评分不得低于同一人物旧格式的基线分。这条检验 P6「核心自足」在运行期是否真的成立。
 3. **附件读取不得挤占正文质量。** 读附件的轮次若出现「大段复述附件内容」而非融入回答，
