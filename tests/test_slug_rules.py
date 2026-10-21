@@ -134,5 +134,30 @@ class EntryPointTests(unittest.TestCase):
                 self.assertFalse((ROOT.parent / "__slug_probe__").exists())
 
 
+class EvaluationEntryPointTests(unittest.TestCase):
+    """评测脚本也把 slug 拼进 output/、gallery/、evaluation/reports/：同一套规则，argparse 阶段就拒绝。"""
+
+    def test_evaluation_clis_reject_bad_slugs_before_writing(self) -> None:
+        import subprocess
+        import sys
+
+        for bad in ("../__slug_probe__", "Seneca"):
+            with tempfile.TemporaryDirectory() as td:
+                out = Path(td) / "facts.json"
+                commands = [
+                    ["evaluation/scripts/collect_artifacts.py", "--slug", bad, "--root", td, "--out", str(out)],
+                    ["evaluation/runtime/run_dialogue_eval.py", "--slug", bad, "--root", td, "--no-env-file",
+                     "--import-existing", "--no-judge", "--out-dir", str(Path(td) / "reports")],
+                ]
+                for argv in commands:
+                    with self.subTest(slug=bad, script=argv[0]):
+                        proc = subprocess.run([sys.executable, *argv], cwd=ROOT, capture_output=True, text=True,
+                                              encoding="utf-8", errors="replace", timeout=60,
+                                              env={**__import__("os").environ, "PYTHONUTF8": "1"})
+                        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+                        self.assertIn("不合法", proc.stderr)
+                        self.assertEqual(sorted(p.name for p in Path(td).iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

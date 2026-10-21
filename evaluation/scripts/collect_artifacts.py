@@ -25,6 +25,15 @@ V6_FORMAT = 6
 PRINCIPLE_RANGES = {V6_FORMAT: (8, 11), None: (5, 8)}
 
 
+def repo_slug_arg():
+    """--slug 的 argparse type：与 mdf 其他入口共用 scripts/slug_rules.py（本脚本不在 scripts/ 下，按路径加载）。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("mdf_slug_rules", CODE_ROOT / "scripts" / "slug_rules.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.slug_arg
+
+
 METRICS = [
     ("Source Fidelity", 12),
     ("Cognitive Distillation Depth", 12),
@@ -1107,13 +1116,13 @@ def roadmap(scorecard: dict[str, Any]) -> str:
     ])
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--slug", required=True)
+    parser.add_argument("--slug", required=True, type=repo_slug_arg())
     parser.add_argument("--root", default=".")
     parser.add_argument("--out", required=True)
     parser.add_argument("--facts-only", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     root = Path(args.root).resolve()
     out = Path(args.out)

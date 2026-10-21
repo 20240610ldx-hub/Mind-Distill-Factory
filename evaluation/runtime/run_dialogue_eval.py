@@ -24,6 +24,7 @@ from typing import Any
 DEFAULT_MODEL = "deepseek-v4-pro"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_ENV_FILE = Path("evaluation/runtime/.env")
+CODE_ROOT = Path(__file__).resolve().parents[2]
 LLM_MODE_VALUES = {"auto", "off", "deepseek"}
 TEN_QUESTION_MODE_VALUES = {"auto", "off", "on"}
 SOUL_QUESTION_SCHEMA_VERSION = "MindDistillSoulQuestions-v1"
@@ -77,6 +78,15 @@ SOUL_QUESTION_ARCHETYPES = [
         "description": "Ask the thinker for a final self-judgment that leaves room for the reader's own evaluation.",
     },
 ]
+
+
+def repo_slug_arg():
+    """--slug 的 argparse type：与 mdf 其他入口共用 scripts/slug_rules.py（本脚本不在 scripts/ 下，按路径加载）。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("mdf_slug_rules", CODE_ROOT / "scripts" / "slug_rules.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.slug_arg
 
 
 def load_env_file(path: Path, *, override: bool = False) -> bool:
@@ -1180,7 +1190,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--slug", required=True)
+    parser.add_argument("--slug", required=True, type=repo_slug_arg())
     parser.add_argument("--root", default=".")
     parser.add_argument("--env-file", help="Load evaluation runtime variables from this file before reading defaults.")
     parser.add_argument("--no-env-file", action="store_true", help="Do not load evaluation/runtime/.env.")
