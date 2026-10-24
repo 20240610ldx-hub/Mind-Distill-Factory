@@ -53,3 +53,6 @@ sources/*
 *.bak
 *.swp
 *-messages-below.txt
+
+# Local per-data-root settings (acquisition contact and jurisdiction)
+.mdf/
