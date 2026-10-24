@@ -150,6 +150,75 @@ def _stage_clean(ctx: "Ctx") -> StageStatus:
     return status
 
 
+def _approved_plan(ctx: "Ctx") -> dict[str, Any] | None:
+    """acquire 默认读的计划（sources/{slug}/acquisition_plan.json）。手写的目标列表也算用户定的计划。"""
+    plan = _read_json(_sibling("acquisition_planner").plan_path(ctx.root, ctx.slug))
+    if isinstance(plan, list):
+        plan = {"targets": plan}
+    return plan if isinstance(plan, dict) and plan.get("targets") else None
+
+
+def _stage_plan(ctx: "Ctx") -> StageStatus:
+    """采集计划：scout 凭记忆列候选 → acquire-plan 核对目录 → 用户批准。排在素材入库之前，自己判断 raw/ 有没有素材。"""
+    planner = _sibling("acquisition_planner")
+    status = StageStatus("plan", "采集计划", "pending")
+    has_raw = bool(_sibling("source_registry").indexable_raw_files(ctx.root / "sources" / ctx.slug / "raw"))
+    candidates = planner.candidates_path(ctx.root, ctx.slug)
+    plan = _approved_plan(ctx)
+    approvals = (plan or {}).get("approvals") or []
+    if not candidates.is_file():
+        if plan:
+            status.state = "done"
+            status.detail = f"采集计划已有 {len(plan['targets'])} 个目标（不是候选核对来的）"
+            status.artifacts = [_rel(ctx.root, planner.plan_path(ctx.root, ctx.slug))]
+        elif has_raw:
+            status.state = "skipped"
+            status.detail = "raw/ 里已有用户素材，没写采集候选"
+        else:
+            status.detail = "还没有采集候选"
+            status.next_action = (f"派 acquisition-scout 凭记忆列候选（{_cmd('brief', ctx.slug, 'plan')}），"
+                                  f"写 `sources/{ctx.slug}/acquisition_candidates.json`；或请用户把素材放进 raw/")
+        return status
+    draft = planner.read_draft(ctx.root, ctx.slug)
+    fresh = draft is not None and draft.get("candidates_sha256") == planner.candidates_sha(ctx.root, ctx.slug)
+    status.artifacts = [_rel(ctx.root, candidates)]
+    if draft is not None and not fresh:
+        status.detail = "候选清单在上次核对之后改过"
+        status.next_action = f"重跑目录核对 {_cmd('acquire-plan', ctx.slug)}"
+        return status
+    if draft is None:
+        if approvals:
+            status.state = "done"
+            status.detail = f"已批准 {len(plan['targets'])} 个下载目标"
+            return status
+        status.detail = "候选还没核对目录"
+        status.next_action = (f"确认采集设置（{_cmd('acquire-settings')}，联系方式缺了先问用户），"
+                              f"再核对目录 {_cmd('acquire-plan', ctx.slug)}")
+        return status
+    report = planner.report_path(ctx.root, ctx.slug)
+    status.artifacts += [_rel(ctx.root, planner.draft_path(ctx.root, ctx.slug)), _rel(ctx.root, report)]
+    entries = draft.get("entries") or []
+    counts = {key: sum(e.get("status") == key for e in entries) for key in ("resolved", "ambiguous", "unresolved")}
+    ready = sum(bool(e.get("downloadable")) for e in entries)
+    status.detail = (f"{len(entries)} 条候选：已核对 {counts['resolved']}（能下载 {ready}）、"
+                     f"待选定 {counts['ambiguous']}、查不到 {counts['unresolved']}")
+    draft_sha = planner.sha256_file(planner.draft_path(ctx.root, ctx.slug))
+    if approvals and approvals[-1].get("draft_sha256") in (None, draft_sha):
+        status.state = "done"
+        status.detail += f"；已批准 {'、'.join(approvals[-1].get('candidates') or [])}"
+        status.artifacts.append(_rel(ctx.root, planner.plan_path(ctx.root, ctx.slug)))
+        return status
+    status.state = "blocked"
+    skip = "；用户一条都不要时删掉候选清单即可跳过" if has_raw else ""
+    if ready:
+        status.next_action = (f"把 `{_rel(ctx.root, report)}` 的清单给用户看，用 AskUserQuestion 让用户选批准哪些，再 "
+                              f"{_cmd('acquire-plan', ctx.slug, '--approve', '<候选 id，逗号分隔|all>')}{skip}")
+    else:
+        status.next_action = (f"没有能下载的条目：看 `{_rel(ctx.root, report)}` 的说明改候选的 titles / catalogs 后重跑 "
+                              f"{_cmd('acquire-plan', ctx.slug)}，或请用户提供素材（下载不了的不经 --approve 批准）{skip}")
+    return status
+
+
 def _stage_sources(ctx: "Ctx") -> StageStatus:
     raw = ctx.root / "sources" / ctx.slug / "raw"
     files = [p for p in raw.rglob("*") if p.is_file()] if raw.exists() else []
@@ -164,7 +233,11 @@ def _stage_sources(ctx: "Ctx") -> StageStatus:
         status.artifacts = [_rel(ctx.root, raw)] + ([_rel(ctx.root, log)] if log.exists() else [])
     else:
         status.detail = "sources/{0}/raw/ 里还没有 PDF/TXT/MD".format(ctx.slug)
-        status.next_action = f"把原始资料放进 `sources/{ctx.slug}/raw/`，或运行 {_cmd('acquire', ctx.slug, '--help')}"
+        if _approved_plan(ctx):
+            status.next_action = (f"征得用户同意后先 {_cmd('acquire', ctx.slug, '--dry-run')}，再 {_cmd('acquire', ctx.slug)}；"
+                                  f"或把原始资料放进 `sources/{ctx.slug}/raw/`")
+        else:
+            status.next_action = f"把原始资料放进 `sources/{ctx.slug}/raw/`，或先做完上一步采集计划"
     ctx.has_raw = bool(usable)
     return status
 
@@ -483,6 +556,7 @@ def _confidence_gate_ahead(ctx: "Ctx", status: StageStatus) -> None:
 CHECKS: dict[str, Callable[["Ctx"], StageStatus]] = {
     "init": _stage_init,
     "classify": _stage_classify,
+    "plan": _stage_plan,
     "sources": _stage_sources,
     "index": _stage_index,
     "clean": _stage_clean,
