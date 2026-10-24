@@ -77,17 +77,28 @@ class Failed(AcquireError):
 # ── 策略 ──────────────────────────────────────────────────────────────
 
 
-def load_policy(path: Path | None = None) -> dict[str, Any]:
+def load_policy(path: Path | None = None, *, root: Path | None = None) -> dict[str, Any]:
+    """读入库的采集策略；给了数据根就附上那里的本地设置（acquisition_settings：问过用户的联系方式与法域）。"""
     path = path or CODE_ROOT / "config" / "acquisition_policy.json"
     policy = json.loads(path.read_text(encoding="utf-8"))
     if policy.get("schema") != POLICY_SCHEMA:
         raise ValueError(f"{path}: schema 应为 {POLICY_SCHEMA}")
+    if root is not None:
+        policy["_local"] = _load_sibling("acquisition_settings").load(root)
     return policy
 
 
 def resolve_contact(policy: dict[str, Any], env: dict[str, str] | None = None) -> str:
+    """入库策略 > 环境变量 MDF_CONTACT > 数据根的本地设置。"""
     env = os.environ if env is None else env
-    return str(policy.get("contact") or env.get("MDF_CONTACT") or "").strip()
+    local = (policy.get("_local") or {}).get("contact")
+    return str(policy.get("contact") or env.get("MDF_CONTACT") or local or "").strip()
+
+
+def jurisdiction(policy: dict[str, Any]) -> str | None:
+    """入库策略 > 数据根的本地设置；都没有就是未设定（公有领域一律待复核）。"""
+    value = policy.get("jurisdiction") or (policy.get("_local") or {}).get("jurisdiction")
+    return str(value).upper() if value else None
 
 
 def build_user_agent(contact: str) -> str:
@@ -103,7 +114,7 @@ def setting(policy: dict[str, Any], connector: str, key: str) -> Any:
 
 def rights_decision(policy: dict[str, Any], rights: str) -> str:
     """allow / review / refuse。public_domain_us 只在美国法域直接放行。"""
-    if rights == "public_domain_us" and str(policy.get("jurisdiction") or "").upper() == "US":
+    if rights == "public_domain_us" and jurisdiction(policy) == "US":
         return "allow"
     if rights in policy.get("allowed_rights", []):
         return "allow"
@@ -354,7 +365,8 @@ class Session:
 
     def require_contact(self) -> None:
         if not self.contact:
-            raise Refused("CONTACT_MISSING", "User-Agent 需要联系方式：在 config/acquisition_policy.json 填 contact，或设环境变量 MDF_CONTACT")
+            raise Refused("CONTACT_MISSING", "User-Agent 需要联系方式：先问用户，再 `python scripts/mdf.py acquire-settings "
+                                             "--contact <项目主页 URL>` 存进数据根（或设环境变量 MDF_CONTACT）")
 
     def _request(self, url: str, connector: str) -> Response:
         if self.requests >= self.budget:
@@ -706,11 +718,14 @@ def _ia_pick_file(files: list[dict[str, Any]], wanted: str) -> dict[str, Any]:
     raise Failed("NO_TEXT_FILE", "条目里没有可公开下载的 txt/pdf 文件")
 
 
+def wikisource_url(lang: str, title: str) -> str:
+    """/wiki/ 页面是 robots.txt 允许的路径（/w/、/api/ 与 Special:Search 对爬虫是 Disallow）。"""
+    return f"https://{lang}.wikisource.org/wiki/{quote(title.replace(' ', '_'), safe='/:()')}"
+
+
 def fetch_wikisource(session: Session, target: dict[str, Any]) -> Fetched:
     conn = session.policy["connectors"]["wikisource"]
-    title = target["title"].replace(" ", "_")
-    # /wiki/ 页面是 robots.txt 允许的路径（/w/ 与 /api/ 对爬虫是 Disallow）。
-    url = f"https://{target['lang']}.wikisource.org/wiki/{quote(title, safe='/:()')}"
+    url = wikisource_url(target["lang"], target["title"])
     response = session.get(url, "wikisource")
     return Fetched(
         body=response.body, content_type=response.headers.get("content-type", "text/html"), url=url,
@@ -1074,7 +1089,7 @@ def main(argv: list[str] | None = None) -> int:
     targets = targets_from_args(args, root)
     if not targets:
         parser.error("没有采集目标：用 --wikisource/--ia/--gutenberg/--url/--local，或写 sources/{slug}/acquisition_plan.json")
-    session = Session(load_policy(), max_requests=args.max_requests)
+    session = Session(load_policy(root=root), max_requests=args.max_requests)
     results = run_acquisition(
         args.slug, targets, root=root, session=session,
         allow_unverified=args.allow_unverified_rights, refresh=args.refresh, dry_run=args.dry_run,

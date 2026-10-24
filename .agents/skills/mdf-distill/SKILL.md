@@ -34,6 +34,6 @@ description: >-
 - Stage 5 审查必须在独立上下文里做（子代理，或 `python scripts/mdf.py run <slug> review --harness <名称> --yes`），编排者不得自己审自己。
 - 执行简报的新进程或子代理不得再派子代理：隔离靠它本身，简报里写着禁令。`mdf run` 结果行下出现「⚠️ 新进程又派了 N 个子代理」的告警时，告诉用户，按检查点核对产物后再决定重跑还是继续。
 - 权利声明（`sources/<slug>/rights.json`）、在世人物是否蒸馏、是否发布，都要问用户，不能替用户决定。依据见 `docs/ethics-and-legal.md`。
-- 不要自己爬网页：采集原典只用 `python scripts/mdf.py acquire`。阶段 1 的合并与补充（reduce）**禁用网络检索**，只读本地语料；缺素材就问用户要不要 `mdf acquire`。
+- 不要自己爬网页：采集原典只用 `python scripts/mdf.py acquire`。raw/ 为空时阶段 1 先做采集计划（`plan` 步骤）：acquisition-scout 凭记忆列候选（不联网）→ `mdf acquire-plan <slug>` 只查白名单站点的目录 → 清单给用户批准（`--approve`）→ 征得同意后 `mdf acquire <slug>`。联系方式与法域没设时先问用户，用 `mdf acquire-settings` 存下复用。阶段 1 的合并与补充（reduce）**禁用网络检索**，只读本地语料；缺素材就追加进采集候选，走同一条 `acquire-plan` 流程问用户。
 - 换行符一律 LF。发布前由你检查 `output/<slug>/` 里要发布的文本文件有没有 CRLF，有就转成 LF、重跑 `validate package` 再发布——manifest 记的是字节 hash，入库后 `.gitattributes` 会把 CRLF 改掉。
 - 不往仓库外写文件。发布用 `python scripts/mdf.py publish`；要装进 harness 的技能目录，用 `python scripts/mdf.py harness plan <slug> --target <harness>` 打印命令，交给用户执行。

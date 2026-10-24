@@ -15,7 +15,7 @@ flowchart TB
     CX["Codex<br/><small>skill $mdf-distill</small>"]
     PI["pi<br/><small>skill /skill:mdf-distill</small>"]
     P["<b>编排协议</b>（Markdown，harness 无关）<br/><small>commands/distill.md · agents/*.md（14 个角色）· config/pipeline_stages.json</small>"]
-    K["<b>确定性内核</b>：python scripts/mdf.py<br/><small>status · next · stages · brief<br/>acquire · index · clean · reduce<br/>validate：P1–P6 · L1–L2 · S1–S4<br/>publish · manifest · metrics · harness · ocr</small>"]
+    K["<b>确定性内核</b>：python scripts/mdf.py<br/><small>status · next · stages · brief<br/>acquire-plan · acquire · index · clean · reduce<br/>validate：P1–P6 · L1–L2 · S1–S4<br/>publish · manifest · metrics · harness · ocr</small>"]
     S["sources/{slug}/<br/><small>原典与中间结果（不入库）</small>"]
     O["output/{slug}/<br/><small>框架、草稿包、简报、审查（不入库）</small>"]
     G["gallery/{slug}/<br/><small>已发布包 + manifest（入库）</small>"]
@@ -30,7 +30,7 @@ flowchart TB
 |----|------|---------|
 | harness 适配 | `.claude-plugin/plugin.json`、`.agents/skills/mdf-distill/SKILL.md`、`config/harnesses.json` | 只做**入口与转接**，不复制协议内容，避免三份说明各自漂移 |
 | 编排协议 | `commands/distill.md`、`agents/*.md`、`config/pipeline_stages.json` | 纯 Markdown / JSON，任何能读文件、跑命令的 agent 都能执行 |
-| 确定性内核 | `scripts/mdf.py` 统一入口，转交给各脚本 | 不调用模型、不联网（`acquire` 除外，它有完整闸门）；人看 Markdown，程序读 `--json` |
+| 确定性内核 | `scripts/mdf.py` 统一入口，转交给各脚本 | 不调用模型、不联网（`acquire` 与 `acquire-plan` 的目录核对除外，二者走同一套闸门）；人看 Markdown，程序读 `--json` |
 | 数据 | `sources/`、`output/`、`gallery/` | 原典与中间结果在 `.gitignore` 里；只有 `gallery/` 的发布内容入库 |
 
 ---
@@ -49,6 +49,7 @@ flowchart TD
         init_classify[/"类目确认<br/><small>人工、脚本</small>"/]
     end
     subgraph stage1["阶段 1 · 素材采集"]
+        stage1_plan(["采集计划<br/><small>agent、脚本、人工</small>"])
         stage1_sources[/"素材入库<br/><small>人工、脚本</small>"/]
         stage1_index["登记、抽取与分片<br/><small>脚本</small>"]
         stage1_clean["清洗与质量闸门<br/><small>脚本</small>"]
@@ -78,7 +79,8 @@ flowchart TD
         stage6_checkpoint{{"✓ validate published"}}
     end
     init_init --> init_classify
-    init_classify --> stage1_sources
+    init_classify --> stage1_plan
+    stage1_plan --> stage1_sources
     stage1_sources --> stage1_index
     stage1_index --> stage1_clean
     stage1_clean --> stage1_extract
@@ -98,6 +100,7 @@ flowchart TD
     classDef agent fill:#eef4ff,stroke:#4a6fd1
     classDef human fill:#fff6e5,stroke:#c98a12
     class init_classify human
+    class stage1_plan agent
     class stage1_sources human
     class stage1_extract agent
     class stage2_principles agent
@@ -244,7 +247,7 @@ mind-distill-factory/
 | 节点 | 人做什么 | 工厂怎样配合 |
 |------|---------|------------|
 | 开题 | 选人物、确认分类、判断在世人物是否适合蒸馏 | `mdf init`；L2 声明闸门 |
-| 素材 | 提供原典、写 `rights.json` | `mdf acquire` 只放行白名单与已声明权利；`mdf index` 打 WARNING |
+| 素材 | 提供原典、写 `rights.json`；批准采集计划（`acquire-plan --approve`）、同意下载 | `mdf acquire` 只放行白名单与已声明权利；`mdf index` 打 WARNING |
 | 清洗 | 看被拒、被打标的文件 | `mdf clean` 报告逐文件列出原因 |
 | 每个检查点 | 看 `mdf status` | 不过不放行；失败信息带文件与行号 |
 | 审查 | 读 `review.md`，接受或要求返工 | 裁决写进 manifest；REVISE、MISSING 需 `--force` 才能发布，并记为 `FORCED_*` |
@@ -263,6 +266,9 @@ mind-distill-factory/
 | 人物 slug | 一次蒸馏的标识，小写连字符 | `slug_rules.py` |
 | 兄弟模块加载 | scripts/ 不是包，脚本与测试按路径取同目录模块；先登记 `sys.modules` 再执行 | `sibling.load_module`、`sibling.load_sibling` |
 | 来源 | 一份登记过的原典文件，带权利状态与质量分 | `source-registry-v2` |
+| 采集候选 | agent 凭记忆列出的待采作品：篇名写法、语言、要查的目录、why；不含条目号 | `acquisition-candidates-v1`、`acquisition_planner.Candidate` |
+| 采集计划 | 目录核对后（✅ 已核对 / ⚠️ 待选定 / ❌ 查不到）用户批准的下载目标，`mdf acquire` 不带参数时读它 | `acquisition-plan-draft-v1` → `acquisition-plan-v1` |
+| 采集设置 | 问过用户后存在数据根的联系方式与法域（不入库）；法域未设定时公有领域一律待复核 | `mdf-acquisition-settings-v1`、`acquisition_settings` |
 | 可索引素材 | `raw/` 下（含 `mdf acquire` 落下的子目录）`mdf index` 能读的文件；决定「有没有本地素材」 | `source_registry.indexable_raw_files` |
 | 分片 | 送给一个 worker 的一段语料，带输入指纹 | `local-source-manifest-v2`、`shard_NNN.json` |
 | 清洗结论 | 每个来源通过 / 待复核 / 被拒，以及原因与标记 | `cleaning-report-v1` |
@@ -289,7 +295,7 @@ mind-distill-factory/
 
 ```mermaid
 flowchart LR
-    A["<b>采集与语料</b><br/><small>acquire · index · OCR · clean<br/>sampling · cost · dispatch</small>"]
+    A["<b>采集与语料</b><br/><small>acquire-plan · acquire · index · OCR · clean<br/>sampling · cost · dispatch</small>"]
     D["<b>蒸馏</b><br/><small>agents/*.md · task_status<br/>build_framework_core</small>"]
     V["<b>校验与发布</b><br/><small>validate · provenance<br/>manifest · publish · metrics</small>"]
     O["<b>编排</b><br/><small>pipeline_status · harness<br/>stage_runner · workspace · mdf</small>"]
@@ -304,7 +310,7 @@ flowchart LR
 
 | 上下文 | 拥有的概念 | 模块 | 对外发布 |
 |--------|-----------|------|---------|
-| 采集与语料 | 来源、可索引素材、页、分片、清洗结论、可疑行 | `acquire`、`local_source_pipeline`、`pdf_quality`、`ocr_calibrate`、`clean_corpus`、`sampling`、`cost_estimator`、`worker_dispatch`、`source_registry` | `source-registry-v2`、`local-source-manifest-v2`、`cleaning-report-v1`、`sampling-plan-v1`、`cost-estimate-v1`、`worker-dispatch-plan-v1`、`acquisition-log-v1` |
+| 采集与语料 | 采集候选、采集计划、来源、可索引素材、页、分片、清洗结论、可疑行 | `acquisition_planner`、`acquisition_settings`、`acquire`、`local_source_pipeline`、`pdf_quality`、`ocr_calibrate`、`clean_corpus`、`sampling`、`cost_estimator`、`worker_dispatch`、`source_registry` | `source-registry-v2`、`local-source-manifest-v2`、`cleaning-report-v1`、`sampling-plan-v1`、`cost-estimate-v1`、`worker-dispatch-plan-v1`、`acquisition-log-v1`、`acquisition-candidates-v1`、`acquisition-plan-v1` |
 | 蒸馏 | 摘录、原则、框架、草稿包 | `agents/*.md`、`task_status`、`build_framework_core` | `task-status-v2`、`framework_core.json` |
 | 校验与发布 | 闸门、证据、逐字覆盖率、闸门通过记录、置信度门、发布包、清单 | `validate_output`、`verify_provenance`、`gate_records`、`package_manifest`、`publish_skill`、`measure_package`、`persona_metrics` | manifest（`manifest_version` 2）、`persona-metrics-v1`、`claim-ledger-v1` |
 | 编排 | 阶段与步骤、执行单位、简报、运行、工作区、harness 档案 | `pipeline_status`、`run_unit`、`harness`、`stage_runner`、`workspace`、`mdf` | `pipeline-status-v1`、`run-record-v1`、`mdf-harness-v1`、`mdf-doctor-v1` |

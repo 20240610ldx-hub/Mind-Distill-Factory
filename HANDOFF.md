@@ -6,10 +6,11 @@
 - 阶段 2 / P0（发布与校验事务化，M1–M4）：`296b05e` → `861feb8` → `7b5e436` → `655a82f`
 - 阶段 3（流水线自动化）：`effcb3f` → … → `21334b5` 经 PR #2、#4 合入 main；`0ce2f3d`（OCR 收尾）、`3801fb3`（`mdf run`）、墨子试跑、文档分支合并与《熱風》整本 OCR 修正（`66c0537`）经 PR #5、#7 合入；OCR 后续 `df08946` → `e01044e` → `b829b9f` 经 PR #6 合入；刻本双行小注 `3856504` 经 PR #8 合入
 - 鲁迅 GUI 验收与修复（2026-10-19/20）：PR #9（`b080dd4` 等，墨子试跑决策 + 值对象）、PR #10（`0963022`、`89f593d`）、PR #11（`9e9ef17` → `58cc872`）均已合入 main（`3ed4e0c`），明细见「〇-2」
-- P2 runtime evaluator（2026-10-21）：分支 `claude/runtime-evaluator`（`1ee2079` 起 6 个提交，基于 `d2d066d`），明细见第三节 P2
+- P2 runtime evaluator（2026-10-21）：分支 `claude/runtime-evaluator`（`1ee2079` 起 6 个提交）经 PR #16 合入 main（`81e1a0b`），明细见第三节 P2；DNA 禁忌词闸门经 PR #13 合入（`b29cbe4`）
+- 采集计划自动化（2026-10-24）：分支 `claude/acquisition-planner`（基于 `81e1a0b`），明细见「〇-3」
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 803 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
+结果：`Ran 867 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -111,6 +112,24 @@ CI：`.github/workflows/tests.yml`（PR #3 合入）在 ubuntu + windows × Pyth
 
 ---
 
+## 〇-3、采集计划自动化（2026-10-24，分支 `claude/acquisition-planner`）
+
+以前「该采哪些书」靠 source-researcher 在 `collection_notes` 里写一段话，篇名、IA 条目号要人去查，凭记忆给的篇名没人核对（墨子 3 篇篇名标错就是这么来的）。现在是阶段 1 的第一步 `plan`（raw/ 已有素材、又没写候选时跳过）：
+
+1. **acquisition-scout**（新角色 `agents/acquisition-scout.md`，`network: forbidden`）凭记忆写 `sources/{slug}/acquisition_candidates.json`（`acquisition-candidates-v1`）：篇名写法、语言、要查的目录、why，**不写条目号**。检查点 `mdf acquire-plan {slug} --check`（离线）
+2. **`mdf acquire-plan {slug}`**（`scripts/acquisition_planner.py`）核对目录，走 acquire 的同一个 `Session`（白名单、https、UA、robots、TDMRep、限速与上限），只用各站允许自动访问的入口：
+   - 维基文库：作者页 → 作品页；目录页展开子页面（上限 300）；消歧义页只标「待选定」并列出选项。搜索接口 `/w/api.php`、`Special:Search` 是 Disallow，不用，也不借本地化别名 `特殊:搜索` 绕开
+   - Internet Archive：`advancedsearch.php`，排除 `inlibrary` / `printdisabled` / `lendinglibrary`；权利用 `acquire.ia_rights`
+   - Gutenberg：只读离线 `pg_catalog.csv`（`--gutenberg-catalog` 或策略 `connectors.gutenberg.catalog_csv`），没给就记 `CATALOG_NOT_CONFIGURED`、不联网
+   - 结果：✅ 已核对（篇名 + 作者都对上）/ ⚠️ 待选定（只有篇名对上、消歧义页）/ ❌ 查不到。下载阶段才能判的闸门先用 `acquire.offline_checks` 预判，过不了的标「下载不了」并写原因（如 Gutenberg 没配镜像 `CONNECTOR_NOT_CONFIGURED`）
+   - 输出 `processed/acquisition_plan.draft.json`（`acquisition-plan-draft-v1`，记候选清单的 sha256）与 `processed/acquisition_plan.md`
+3. **`--approve c01,c03|all`**：只认已核对、能下载的条目；候选改过（sha 不符）就拒绝、要求重跑；按 `target_key` 去重，追加进 `sources/{slug}/acquisition_plan.json`（`acquisition-plan-v1`，带 `approvals` 记录），`mdf acquire {slug}` 不带参数时读它
+4. **采集设置** `mdf acquire-settings`（`scripts/acquisition_settings.py`）：联系方式与法域问过用户后存数据根 `.mdf/acquisition.json`（`.gitignore` 忽略）。优先级 策略 > `MDF_CONTACT` > 本地设置。法域未设定时公有领域一律「待复核」。主数据根已存：联系方式 = 项目主页 URL，法域 = 用户选择暂不设定
+5. **状态表** `_stage_plan`：无候选 → 派 scout；有候选无草稿 / 草稿过期 → 跑 `acquire-plan`；草稿等批准 → ⛔ 受阻（AskUserQuestion + `--approve`）；批准后完成，素材入库一行改提示 `acquire --dry-run` → `acquire`
+6. 入口同步：`commands/distill.md`（0.2 情况 B、1.0 节重写、reduce 禁网段与各补缺段）、`agents/source-researcher.md`（缺的原典追加进候选）、编排 skill、`AGENTS.md`、`docs/ethics-and-legal.md`（目录入口与 robots 事实）、`docs/architecture.md`（阶段图、术语、限界上下文）
+
+测试：`test_acquisition_planner.py`（26，假 fetcher 模拟三站）、`test_acquisition_settings.py`、`test_acquisition_plan_stage.py`（阶段树、状态、简报、入口接线）。还没对真实站点跑过核对：下一次有新人物（raw/ 为空）时实跑一次，看维基文库作者页链接格式、IA 检索返回是否与假数据一致。
+
 ## 一、阶段 2 / P0 已完成（M1–M4）
 
 ### M1：共享 slug 校验 + 发布清单 v2
@@ -169,13 +188,13 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 ## 三、未完成（按优先级）
 
 ### 待人工决定
-- **鲁迅 `distill_confidence`=2**：审查 PASS，但低于质量门 3，发布会被拒（`BLOCKED_LOW_CONFIDENCE`）。三选一：补一手素材重跑 / 接受不入 gallery / `--force`（记 `FORCED_LOW_CONFIDENCE`）。验收要求只做 dry-run，目前没发布
-- **鲁迅 16 张语料外证据卡**（GUI 复验里合并成 12 张）：原文是维基文库转录，不在 `raw/`，逐字核对只覆盖 12/28。是否用 `mdf acquire` 把《坟》《华盖集》《且介亭杂文》等原典采进来，再让 evidence-carder 改卡
-- **charlie-munger**：按 v5 模板补齐 8 个章节，或重新蒸馏
-- **张居正 v6 过 strict**：缺 review.md（S2/S3），且 manifest 早于 S4、没有权利汇总（`STRICT_NO_RIGHTS_RECORD`）。要过 strict：补做 Stage 5 审查 → 写 `sources/zhang-juzheng-v6/rights.json` → 重跑 `mdf index` → 重新发布
-- **`--install`**：发布时同步装入 `~/.claude/skills`。曾在评审中被**刻意删除**（写仓库外，见 `test_publish_v6.py` 的 `test_install_paths_helper_removed`），恢复需重新拍板。现有替代：`mdf harness plan <slug> --target <harness>` 只打印命令
+- ~~**鲁迅 `distill_confidence`=2**~~ **已决定（用户 2026-10-24）**：不补采原典、不发布，留在验收副本里
+- ~~**鲁迅 16 张语料外证据卡**~~ **已决定：不补采**（同上）。原记录——（GUI 复验里合并成 12 张）：原文是维基文库转录，不在 `raw/`，逐字核对只覆盖 12/28。是否用 `mdf acquire` 把《坟》《华盖集》《且介亭杂文》等原典采进来，再让 evidence-carder 改卡
+- ~~**charlie-munger**~~ **已决定（用户授权编排者定，2026-10-24）**：不按 v5 补章节（v5 已被 v6 取代，补了也还是旧格式）；芒格卒于 2023 年，著作都在版权期内，公有领域目录采不到，主数据根也没有任何语料。等用户提供自有副本（`mdf acquire --local <路径> --rights user_owned_copy`）后按 v6 重新蒸馏；在此之前留在 gallery 当 legacy，不删。CI 加 `published` 全量校验时把它列为已知例外
+- **张居正 v6 过 strict**（用户 2026-10-24 要求过 strict，已交给单独会话「张居正 v6 过 strict 发布」，它逐文件问用户权利、自开 PR）：缺 review.md（S2/S3），且 manifest 早于 S4、没有权利汇总（`STRICT_NO_RIGHTS_RECORD`）。要过 strict：补做 Stage 5 审查 → 写 `sources/zhang-juzheng-v6/rights.json` → 重跑 `mdf index` → 重新发布
+- ~~**`--install`**~~ **已决定（用户授权编排者定，2026-10-24）：不恢复。** 发布写仓库外的用户目录，评审时正因此删掉；装入由用户执行 `mdf harness plan` 打印的命令。原记录——发布时同步装入 `~/.claude/skills`。曾在评审中被**刻意删除**（写仓库外，见 `test_publish_v6.py` 的 `test_install_paths_helper_removed`），恢复需重新拍板。现有替代：`mdf harness plan <slug> --target <harness>` 只打印命令
 - ~~文档分支~~ **已合并（2026-10-18，用户批准）**：`claude/dreamy-hamilton-3fd992` 把 README/README.en/AGENTS 对齐 v6，`AGENTS.md` 另补「Running the Pipeline」一节（`mdf` 入口、`mdf run`、三拍叙述）；`mdf harness` 不再报 ⚠️。`README.zh.md` 仍过时
-- **采集联系方式与法域**：`config/acquisition_policy.json` 的 `contact` 为空（用环境变量 `MDF_CONTACT`，建议填项目主页 URL，**不要提交个人邮箱**）；`jurisdiction` 为 null，`public_domain_us` 因此一律待复核
+- ~~**采集联系方式与法域**~~ **已决定（用户 2026-10-24）**：联系方式 = 项目主页 URL，法域暂不设定（公有领域一律待复核）；用 `mdf acquire-settings` 存进主数据根 `.mdf/acquisition.json`，入库的策略文件仍为空。**不要提交个人邮箱**
 - **已有语料的权利声明**：所有本地文件默认 `unverified`，strict 发布会拦（S4）。每个人物要由人写 `rights.json`
 
 ### ~~P1：claim provenance 与人格/表达可测指标~~ 已完成（`e91c7c6`）
@@ -191,7 +210,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
   - v6 包闸门经 `validate_output skill` 转入（`package` 命令通过时会往 output/ 写闸门记录，评测必须只读），不过就是关键闸门 `package_gate_failed`；
   - 校验器总用仓库那份，在 `--root` 下跑，数据根可以在仓库外。
 - **`--slug`**：两个脚本都用 `slug_rules.slug_arg`，非法 slug 写盘前退出码 2；按路径加载走 `sibling.load_sibling`，`test_sibling` 的扫描范围扩到 `evaluation/runtime`
-- **未实测**：没有用真实 DeepSeek 跑过工具调用。思考模式下「同一轮工具调用要回传 `reasoning_content`」是按接口约定写的，`tool_choice: none` 是否被 `deepseek-v4-pro` 接受也没验证。下次跑评测时先 `--smoke` 看一题的轨迹
+- **已实测（2026-10-24，用户同意付费）**：`run_dialogue_eval.py --smoke` 拿 `zhang-juzheng-v6` 跑真实 DeepSeek，`runtime-trace.jsonl` 记下 `smoke_evidence` → `references/evidence.md`（ok，9859 字）、`smoke_case` → `references/cases.md`（ok，7209 字），工具调用路径跑通；judge 一次就过严格 schema，打 25/25——单 judge 偏松，collect_artifacts 侧封顶 23
 - 拿主仓库 `zhang-juzheng-v6` 冒烟：package 闸门过、跨语言项无英文扣分、output/ 无任何写入。主仓库检出停在旧分支 `v6-package`，其 gallery 的 manifest 还是 v1，所以 `gallery` 阶段报 `MANIFEST_OUTDATED`（main 上已是 v2，不是评测器的问题）
 
 ### P3：负面 fixtures、CI、文档收敛
@@ -214,7 +233,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 
 ### P5：鲁迅验收留下的（已有任务卡，未开工）
 - ~~状态文件按绝对路径判定分片完成~~ **已完成**（分支 `claude/portable-data-root`，基于 PR #12）：复制/挪动数据根后 `mdf status` 按新位置如实反映，见第四节。遗留：磁盘上已有的旧 `task_status.json` 要等下一次 `mark-*` 才会被改写成相对路径（读取时已兼容，不影响判定）；`validate_output` 的 Stage 1A/3 状态一致性检查本来就按数据根拼路径，未改
-- **表达 DNA 禁忌词对语料核对**（发现 14 管线化）：DNA 写「不用 X」时，确定性地数 X 在本人语料里出现几次，超过阈值就警告。鲁迅包写「不用应当/必须」，语料里有 22 次，审查员是凭读才发现的
+- ~~**表达 DNA 禁忌词对语料核对**~~ **已完成（PR #13，`b29cbe4`）**（发现 14 管线化）：DNA 写「不用 X」时，确定性地数 X 在本人语料里出现几次，超过阈值就警告。鲁迅包写「不用应当/必须」，语料里有 22 次，审查员是凭读才发现的
 - ~~统一按路径加载模块的 helper~~ **已完成（PR #14）**：`scripts/sibling.py` 的 `load_module` / `load_sibling` 先登记 `sys.modules` 再执行，`tests/test_sibling.py` 守着 scripts/ 与 evaluation/ 下不得再直接调 `spec_from_file_location`
 - Stage 6.1 成品摘要（覆盖率 + `distill_confidence`）仍只靠协议文字要求编排者写，没有机器闸门；状态表的发布行已能在发布前显示置信度门
 
@@ -283,9 +302,9 @@ claude plugin validate .
 
 ## 六、建议的下一动作顺序
 
-1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
-2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` 还缺一次真实模型实跑。2026-10-20 在鲁迅副本上试过（Sonnet 5.5 high，鲁迅正好 1 个分片），Claude Code 会话额度用完（429），没跑起来，花费 $0；结果行此后会把这类原因打出来
-3. P5：DNA 禁忌词对语料核对（PR #13，CI 待修绿）
-4. P2 已完成，还差一次真实 DeepSeek 冒烟（`run_dialogue_eval.py --smoke`），确认工具调用与 `runtime-trace.jsonl`
+1. 人工决定项已全部拍板（见第三节「待人工决定」）；张居正补审 + 权利声明在单独会话里做
+2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` **已实跑通过（2026-10-24）**：鲁迅副本，Sonnet 5.5 high，一个进程 6 分 36 秒、$1.48、30 轮，三个检查点都过，子代理 0；`secondary_sources.json` 为空是语料本身没有二手研究，不是管线问题。（2026-10-20 首次试跑因会话额度 429 没跑起来）
+3. 采集计划（`claude/acquisition-planner`）合入后，下一个 raw/ 为空的新人物实跑一次真实目录核对
+4. P2 已完成并实测（DeepSeek 冒烟通过）；冒烟里单 judge 打满分，偏松，正式评测别只看一个 judge
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
 6. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验

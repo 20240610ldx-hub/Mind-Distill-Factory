@@ -69,7 +69,7 @@ class MdfCliTests(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("governance（治理）", out)
         code, out, _ = run("status", "demo", "--json", "--root", self.root)
-        self.assertEqual(json.loads(out)["next"]["key"], "sources")
+        self.assertEqual(json.loads(out)["next"]["key"], "plan", "确认类目后，没有素材就先做采集计划")
 
     def test_next_text_names_the_chapter(self):
         code, out, _ = run("next", "demo", "--root", self.root)
