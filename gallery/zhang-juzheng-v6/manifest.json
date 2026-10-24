@@ -25,14 +25,43 @@
       "status": "pass",
       "hard_errors": 0,
       "warnings": 0,
+      "cards_verified": 34,
+      "cards_total": 34,
+      "cards_adjudicated": 0,
       "evidence_sha256": "8ee4e72e36349c65e3d265840a2ebe1b01b270e854bb3264a7fce74db4994b2d",
-      "corpus_fingerprint": "c8212ba328918f5da48e330cae02cff062c90dd3fba63d60bc4aefbdbd1685ef",
-      "corpus_files": 12
+      "corpus_fingerprint": "b50f8ab3d88e8148af7e6d84a4861ca5ca7cedb8355a3f3d4881305777e2e6d0",
+      "corpus_files": 13,
+      "rights": {
+        "sources": {
+          "[OCR]_张居正全集（全6册）（世间已无张居正！读原著学张居正成人成事的真本事，明、清底本正宗简体横排版！张居正白话直解《资治通鉴》《四书五经... (z-library.sk, 1lib.sk, z-lib.sk)_20260603_2141.txt": {
+            "rights_status": "user_owned_copy",
+            "rights_review_required": false,
+            "rights_basis": "用户声明：现代简体横排整理本（含白话直解及张懋修等后人附录），合法持有副本，仅本地计算分析，包内只含引用量级摘录",
+            "origin": "local",
+            "evidence_cards": 28
+          },
+          "[OCR]_黄仁宇：万历十五年_20260603_2153.txt": {
+            "rights_status": "user_owned_copy",
+            "rights_review_required": false,
+            "rights_basis": "用户声明：黄仁宇著，版权期内，合法持有副本，仅本地计算分析，包内只含引用量级摘录",
+            "origin": "local",
+            "evidence_cards": 5
+          },
+          "明史-卷213-张居正传.txt": {
+            "rights_status": "public_domain",
+            "rights_review_required": false,
+            "rights_basis": "用户声明：《明史》清代官修正史，早已进入公有领域",
+            "origin": "local",
+            "evidence_cards": 1
+          }
+        },
+        "unlocated_cards": 0
+      }
     }
   },
   "review": {
-    "verdict": "MISSING",
+    "verdict": "PASS",
     "detail": "",
-    "review_sha256": null
+    "review_sha256": "15a96690b309bac0d6e0388acf0644f16007fa8a204cb5fd2fcc2940e6e9e5e5"
   }
 }

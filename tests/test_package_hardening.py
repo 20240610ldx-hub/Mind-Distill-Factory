@@ -385,12 +385,10 @@ class StrictCliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("--strict", proc.stdout)
 
-    def test_pilot_fails_strict_only_on_review_and_rights(self) -> None:
-        # 样板包早于 S4 发布：manifest 里没有权利汇总，也没有 review.md——两条都是真缺口，别的都应干净。
+    def test_pilot_passes_strict(self) -> None:
+        # 样板包已补审查（PASS）并按用户权利声明重新发布：manifest 带权利汇总，strict 应零错误。
         proc = self._run("published", "zhang-juzheng-v6", "--strict")
-        self.assertEqual(proc.returncode, 1)
-        hard = [l.strip() for l in proc.stdout.splitlines() if l.strip().startswith(("STRICT_", "P", "MANIFEST", "EVIDENCE", "VOICE", "QUOTE", "LIVING"))]
-        self.assertEqual([h.split(":", 1)[0] for h in hard], ["STRICT_NO_RIGHTS_RECORD", "STRICT_REVIEW_NOT_PASS"])
+        self.assertEqual(proc.returncode, 0, proc.stdout)
 
 
 if __name__ == "__main__":
