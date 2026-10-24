@@ -147,7 +147,8 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 
 | 包 | 默认 | strict |
 |---|---|---|
-| zhang-juzheng-v6 + 6 个 legacy | ✅ | ❌ 无审查记录/非 PASS |
+| zhang-juzheng-v6 | ✅ | ✅（2026-10-24 补审查 + 权利声明后重新发布） |
+| 6 个 legacy | ✅ | ❌ 无审查记录/非 PASS |
 | charlie-munger | ❌ 早期模板，缺 8 个章节 | ❌ |
 
 ---
@@ -172,7 +173,8 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 - **鲁迅 `distill_confidence`=2**：审查 PASS，但低于质量门 3，发布会被拒（`BLOCKED_LOW_CONFIDENCE`）。三选一：补一手素材重跑 / 接受不入 gallery / `--force`（记 `FORCED_LOW_CONFIDENCE`）。验收要求只做 dry-run，目前没发布
 - **鲁迅 16 张语料外证据卡**（GUI 复验里合并成 12 张）：原文是维基文库转录，不在 `raw/`，逐字核对只覆盖 12/28。是否用 `mdf acquire` 把《坟》《华盖集》《且介亭杂文》等原典采进来，再让 evidence-carder 改卡
 - **charlie-munger**：按 v5 模板补齐 8 个章节，或重新蒸馏
-- **张居正 v6 过 strict**：缺 review.md（S2/S3），且 manifest 早于 S4、没有权利汇总（`STRICT_NO_RIGHTS_RECORD`）。要过 strict：补做 Stage 5 审查 → 写 `sources/zhang-juzheng-v6/rights.json` → 重跑 `mdf index` → 重新发布
+- ~~**张居正 v6 过 strict**~~ **已完成（2026-10-24）**：`mdf run … review --harness claude-code` 隔离审查 [PASS] 4.17/5（5 条「一般」级问题留待 Stage 7：疑似跨 Skill 串词「做人何谓正确」、原则 7 沿用已订正异文、案例 6 引文改字、身后事用第一人称、语感样本 20/21 非逐字）；13 个来源的权利由用户逐类声明写进数据根 `sources/zhang-juzheng-v6/rights.json`（古籍原文 `public_domain`，现代编校本/注评本/研究著作 `user_owned_copy`）；重跑 `mdf index`（分片 86→31）；v6 输出目录原本没有 `frameworks.zh.json`，经用户同意沿用同语料旧版 `output/zhang-juzheng/frameworks.zh.json` 的 `distill_confidence`=4；重新发布后 v2 manifest 带权利汇总（34/34 卡定位），`published --strict` 零错误
+  - ⚠️ 发布坑：`publish_skill.py` 把 gallery 写在**数据根**下（`root / "gallery"`），worktree 里用 `MDF_DATA_ROOT` 指主检出发布会改主检出的入库文件。本次绕法：scratch 下建临时根，`output/`、`sources/` 联接到数据根，`gallery/` 联接到 worktree，再 `--root` 指它
 - **`--install`**：发布时同步装入 `~/.claude/skills`。曾在评审中被**刻意删除**（写仓库外，见 `test_publish_v6.py` 的 `test_install_paths_helper_removed`），恢复需重新拍板。现有替代：`mdf harness plan <slug> --target <harness>` 只打印命令
 - ~~文档分支~~ **已合并（2026-10-18，用户批准）**：`claude/dreamy-hamilton-3fd992` 把 README/README.en/AGENTS 对齐 v6，`AGENTS.md` 另补「Running the Pipeline」一节（`mdf` 入口、`mdf run`、三拍叙述）；`mdf harness` 不再报 ⚠️。`README.zh.md` 仍过时
 - **采集联系方式与法域**：`config/acquisition_policy.json` 的 `contact` 为空（用环境变量 `MDF_CONTACT`，建议填项目主页 URL，**不要提交个人邮箱**）；`jurisdiction` 为 null，`public_domain_us` 因此一律待复核
@@ -283,7 +285,7 @@ claude plugin validate .
 
 ## 六、建议的下一动作顺序
 
-1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、张居正补审 + 权利声明、`--install`、采集联系方式与法域
+1. 人工决定项：鲁迅（`distill_confidence`=2 怎么办、是否 `mdf acquire` 补原典）、charlie-munger、`--install`、采集联系方式与法域
 2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` 还缺一次真实模型实跑。2026-10-20 在鲁迅副本上试过（Sonnet 5.5 high，鲁迅正好 1 个分片），Claude Code 会话额度用完（429），没跑起来，花费 $0；结果行此后会把这类原因打出来
 3. P5：DNA 禁忌词对语料核对（PR #13，CI 待修绿）
 4. P2 已完成，还差一次真实 DeepSeek 冒烟（`run_dialogue_eval.py --smoke`），确认工具调用与 `runtime-trace.jsonl`
