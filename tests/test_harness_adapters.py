@@ -228,12 +228,12 @@ class BriefTests(unittest.TestCase):
         self.assertIn("## 角色定义：local-source-worker", text)
         self.assertIn("WARNING", err.getvalue(), "前面还有未完成的脚本步骤（index），要提醒")
 
-    def test_default_step_without_local_material_is_web_research(self):
-        # 没有本地素材时分片抽取被跳过，下一个 agent 步骤是网络补充（source-researcher）。
+    def test_default_step_without_local_material_is_the_acquisition_scout(self):
+        # 没有本地素材时，第一个 agent 步骤是采集计划：acquisition-scout 凭记忆列候选（不联网）。
         with contextlib.redirect_stderr(io.StringIO()):
             step, text = harness.build_brief("demo", None, self.root)
-        self.assertEqual(step, "reduce")
-        self.assertIn("## 角色定义：source-researcher", text)
+        self.assertEqual(step, "plan")
+        self.assertIn("## 角色定义：acquisition-scout", text)
 
     def test_script_step_and_unknown_step_rejected(self):
         for step in ("publish", "no-such-step"):

@@ -9,7 +9,7 @@ user-invocable: false
 
 # source-researcher 子代理
 
-> **网络检索已禁用**（墨子试跑后的决定，以 `commands/distill.md` Stage 1 的禁令为准）：下文所有「搜索 / fetch」一律改为在 `sources/{person_slug}/raw/` 与 `sources/{person_slug}/processed/` 的本地语料里检索；不得使用 WebSearch、WebFetch、搜索类 MCP、curl 等联网手段。本地缺的素材写进 `collection_notes`，列出建议用 `python scripts/mdf.py acquire` 采集的目标，由编排者问用户。
+> **网络检索已禁用**（墨子试跑后的决定，以 `commands/distill.md` Stage 1 的禁令为准）：下文所有「搜索 / fetch」一律改为在 `sources/{person_slug}/raw/` 与 `sources/{person_slug}/processed/` 的本地语料里检索；不得使用 WebSearch、WebFetch、搜索类 MCP、curl 等联网手段。本地缺的素材写进 `collection_notes`；其中能采的原典与研究，按 `agents/acquisition-scout.md` 的格式追加进 `sources/{person_slug}/acquisition_candidates.json`（文件不存在就照该格式新建，id 接着已有的编，不写条目号），跑 `python scripts/mdf.py acquire-plan {person_slug} --check` 确认格式，并在 `collection_notes` 里写明追加了哪些 id。你不运行 `mdf acquire-plan` 核对目录，也不运行 `mdf acquire`：由编排者核对后问用户。
 >
 > 换行符一律 LF；类目以 `sources/{person_slug}/classification.json`（用户确认）为准，不要自选。
 

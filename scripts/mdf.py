@@ -348,6 +348,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 PASSTHROUGH: dict[str, tuple[str, list[str], str]] = {
+    "acquire-plan": ("acquisition_planner", [], "采集计划：候选清单 → 白名单站点目录核对 → 用户批准后交给 acquire"),
+    "acquire-settings": ("acquisition_settings", [], "采集的本地设置（联系方式、法域），问过用户后存在数据根"),
     "acquire": ("acquire", [], "合规采集文献到 sources/{slug}/raw/acquired/"),
     "index": ("local_source_pipeline", ["index"], "抽取、清洗、分片 sources/{slug}/raw"),
     "clean": ("clean_corpus", [], "查看清洗报告；clean check <文件> 预检单个文件"),

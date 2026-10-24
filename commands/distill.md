@@ -151,8 +151,8 @@ python scripts/task_status.py next <status-path>
 → 列出发现的文件
 
 情况 B：目录为空或不存在
-→ 告知用户"未检测到本地素材，需要先用 mdf acquire 从白名单来源合规采集原典（网络检索已禁用）"
-→ 询问是否要先提供本地素材，还是直接继续
+→ 告知用户"未检测到本地素材：阶段 1 先做采集计划（1.0）——列候选、核对白名单站点的目录、你批准后再合规采集（网络检索已禁用）"
+→ 询问是否要先提供本地素材，还是走采集计划
 ```
 
 ### 0.3 推荐门类分类
@@ -189,9 +189,29 @@ python scripts/mdf.py classify {slug} --primary governance --secondary philosoph
 
 **执行者：local-source-indexer / local-source-worker / local-source-reducer + source-researcher 子代理（并行执行）**
 
-### 1.0 合规采集原典（可选，先于子代理 A）
+### 1.0 采集计划与合规采集（raw/ 为空时先做，先于子代理 A）
 
-用户没有本地素材、或素材缺原典时，用确定性脚本从白名单来源取公有领域/自由许可文本，**不要让 agent 自己爬网页**：
+用户没有本地素材、或素材缺原典时，用确定性脚本从白名单来源取公有领域/自由许可文本，**不要让 agent 自己爬网页**。
+「该采哪些书」不再靠子代理写一段 collection_notes、再由人去查篇名和条目号，而是走阶段树的「采集计划」一步（`plan`）：
+
+1. **采集设置（每个数据根问一次）。** `python scripts/mdf.py acquire-settings` 查看。联系方式没设，就用 AskUserQuestion
+   问用户（推荐项目主页 URL，**不要用个人邮箱**），再 `acquire-settings --contact <URL>`；法域没问过也问一次，
+   `--jurisdiction <两位国家码>` 或 `--no-jurisdiction`（暂不设定：公有领域判定一律标「待复核」）。答案存在数据根的
+   `.mdf/` 目录下（不入库），之后不再问。
+2. **列候选（agent，不联网）。** 派 acquisition-scout（`mdf brief {slug} plan` / `mdf run {slug} plan`），凭记忆写
+   `sources/{slug}/acquisition_candidates.json`：每条有篇名写法、语言、要查的目录和 why，不写条目号。
+   检查点 `mdf acquire-plan {slug} --check`（离线校验格式）。
+3. **核对目录（脚本）。** 编排者运行 `python scripts/mdf.py acquire-plan {slug}`（可先 `--dry-run` 看要查什么）。只查白名单
+   站点的目录，与 acquire 走同一套闸门：维基文库只读 robots.txt 放行的作者页、作品页（它的搜索接口对爬虫是 Disallow，
+   不调用）；Internet Archive 用 advancedsearch，排除借阅馆藏；Project Gutenberg 网站禁止自动访问，只读离线目录
+   `pg_catalog.csv`（`--gutenberg-catalog`）。结果写进 `sources/{slug}/processed/acquisition_plan.draft.json` 与
+   `sources/{slug}/processed/acquisition_plan.md`：✅ 已核对 / ⚠️ 待选定（同名作品或消歧义页）/ ❌ 查不到。凭记忆说出、目录里查不到的不进计划。
+4. **用户批准。** 把这份清单给用户看，用 AskUserQuestion（多选）问批准哪些，再
+   `mdf acquire-plan {slug} --approve c01,c03`（或 `all`：全部已核对、能下载的）。⚠️ 待选定的条目让 scout 或用户在
+   候选里写准篇名后重跑第 3 步；候选改过，旧草稿作废，必须重跑。批准结果写进 `sources/{slug}/acquisition_plan.json`。
+5. **下载。** 征得用户同意后 `mdf acquire {slug} --dry-run`，再 `mdf acquire {slug}`：不带目标参数时读批准的计划。
+
+用户已经知道要采什么，也可以直接给目标：
 
 ```bash
 python scripts/mdf.py acquire {slug} --wikisource zh:論語/學而第一 --dry-run   # 先跑离线闸门
@@ -199,7 +219,7 @@ python scripts/mdf.py acquire {slug} --wikisource zh:論語/學而第一 --ia <i
 python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy     # 导入用户自有副本
 ```
 
-- 来源与闸门由 `config/acquisition_policy.json` 决定：主机白名单、User-Agent 联系方式（`MDF_CONTACT`）、robots.txt、TDMRep 挖掘保留、请求间隔与上限、权利状态。任何一道不过即拒绝，原因写入 `sources/{slug}/processed/acquisition_log.jsonl`。
+- 来源与闸门由 `config/acquisition_policy.json` 决定：主机白名单、User-Agent 联系方式（`MDF_CONTACT` 或 `mdf acquire-settings`）、robots.txt、TDMRep 挖掘保留、请求间隔与上限、权利状态。任何一道不过即拒绝，原因写入 `sources/{slug}/processed/acquisition_log.jsonl`。
 - 结果表里的 ⛔ 拒绝需要人处理（改策略或补授权），不要换个办法绕过；`RIGHTS_UNVERIFIED` 只有用户确认权利后才能加 `--allow-unverified-rights`。
 - 采集的文件落在 `sources/{slug}/raw/acquired/`，随后照常走子代理 A 的分片流水线；`sources/{slug}/processed/source_registry.json` 会带上每个文件的来源 URL 与权利状态。
 - 用户直接放进 `raw/` 的文件权利状态默认是 `unverified`。**请用户**（不是 agent 替他判断）在 `sources/{slug}/rights.json` 里逐文件声明权利状态和依据，再跑 `mdf index`；`--strict` 发布会拦下权利未放行的证据来源（S4）。格式与判定规则见 `docs/ethics-and-legal.md`。
@@ -207,7 +227,7 @@ python scripts/mdf.py acquire {slug} --local <路径> --rights user_owned_copy  
 
 将以下任务分派给子代理，**并行执行**：
 
-> **阶段 1 的合并与补充（reduce）禁用网络检索**（墨子试跑后的决定）：子代理 B/C/D 只读 `sources/{slug}/raw/` 与 `sources/{slug}/processed/`，不得用 WebSearch、WebFetch、搜索类 MCP 或 curl 之类联网手段；网络转述的 secondary 全是 confidence: low，徒增噪声。缺素材时停下，列出建议采集的目标（著作、篇目、传记），由编排者征得用户同意后用 1.0 节的 `mdf acquire` 合规采集，再回到子代理 A 的流水线。下文 B/C/D 里的「搜索」一律按「在本地语料里检索」理解。`mdf brief` 生成的 reduce 简报会写明禁令；Claude Code 新进程另加 `--disallowedTools WebSearch,WebFetch`。
+> **阶段 1 的合并与补充（reduce）禁用网络检索**（墨子试跑后的决定）：子代理 B/C/D 只读 `sources/{slug}/raw/` 与 `sources/{slug}/processed/`，不得用 WebSearch、WebFetch、搜索类 MCP 或 curl 之类联网手段；网络转述的 secondary 全是 confidence: low，徒增噪声。缺素材时停下，把建议采集的目标（著作、篇目、传记）按 acquisition-scout 的格式追加进 `sources/{slug}/acquisition_candidates.json`，由编排者按 1.0 节重跑 `mdf acquire-plan` 核对目录、征得用户同意后批准并采集，再回到子代理 A 的流水线。下文 B/C/D 里的「搜索」一律按「在本地语料里检索」理解。`mdf brief` 生成的 reduce 简报会写明禁令；Claude Code 新进程另加 `--disallowedTools WebSearch,WebFetch`。
 
 ### 子代理 A：用户素材处理（Stage 1A，本地分片流水线）
 
@@ -317,9 +337,9 @@ python scripts/local_source_pipeline.py reduce {slug} --person-name "{person_nam
 
 **注意：** 如果用户提供了充足素材（子代理 A 产出丰富），子代理 B/C 可以精简搜索范围。**子代理 D 始终执行，且必须产出非空的 `sources/{slug}/processed/expression_dna.json`**——表达风格是消除"套公式"感的核心依据，跳过此步骤将导致 SKILL 质量严重下降。
 
-当 Stage 1A 的 `sources/{slug}/processed/user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 只做**补缺清单**：列出本地素材缺失的著作、演讲、传记争议或待验证的出处，交编排者决定是否用 `mdf acquire` 采集，不得自行联网。
+当 Stage 1A 的 `sources/{slug}/processed/user_sources.json` 已经覆盖主要主题且 extracts 数量 ≥ 30 时，子代理 B/C 只做**补缺清单**：列出本地素材缺失的著作、演讲、传记争议或待验证的出处；能采的原典追加进采集候选，交编排者用 `mdf acquire-plan` 核对后问用户，不得自行联网。
 
-**素材不足时：** 网络检索已禁用，不再有「搜索工具回退」。子代理 B/C/D 只用本地语料；本地确实没有的（例如传记、学术评论），在 `collection_notes` 里写明缺什么、建议用 `mdf acquire` 采集哪些目标，由编排者问用户是否采集。`sources/{slug}/processed/primary_sources.json` / `sources/{slug}/processed/secondary_sources.json` 缺失只是警告；`sources/{slug}/processed/expression_dna.json` 必须从本地语料产出。
+**素材不足时：** 网络检索已禁用，不再有「搜索工具回退」。子代理 B/C/D 只用本地语料；本地确实没有的（例如传记、学术评论），在 `collection_notes` 里写明缺什么；能采的原典追加进 `sources/{slug}/acquisition_candidates.json`，由编排者用 `mdf acquire-plan` 核对目录后问用户是否采集。`sources/{slug}/processed/primary_sources.json` / `sources/{slug}/processed/secondary_sources.json` 缺失只是警告；`sources/{slug}/processed/expression_dna.json` 必须从本地语料产出。
 
 ### ✓ 检查点 1：素材完整性校验（双重检查）
 
@@ -363,7 +383,7 @@ reduce 与本检查点的「语料偏薄」警告会带标签，按标签走：
 - `[可改善]`：还有分片没抽、只做了分层抽样，或有既非网络也非 OCR 的条目没标 high。先补——回子代理 A
   把剩下的分片抽完，或复核这些条目的 confidence——再重跑本检查点。
 - `[不可改善]`：语料已经抽完，或条目按规则 6（网络来源）/ OCR 文本封顶 medium。这不是错误，不要为了消警告
-  去改 confidence。在阶段汇报里说一句这份语料的上限，列出能用 `mdf acquire` 补采的原典，由用户决定。
+  去改 confidence。在阶段汇报里说一句这份语料的上限，列出能补采的原典（写进采集候选、`mdf acquire-plan` 核对），由用户决定。
 
 ---
 
@@ -390,7 +410,7 @@ python scripts/validate_output.py principles {slug}
 
 - `[原则候选偏少]`：单个文件不到 6 条。先看这个文件的素材是不是本来就薄。
 - `[原则候选不足]`：本人来源的候选合计不到 8 条（评论者观点不计），Stage 3 拼不出 9–11 条原则。回看检查点 1
-  的标签：`[可改善]` 就回 Stage 1A 补抽；`[不可改善]` 就问用户要不要用 `mdf acquire` 补采原典。两条路都走不通，
+  的标签：`[可改善]` 就回 Stage 1A 补抽；`[不可改善]` 就问用户要不要补采原典（1.0 节：候选 → `mdf acquire-plan` → 批准 → `mdf acquire`）。两条路都走不通，
   才带着缺口进 Stage 3，并把理由写进 `output/{slug}/framework_alignment_review.md`。**不要拿评论者观点凑数**——
   它们本来就不计入本人来源，凑进去只会让框架失真。
 

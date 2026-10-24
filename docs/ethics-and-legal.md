@@ -25,7 +25,7 @@
 | 闸门 | 规则 | 依据 |
 |------|------|------|
 | 主机白名单 + 仅 https | 只访问策略里列出的站点；重定向到白名单外 → 拒绝 | 最小权限；防止被重定向到未审查的来源 |
-| User-Agent 带联系方式 | 没配 `contact`（或环境变量 `MDF_CONTACT`）就不发请求 | Wikimedia User-Agent 政策要求可识别、可联系；Internet Archive 同理 |
+| User-Agent 带联系方式 | 没配 `contact`（策略、环境变量 `MDF_CONTACT` 或 `mdf acquire-settings` 存的本地设置）就不发请求 | Wikimedia User-Agent 政策要求可识别、可联系；Internet Archive 同理 |
 | robots.txt | 按 RFC 9309：最长匹配优先；4xx（429 除外）视为全部允许；5xx、429 或连不上视为全部禁止 | RFC 9309；也是 EU DSM 第 4 条「机器可读方式保留权利」最常见的表达 |
 | TDMRep 保留 | 先读站点 `/.well-known/tdmrep.json`（按路径首个匹配），再看响应头与 HTML meta（后者覆盖前者）；`tdm-reservation=1` 即拒绝，并在拒绝原因里给出权利人的 `tdm-policy`。站点级已保留时正文一个字节都不取 | W3C TDMRep（2024 终版报告）；EU DSM 第 4 条的机器可读保留 |
 | 限速与预算 | 每主机最小间隔、单次请求上限；429/5xx 按 `Retry-After` 退避，有封顶 | 不给对方站点造成负担 |
@@ -33,7 +33,19 @@
 | Internet Archive | 标为 access-restricted 的条目一律拒绝（借阅类不是公开资源） | 受限借阅 ≠ 合法开放获取 |
 | 权利状态 | 每个目标先判 allow / review / refuse，见下一节 | 见第 3 节 |
 
-`contact` 是维护者自己选择公开的联系方式（可以是项目主页 URL），请放在环境变量里，**不要把个人邮箱提交进仓库**。采集日志 `processed/acquisition_log.jsonl` 只记目标、URL、hash 与权利判断，不记个人信息。
+`contact` 是维护者自己选择公开的联系方式（可以是项目主页 URL），请放在环境变量里，或问过用户后用 `python scripts/mdf.py acquire-settings --contact <URL>` 存进数据根的 `.mdf/acquisition.json`（`.gitignore` 忽略，不入库），**不要把个人邮箱提交进仓库**。优先级：策略文件 > `MDF_CONTACT` > 本地设置。采集日志 `processed/acquisition_log.jsonl` 只记目标、URL、hash 与权利判断，不记个人信息。
+
+### 采集计划：先核对目录，再下载
+
+「该采哪些书」由 acquisition-scout 凭记忆列候选（不联网），`mdf acquire-plan` 核对目录，用户批准后才写进 `acquire` 读的计划文件（流程见 `commands/distill.md` 1.0 节）。目录核对也是网络访问，走与下载相同的闸门（白名单、https、User-Agent、robots.txt、TDMRep、限速与请求上限），并且**只用各站点允许自动访问的目录入口**：
+
+| 站点 | 用什么核对 | 不用什么、为什么 |
+|------|-----------|-----------------|
+| 维基文库 | 作者页 `/wiki/作者:<名>`、作品页 `/wiki/<篇名>`（robots.txt 放行） | 搜索接口 `/w/api.php`、`/wiki/Special:Search` 对爬虫是 Disallow；本地化的搜索页别名（如 `特殊:搜索`）虽然没被字面列出，用它绕开同样违背站点意图，不用 |
+| Internet Archive | `advancedsearch.php`（robots.txt 放行），排除 `inlibrary` / `printdisabled` / `lendinglibrary` 借阅馆藏 | 借阅类条目不是公开资源 |
+| Project Gutenberg | 离线目录 `pg_catalog.csv`（用户自行下载后 `--gutenberg-catalog` 指定） | 网站禁止自动访问，目录也不在线查 |
+
+目录里查不到的条目不进计划；同名但作者对不上、或落在消歧义页的只标「待选定」，不能批准。计划阶段的权利判断只是预判，下载时 `acquire` 按取回的页面重新判定。
 
 ## 3. 权利状态：词汇表与判定
 
