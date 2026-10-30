@@ -1266,15 +1266,21 @@ def validate_package(slug: str, strict: bool = False) -> list[str]:
     return errors
 
 
-def validate_published(slug: str, root: Path = Path("."), strict: bool = False) -> list[str]:
+def validate_published(
+    slug: str, root: Path = Path("."), strict: bool = False, *, gallery_root: Path | None = None
+) -> list[str]:
     """发布后校验（gallery/{slug}/）：只依赖包内文件 + manifest，不读 output/ 与 sources/。
 
     legacy 与 v6 一视同仁：都必须有 v2 manifest 且文件 hash 全部吻合。v6 额外重跑
     P1/P3–P6；P4 的簇列表取自 manifest，P2 不重跑（语料不随包发布），改由
     manifest 里的构建期证明担保——evidence.md 的 hash 与证明一致，证明才算数。
+
+    gallery_root 默认 root/gallery，即数据根与代码根同处的情形；分离时入口（本模块 main、publish_skill、
+    mdf status）传 Workspace.gallery——gallery/ 入库，在代码根下，不随数据根走。
     """
-    errors = check_published_package(root / "gallery" / slug, slug, root, strict=strict)
-    errors.extend(_check_gallery_index_entry(slug, root))
+    gallery_root = gallery_root or root / "gallery"
+    errors = check_published_package(gallery_root / slug, slug, root, strict=strict)
+    errors.extend(_check_gallery_index_entry(slug, gallery_root))
     return errors
 
 
@@ -1324,8 +1330,8 @@ def check_published_package(
     return errors
 
 
-def _check_gallery_index_entry(slug: str, root: Path = Path(".")) -> list[str]:
-    index_file = root / "gallery" / "index.json"
+def _check_gallery_index_entry(slug: str, gallery_root: Path) -> list[str]:
+    index_file = gallery_root / "index.json"
     if not index_file.exists():
         return [f"MISSING: {index_file}"]
     try:
@@ -1613,7 +1619,10 @@ def main():
         sys.exit(1)
 
     print(f"Validating stage '{stage}' for '{slug}'{' (strict)' if strict else ''}...")
-    errors = STAGES[stage](slug, strict=True) if strict else STAGES[stage](slug)
+    kwargs = {"strict": True} if strict else {}
+    if STAGES[stage] is validate_published:  # gallery/ 入库：在本仓库（代码根）下找，cwd 是数据根也一样
+        kwargs["gallery_root"] = _load_sibling("workspace").Workspace(Path(".")).gallery
+    errors = STAGES[stage](slug, **kwargs)
 
     warnings = [e for e in errors if e.startswith("WARNING:")]
     hard_errors = [e for e in errors if not e.startswith("WARNING:")]

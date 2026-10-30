@@ -31,7 +31,7 @@ flowchart TB
 | harness 适配 | `.claude-plugin/plugin.json`、`.agents/skills/mdf-distill/SKILL.md`、`config/harnesses.json` | 只做**入口与转接**，不复制协议内容，避免三份说明各自漂移 |
 | 编排协议 | `commands/distill.md`、`agents/*.md`、`config/pipeline_stages.json` | 纯 Markdown / JSON，任何能读文件、跑命令的 agent 都能执行 |
 | 确定性内核 | `scripts/mdf.py` 统一入口，转交给各脚本 | 不调用模型、不联网（`acquire` 与 `acquire-plan` 的目录核对除外，二者走同一套闸门）；人看 Markdown，程序读 `--json` |
-| 数据 | `sources/`、`output/`、`gallery/` | 原典与中间结果在 `.gitignore` 里；只有 `gallery/` 的发布内容入库 |
+| 数据 | `sources/`、`output/`（数据根）、`gallery/`（代码根） | 原典与中间结果在 `.gitignore` 里，放数据根；只有 `gallery/` 的发布内容入库，所以它跟着代码根（当前分支）走 |
 
 ---
 
@@ -286,7 +286,7 @@ mind-distill-factory/
 | 简报 | 把一个执行单位打包成自足的任务说明 | `harness.build_brief` |
 | 执行单位 | 一份简报、一个新进程做的事：通常一个步骤；单分片时抽取、合并、原则提取合成 `small-corpus` | `run_unit.RunUnit`、阶段树 `bundles` |
 | 运行 | 一次新进程执行：命令、心跳、用量、检查点结果 | `run-record-v1` |
-| 工作区 | 代码根（仓库）+ 数据根（语料与产物），可以分离 | `workspace.Workspace` |
+| 工作区 | 代码根（仓库与入库的 `gallery/`）+ 数据根（语料与中间产物），可以分离 | `workspace.Workspace`、`workspace.Workspace.gallery` |
 | 产物路径 | 状态文件里存的路径：相对数据根的 posix 形式；旧版存的绝对路径读回时重新挂到当前数据根 | `workspace.Workspace.locate`、`workspace.Workspace.portable` |
 | harness 档案 | 一个 harness 怎样起新进程、声明了哪些能力 | `harness.HarnessProfile`、`harness-profiles-v1` |
 | 权利声明 | 人写的来源使用许可 | `rights-declaration-v1` |
@@ -325,7 +325,7 @@ flowchart LR
 - **harness 档案**：`isolated_run` 必须有独立的 `{prompt}` 参数位。没声明的能力，指定了就报错（模型、推理强度），或者跳过（目录授权）；可变参数放在提示词之后。
 - **运行**：不加 `--yes` 什么也不写。每次运行都追加一条 `run-record-v1`，含费用和被拒的工具调用数。新进程不得再派子代理：简报写明禁令，派了就记进 `warnings` 并告警（`stage_runner.run_warnings`），不判失败。
 - **执行单位**：「这次做哪几步、扮演哪些角色、跑哪些检查点」只由 `run_unit.plan` 判定，简报、`mdf run` 与阶段卡共用。合并单位只在分片数 ≤ `max_shards`、所请求的步骤本身未完成、且剩下至少两步时成立；成员的检查点一律都跑，单个步骤的阶段检查点仍等本阶段做完再跑。
-- **发布**：事务式改名，manifest 记下构建期的证明。改了 gallery 却没重发 manifest，测试就失败。
+- **发布**：事务式改名，manifest 记下构建期的证明。改了 gallery 却没重发 manifest，测试就失败。`output/`、`sources/` 从数据根读，`gallery/` 与 `gallery/index.json` 只写代码根（`Workspace.gallery`）；`validate published`、`mdf status` 与 `mdf run` 也在代码根下找 gallery。库函数的 `gallery_root` 缺省为 `root/gallery`（两根同处时行为不变），由入口显式传入，所以测试夹具不会碰到仓库里的 gallery。数据根在仓库外时数据根下不出现 `gallery/`（`tests/test_publish_data_root.py`）。
 - **按路径加载**：scripts/ 与 evaluation/scripts/ 里只有 `sibling.py` 直接调用 `spec_from_file_location`，它先把模块登记进 `sys.modules` 再执行，失败则撤销。`from __future__ import annotations` 下的 dataclass 要到 `sys.modules[cls.__module__]` 查注解，没登记就崩——`Budget`、`Workspace`、`EvidenceCoverage` 各踩过一次。要用兄弟模块就调 `sibling.load_sibling`，别再自己写加载函数；有架构测试守着。
 - **逐字覆盖率**：覆盖率的文字格式、解析和 manifest 字段只在 `EvidenceCoverage` 定义；它随闸门通过记录和 manifest 一路传到状态表的包校验行与发布行。语料位置不在 `raw/`、只靠 textual_note 放行的证据卡不高于 medium（规则 6）。
 - **闸门通过记录**：绑定 SKILL.md 与 references/ 的指纹，产物改过即作废，附注随之作废；不随发布进入 gallery。

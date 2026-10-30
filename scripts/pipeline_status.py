@@ -81,7 +81,7 @@ def _cmd(*parts: str) -> str:
 
 def _stage_init(ctx: "Ctx") -> StageStatus:
     status = StageStatus("init", "目录初始化", "pending")
-    dirs = [ctx.root / "sources" / ctx.slug, ctx.root / "output" / ctx.slug, ctx.root / "gallery" / ctx.slug]
+    dirs = [ctx.root / "sources" / ctx.slug, ctx.root / "output" / ctx.slug, ctx.gallery / ctx.slug]
     existing = [d for d in dirs if d.exists()]
     if existing:
         status.state = "done"
@@ -504,7 +504,7 @@ def _stage_review(ctx: "Ctx") -> StageStatus:
 
 
 def _stage_publish(ctx: "Ctx") -> StageStatus:
-    gallery = ctx.root / "gallery" / ctx.slug
+    gallery = ctx.gallery / ctx.slug
     pm = _sibling("package_manifest")
     status = StageStatus("publish", "发布", "pending")
     manifest, errors = pm.load_manifest(gallery / pm.MANIFEST_NAME)
@@ -521,7 +521,7 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
             status.state = "failed"
             status.detail = errors[0].split(":", 1)[0] if errors else "manifest 无法读取"
         return status
-    status.artifacts = [_rel(ctx.root, gallery)]
+    status.artifacts = [_rel(ctx.gallery.parent, gallery)]
     review = (manifest.get("review") or {}).get("verdict", "无记录")
     status.state = "done"
     status.detail = f"已发布（manifest v{manifest.get('manifest_version')}，审查记录 {review}）"
@@ -530,7 +530,7 @@ def _stage_publish(ctx: "Ctx") -> StageStatus:
     if coverage and coverage.gap():
         status.detail += f"；{coverage.gap()}，这些卡语料外、最高 medium"
     if ctx.check:
-        hard = [e for e in _validator().validate_published(ctx.slug, ctx.root) if not e.startswith("WARNING:")]
+        hard = [e for e in _validator().validate_published(ctx.slug, ctx.root, gallery_root=ctx.gallery) if not e.startswith("WARNING:")]
         if hard:
             status.state = "failed"
             status.detail = f"发布包校验 {len(hard)} 个错误：{hard[0][:80]}"
@@ -579,6 +579,11 @@ class Ctx:
     check: bool
     has_raw: bool = False
     is_v6: bool = False
+    gallery_root: Path | None = None  # 入口传 Workspace.gallery（入库，在代码根下）；默认 root/gallery
+
+    @property
+    def gallery(self) -> Path:
+        return self.gallery_root or self.root / "gallery"
 
 
 def _validator() -> Any:
@@ -603,10 +608,11 @@ def _hard(func: Callable[..., list[str]], ctx: Ctx) -> list[str]:
 # ── 汇总与渲染 ────────────────────────────────────────────────────────
 
 
-def collect_status(slug: str, root: Path, check: bool = False, tree: dict | None = None) -> list[StageStatus]:
+def collect_status(slug: str, root: Path, check: bool = False, tree: dict | None = None,
+                   *, gallery_root: Path | None = None) -> list[StageStatus]:
     """按阶段树的顺序逐步检查。标题与章节取自阶段树，检查逻辑取自 CHECKS。"""
     tree = tree or load_stage_tree()
-    ctx = Ctx(slug=slug, root=root, check=check)
+    ctx = Ctx(slug=slug, root=root, check=check, gallery_root=gallery_root)
     stages: list[StageStatus] = []
     for phase in tree["phases"]:
         for step in phase["steps"]:

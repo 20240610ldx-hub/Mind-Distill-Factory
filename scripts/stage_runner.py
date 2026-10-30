@@ -208,7 +208,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     workspace = Workspace(root, CODE_ROOT)
     step_id, brief = harness.build_brief(slug, step_id, root)  # 语料只有 1 个分片时是合并单位 small-corpus
     tree = ps.load_stage_tree()
-    before = ps.collect_status(slug, root, tree=tree)
+    before = ps.collect_status(slug, root, tree=tree, gallery_root=workspace.gallery)
     unit = harness.plan_unit(slug, step_id, root, tree=tree, stages=before)
     phase, step = unit.members[0]
     states_before = {s.key: s.state for s in before}
@@ -270,7 +270,7 @@ def run_step(slug: str, step_id: str | None, root: Path, harness_name: str, *, y
     seconds = time.monotonic() - t0
     changed = _changed(snapshot, watch)
 
-    after = ps.collect_status(slug, root, tree=tree)
+    after = ps.collect_status(slug, root, tree=tree, gallery_root=workspace.gallery)
     states_after = {s.key: s.state for s in after}
     state_after = states_after[unit.step_ids[-1]]
 

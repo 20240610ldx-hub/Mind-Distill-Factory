@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """工作区：代码根（仓库）+ 数据根（语料与产物）。
 
-代码根放 scripts/ agents/ config/；数据根放 sources/ output/。通常两者是同一个目录。
+代码根放 scripts/ agents/ config/ 和入库的发布产物 gallery/；数据根放 sources/ output/。通常两者是同一个目录。
 worktree 里没有私有语料时，数据根经 `--root` 或环境变量 MDF_DATA_ROOT 指向别处，两者「分离」。分离时：
 
 - 子进程（脚本、harness 新进程）要拿到 MDF_DATA_ROOT；
@@ -90,6 +90,12 @@ class Workspace:
                 i = _anchor(parts)
                 return "/".join(parts[i:]) if i is not None else Path(text).as_posix()
         return "/".join(parts)
+
+    @property
+    def gallery(self) -> Path:
+        """发布产物入库，跟着代码根（当前分支）走，不跟数据根：在 worktree 里发布、数据根指向主检出时，
+        写数据根下的 gallery/ 会绕过 worktree 和分支，直接改主检出里入库的文件。"""
+        return self.code_root / "gallery"
 
     @property
     def separate(self) -> bool:
