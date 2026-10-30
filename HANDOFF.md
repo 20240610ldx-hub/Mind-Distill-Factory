@@ -39,7 +39,7 @@
 
 文档入口：[架构](docs/architecture.md) · [方法论](docs/methodology.md) · [伦理与法律](docs/ethics-and-legal.md) · [harness 适配](docs/harnesses.md)。
 
-CI：`.github/workflows/tests.yml`（PR #3 合入）在 ubuntu + windows × Python 3.12 / 3.13 上跑 `py_compile` 与全套单测，触发于所有 PR 及 push 到 main；不装 extras、无网络/OCR/API key 依赖。
+CI：`.github/workflows/tests.yml`（PR #3 合入）在 ubuntu + windows × Python 3.12 / 3.13 上跑 `py_compile`、全套单测与 gallery 全量 `published` 校验，触发于所有 PR 及 push 到 main；不装 extras、无网络/OCR/API key 依赖。
 
 ## 〇-2、鲁迅 GUI 验收与修复（PR #9–#11，2026-10-19/20）
 
@@ -226,7 +226,7 @@ v6 模板同步：盲区条目加 `*缓解：*` 槽位，决策框架步骤加�
 ### P3：负面 fixtures、CI、文档收敛
 - ~~`evaluation/fixtures/negative/` 不存在~~ **已完成**：10 个单点缺陷负例 + 合规基准包阳性对照，`tests/test_negative_fixtures.py` 进 CI；`regression-protocol.md` 已勘误
 - ~~无 `.github/workflows/`~~ **已完成（PR #3）**：离线单测 CI，4 个矩阵组合全绿，未改任何测试
-- CI 尚未跑 `validate_output.py published` 全量 gallery；要加这一步，需先处理 charlie-munger
+- ~~CI 尚未跑 `validate_output.py published` 全量 gallery~~ **已完成**：CI 新增一步 `python scripts/validate_gallery_all.py`，对 `gallery/` 下每个包跑 `published`（默认模式，不加 `--strict`），任何一个不过即失败。已知例外只登记在该脚本的 `KNOWN_EXCEPTIONS`（目前仅 charlie-munger，理由见上）；例外包意外通过时会提示移出清单。`tests/test_validate_gallery_all.py` 钉住例外行为
 
 ### P4：阶段 3 留下的缺口
 - **Codex / pi 端到端实测**：墨子试跑（`docs/harness-trial-mozi.md`，已合并）用 `claude -p` 新进程把简报路径跑到发布（9 次调用 $6.04，审查 PASS 4.04/5），修了 7 处简报/闸门缺口。Codex、pi 本身仍没跑过：用户 2026-10-18 选择暂不真跑（Codex 按量计费；pi 本机只有 9B 本地模型）。试跑报告「未修、需要决策」第 8–14 条：
@@ -317,4 +317,4 @@ claude plugin validate .
 3. 采集计划已对真实站点实跑（墨子、马可·奥勒留，只查目录），暴露的 4 个问题在 `claude/acquisition-plan-real-sites` 修复；还没真的批准、下载过一次（下载要用户同意）
 4. P2 已完成并实测（DeepSeek 冒烟通过）；冒烟里单 judge 打满分，偏松，正式评测别只看一个 judge
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
-6. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验
+6. ~~在 CI 加 `published` 全量 gallery 校验~~ **已完成**：charlie-munger 作为 `scripts/validate_gallery_all.py` 里的已知例外；它按 v6 重新蒸馏并通过后，从 `KNOWN_EXCEPTIONS` 删掉
