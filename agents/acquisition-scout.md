@@ -70,6 +70,7 @@ user-invocable: false
 - `year`：成书或首版年份，可选。
 - `why`：**必填**，一句话说清为什么需要这部作品——补哪个思想维度、哪种表达风格、哪段生平。说不出 why 的不要列。
 - `creator`：可选。**他人所写**的作品（传记、研究、译注本）填该作者名，目录核对按它比对作者；本人著作不填。
+- `editors`：可选，名字列表。译本、校注本、编订本的**译者、编者、校注者**（如弗朗托书信的 `C. R. Haines`）：Internet Archive 常只把他们登记成作者，不写就对不上。本人著作的英译本也可以写译者。
 - `catalogs`：去哪些目录查，可选值 `wikisource`、`internet_archive`、`gutenberg`，省略则三个都查。
   - 中文、日文古籍与近代文献：`wikisource`；
   - 西文公有领域著作：`gutenberg`、`internet_archive`；

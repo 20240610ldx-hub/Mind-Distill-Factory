@@ -64,6 +64,10 @@ IA_ROWS = 10
 MAX_SUBPAGES = 300
 PUBLIC_DOMAIN = {"public_domain", "public_domain_us"}
 _DISAMBIG_MARKERS = ("消歧義", "消歧义", "Category:Disambiguation", "Disambiguation pages")
+# 页面所属分类里有这些，就是「从中选一个」的页：消歧义页、多版本页、多译本页（英文站的《沉思录》就是译本列表页）
+CHOICE_CATEGORIES = {"Disambiguation pages", "Versions pages", "Translations pages", "消歧義", "消歧义"}
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
+_LUCENE_SPECIAL = re.compile(r'[+\-&|!(){}\[\]^"~*?:\\/]')
 
 
 # ── 值对象 ────────────────────────────────────────────────────────────
@@ -87,6 +91,7 @@ class Candidate(NamedTuple):
     why: str
     creator: str | None
     catalogs: tuple[str, ...]
+    editors: tuple[str, ...] = ()  # 译者、编者、校注者：目录常把他们登记成作者
 
 
 class CatalogHit(NamedTuple):
@@ -222,6 +227,9 @@ def check_candidates(data: Any) -> list[str]:
             errors.append(f"{label}：year 应为整数")
         if item.get("creator") is not None and not _nonempty_str(item.get("creator")):
             errors.append(f"{label}：creator 应为非空字符串（他人所写的作品才填）")
+        editors = item.get("editors", [])
+        if not isinstance(editors, list) or not all(_nonempty_str(e) for e in editors):
+            errors.append(f"{label}：editors 应为译者、编者名字的列表")
         catalogs = item.get("catalogs", list(CATALOGS))
         if not isinstance(catalogs, list) or not catalogs:
             errors.append(f"{label}：catalogs 应为非空列表")
@@ -249,6 +257,7 @@ def parse_candidates(data: Any) -> tuple[Person, list[Candidate]]:
             kind=item["kind"], language=item["language"], year=item.get("year"), why=item["why"].strip(),
             creator=(item.get("creator") or "").strip() or None,
             catalogs=tuple(dict.fromkeys(item.get("catalogs", list(CATALOGS)))),
+            editors=tuple(e.strip() for e in item.get("editors", [])),
         )
         for item in data["candidates"]
     ]
@@ -275,7 +284,7 @@ def names_match(name: str, field: str) -> bool:
     """作者名对得上吗。中日文名按规整后的子串；西文名要求每个词都出现（「Lu, Xun, 1881-1936」对得上 Lu Xun）。"""
     if not name or not field:
         return False
-    if re.search(r"[\u3040-\u30ff\u3400-\u9fff]", name):
+    if _CJK_RE.search(name):
         return _fold(name) in _fold(field)
     words = re.findall(r"[^\W\d_]+", unicodedata.normalize("NFKC", name).lower())
     field_words = set(re.findall(r"[^\W\d_]+", unicodedata.normalize("NFKC", field).lower()))
@@ -283,7 +292,8 @@ def names_match(name: str, field: str) -> bool:
 
 
 def _author_names(person: Person, candidate: Candidate) -> list[str]:
-    return [candidate.creator] if candidate.creator else [person.name, *person.aliases]
+    names = [candidate.creator] if candidate.creator else [person.name, *person.aliases]
+    return list(dict.fromkeys(names + list(candidate.editors)))
 
 
 def creator_matches(person: Person, candidate: Candidate, field: str) -> bool:
@@ -298,10 +308,11 @@ def _year_text(year: int) -> str:
 
 
 class _Links(HTMLParser):
-    """收集正文（mw-parser-output）里的 /wiki/ 链接，并记下有没有消歧义标记。"""
+    """收集正文（mw-parser-output）里的站内链接，并记下有没有消歧义标记。"""
 
-    def __init__(self) -> None:
+    def __init__(self, lang: str | None = None) -> None:
         super().__init__(convert_charrefs=True)
+        self.lang = lang
         self.stack: list[bool] = []
         self.root_open = 0
         self.found_root = False
@@ -315,7 +326,7 @@ class _Links(HTMLParser):
         if "disambig" in (attributes.get("id") or "").lower() or any("disambig" in c.lower() for c in classes):
             self.disambig = True
         if tag == "a" and attributes.get("href"):
-            title = wiki_title(attributes["href"] or "")
+            title = wiki_title(attributes["href"] or "", self.lang)
             if title:
                 self.all_links.append(title)
                 if self.root_open:
@@ -333,26 +344,32 @@ class _Links(HTMLParser):
         self.root_open -= self.stack.pop()
 
 
-def wiki_title(href: str) -> str | None:
-    """`/wiki/墳/題記#x` → 「墳/題記」；不是 /wiki/ 链接（编辑链接、红链、外链）返回 None。"""
-    if not href.startswith("/wiki/"):
+def wiki_title(href: str, lang: str | None = None) -> str | None:
+    """`/wiki/墳/題記#x` → 「墳/題記」。英文站把站内链接渲染成绝对地址，同一个语言站的
+    `https://{lang}.wikisource.org/wiki/…` 也算；编辑链接、红链、别的站返回 None。"""
+    prefixes = ["/wiki/"] + ([f"https://{lang}.wikisource.org/wiki/", f"//{lang}.wikisource.org/wiki/"] if lang else [])
+    prefix = next((p for p in prefixes if href.startswith(p)), None)
+    if prefix is None:
         return None
-    path = href[len("/wiki/"):].split("#", 1)[0]
+    path = href[len(prefix):].split("#", 1)[0]
     if "?" in path:
         return None
     title = unquote(path).replace("_", " ").strip()
     return title or None
 
 
-def analyze_page(markup: str) -> tuple[list[str], bool]:
-    """返回（正文里的内容页链接，按出现顺序去重；是不是消歧义页）。带命名空间（含「:」）的链接不算内容页。"""
-    parser = _Links()
+def analyze_page(markup: str, lang: str | None = None) -> tuple[list[str], bool]:
+    """返回（正文里的内容页链接，按出现顺序去重；是不是要从中选一个的页）。带命名空间（含「:」）的链接不算内容页。
+    消歧义、多版本、多译本页都算「选一个」：看消歧义标记，也看页面分类（分类链接在正文之外）。"""
+    parser = _Links(lang)
     parser.feed(markup)
     parser.close()
     links = parser.root_links if parser.found_root else parser.all_links
     content = [t for t in dict.fromkeys(links) if ":" not in t]
+    categories = {t.split(":", 1)[1] for t in parser.all_links if t.startswith("Category:")}
     text = unquote(html.unescape(markup))
-    return content, parser.disambig or any(m in text for m in _DISAMBIG_MARKERS)
+    return content, (parser.disambig or bool(categories & CHOICE_CATEGORIES)
+                     or any(m in text for m in _DISAMBIG_MARKERS))
 
 
 def _mentions(markup: str, names: list[str]) -> bool:
@@ -383,7 +400,7 @@ class WikisourceCatalog:
     def author_titles(self, lang: str, name: str) -> list[str]:
         namespace = AUTHOR_NAMESPACES.get(lang)
         markup = self.page(lang, f"{namespace}:{name}") if namespace else None
-        return analyze_page(markup)[0] if markup else []
+        return analyze_page(markup, lang)[0] if markup else []
 
     def hits(self, person: Person, candidate: Candidate) -> tuple[list[CatalogHit], list[str], bool]:
         lang = candidate.language
@@ -405,11 +422,11 @@ class WikisourceCatalog:
         if markup is None or found is None:
             where = f"作者页「{AUTHOR_NAMESPACES.get(lang)}:{author}」没有列出，" if author else ""
             return [], [f"维基文库（{lang}）：{where}也没有《{'》《'.join(candidate.titles)}》这一页"], False
-        links, disambig = analyze_page(markup)
+        links, disambig = analyze_page(markup, lang)
         url = acquire.wikisource_url(lang, found)
         if disambig:
             options = "、".join(links[:10]) or "（页面上没有可选条目）"
-            return [], [f"维基文库《{found}》是消歧义页，可选：{options}——把准确篇名写进候选的 titles 再核对"], True
+            return [], [f"维基文库《{found}》是消歧义或多版本页，可选：{options}——把准确篇名写进候选的 titles 再核对"], True
         exact = from_author_page or _mentions(markup, _author_names(person, candidate))
         subpages = [t for t in links if t.startswith(found + "/")]
         note = ""
@@ -433,26 +450,66 @@ class WikisourceCatalog:
 # ── Internet Archive ──────────────────────────────────────────────────
 
 
-def ia_query(candidate: Candidate) -> str:
+def creator_clause(names: list[str] | tuple[str, ...]) -> str:
+    """作者条件：中日文名按短语，西文名每个词都要有（「Aurelius, Marcus」也能对上 Marcus Aurelius）。单字母缩写不进查询。"""
+    parts = []
+    for name in names:
+        if _CJK_RE.search(name):
+            phrase = _LUCENE_SPECIAL.sub("", name).strip()
+            if phrase:
+                parts.append(f'"{phrase}"')
+        else:
+            words = [w for w in re.findall(r"[^\W\d_]+", unicodedata.normalize("NFKC", name)) if len(w) > 1]
+            if words:
+                parts.append("(" + " AND ".join(words) + ")")
+    return " OR ".join(dict.fromkeys(parts))
+
+
+def ia_query(candidate: Candidate, names: list[str] | tuple[str, ...] = ()) -> str:
     titles = " OR ".join('"' + t.replace('"', "") + '"' for t in candidate.titles)
-    return (f"title:({titles}) AND mediatype:(texts) "
+    creators = creator_clause(names)
+    return (f"title:({titles}) " + (f"AND creator:({creators}) " if creators else "") + "AND mediatype:(texts) "
             f"AND NOT collection:({' OR '.join(LENDING_COLLECTIONS)})")
 
 
-def ia_search_url(candidate: Candidate) -> str:
-    params = [("q", ia_query(candidate)), *[("fl[]", f) for f in IA_FIELDS], ("rows", str(IA_ROWS)), ("output", "json")]
+def ia_search_url(candidate: Candidate, names: list[str] | tuple[str, ...] = ()) -> str:
+    params = [("q", ia_query(candidate, names)), *[("fl[]", f) for f in IA_FIELDS], ("rows", str(IA_ROWS)),
+              ("output", "json")]
     return f"{IA_SEARCH}?{urlencode(params)}"
 
 
+def _rights_rank(policy: dict[str, Any], status: str) -> int:
+    """同一部书有多个副本时的先后：权利能放行的 → 有公有领域依据的（法域未定，待复核）→ 未核实 → 不放行。"""
+    decision = acquire.rights_decision(policy, status)
+    if decision == "allow":
+        return 0
+    return 1 if status in PUBLIC_DOMAIN else (2 if decision == "review" else 3)
+
+
 def ia_hits(session: Any, person: Person, candidate: Candidate) -> tuple[list[CatalogHit], list[str]]:
-    response = session.get(ia_search_url(candidate), "internet_archive")
-    try:
-        docs = json.loads(response.body.decode("utf-8"))["response"]["docs"]
-    except (UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
-        return [], [f"Internet Archive：检索结果不是预期的 JSON（{exc}）"]
+    """先按「篇名 + 作者」查：通用篇名（如 Meditations）只按篇名查，本人的书会被同名书挤出结果。查不到再退回只按篇名，
+    让同名别人的书作为「待选定」露出来。"""
     exact: list[CatalogHit] = []
     partial: list[CatalogHit] = []
-    for doc in docs if isinstance(docs, list) else []:
+    for names in (_author_names(person, candidate), ()):
+        response = session.get(ia_search_url(candidate, names), "internet_archive")
+        try:
+            docs = json.loads(response.body.decode("utf-8"))["response"]["docs"]
+        except (UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
+            return [], [f"Internet Archive：检索结果不是预期的 JSON（{exc}）"]
+        exact, partial = _ia_classify(docs if isinstance(docs, list) else [], person, candidate)
+        if exact or partial:
+            break
+    exact.sort(key=lambda h: _rights_rank(session.policy, h.rights_status))
+    notes = [] if exact or partial else [
+        f"Internet Archive：没有篇名对得上的公开文本（{'/'.join(candidate.titles)}；借阅馆藏不算）"]
+    return exact + partial, notes
+
+
+def _ia_classify(docs: list[Any], person: Person, candidate: Candidate) -> tuple[list[CatalogHit], list[CatalogHit]]:
+    exact: list[CatalogHit] = []
+    partial: list[CatalogHit] = []
+    for doc in docs:
         identifier = str(doc.get("identifier") or "")
         title = acquire._first(doc.get("title"))
         if not acquire._IA_ID_RE.fullmatch(identifier) or not any(titles_match(title, t) for t in candidate.titles):
@@ -468,8 +525,7 @@ def ia_hits(session: Any, person: Person, candidate: Candidate) -> tuple[list[Ca
             note="" if matched else "作者对不上，可能是同名的别的书",
         )
         (exact if matched else partial).append(hit)
-    notes = [] if exact or partial else [f"Internet Archive：没有篇名对得上的公开文本（{'/'.join(candidate.titles)}）"]
-    return exact + partial, notes
+    return exact, partial
 
 
 # ── Project Gutenberg（离线目录）────────────────────────────────────

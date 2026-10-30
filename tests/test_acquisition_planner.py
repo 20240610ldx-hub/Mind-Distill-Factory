@@ -89,7 +89,7 @@ def routes(ia_body=IA_DOCS):
         ws("墳"): (HTML, FEN_PAGE),
         ws("野草"): (HTML, YECAO_PAGE),
         ws("狂人日記"): (HTML, KUANGREN_PAGE),
-        IA_SEARCH: ("application/json", json.dumps(ia_body)),
+        IA_SEARCH: ia_body if callable(ia_body) else ("application/json", json.dumps(ia_body)),
     }
 
 
@@ -103,6 +103,8 @@ class FakeFetcher:
     def fetch(self, url, headers, max_bytes, timeout):
         self.calls.append(url)
         route = self.table.get(url) or next((v for k, v in self.table.items() if url.startswith(k + "?")), None)
+        if callable(route):  # 按查询串给不同结果（IA 先按作者查，再退回只按篇名）
+            route = route(url)
         if route is None:
             return acq.Response(404, {}, b"", url)
         content_type, body = route
@@ -157,6 +159,11 @@ class CandidateSchemaTests(unittest.TestCase):
         self.assertEqual([c.id for c in candidates], ["c01", "c02", "c03", "c04", "c05", "c06"])
         self.assertIsInstance(candidates[0], planner.Candidate)
         self.assertEqual(candidates[0].titles, ("吶喊", "呐喊"))
+
+    def test_editors_must_be_a_list_of_names(self):
+        data = copy.deepcopy(LU_XUN)
+        data["candidates"][0]["editors"] = "C. R. Haines"
+        self.assertTrue(any("editors" in e for e in planner.check_candidates(data)))
 
     def test_every_problem_is_reported(self):
         bad = copy.deepcopy(LU_XUN)
@@ -221,6 +228,36 @@ class WikisourceTests(unittest.TestCase):
         self.assertEqual(fetcher.calls.count(ws("作者:魯迅")), 1)
 
 
+class RealSiteMarkupTests(unittest.TestCase):
+    """2026-10-30 对真实站点实跑发现的：英文维基文库的站内链接是绝对地址，多译本页要当「待选定」。"""
+
+    def test_absolute_links_on_the_same_wiki_count_and_other_hosts_do_not(self):
+        page = """<html><body><div class="mw-parser-output"><p>魯迅 著</p><ul>
+<li><a href="https://zh.wikisource.org/wiki/%E5%A2%B3/%E9%A1%8C%E8%A8%98">題記</a></li>
+<li><a href="//zh.wikisource.org/wiki/%E5%A2%B3/%E4%BA%BA%E4%B9%8B%E6%AD%B7%E5%8F%B2">人之歷史</a></li>
+<li><a href="https://zh.wikipedia.org/wiki/%E5%A2%B3/%E5%88%A5%E7%9A%84">維基百科</a></li>
+<li><a href="https://en.wikisource.org/wiki/%E5%A2%B3/Other">英文站</a></li>
+</ul></div></body></html>"""
+        table = {**routes(), ws("墳"): (HTML, page)}
+        person, candidates = planner.parse_candidates(LU_XUN)
+        session, _ = session_for(table)
+        res = by_id(planner.resolve(person, [c for c in candidates if c.id == "c02"], session=session))["c02"]
+        self.assertEqual([t["title"] for t in res.hits[0].targets], ["墳/題記", "墳/人之歷史"])
+
+    def test_translations_page_is_ambiguous_with_the_translations_as_options(self):
+        page = """<html><body><div class="mw-parser-output"><p>Marcus Aurelius</p><ul>
+<li><a href="https://en.wikisource.org/wiki/Meditations_(Long)">George Long</a></li>
+<li><a href="https://en.wikisource.org/wiki/The_Thoughts_of_the_Emperor_Marcus_Aurelius_Antoninus">Long, 1862</a></li>
+</ul></div><div id="catlinks"><a href="/wiki/Category:Translations_pages">Translations pages</a></div></body></html>"""
+        data = copy.deepcopy(MARCUS)
+        data["candidates"][0]["catalogs"] = ["wikisource"]
+        person, candidates = planner.parse_candidates(data)
+        session, _ = session_for({acq.wikisource_url("en", "Meditations"): (HTML, page)})
+        res = planner.resolve(person, candidates, session=session)[0]
+        self.assertEqual(res.status, "ambiguous", "译本列表页不是正文，下载它只会得到一张链接表")
+        self.assertTrue(any("Meditations (Long)" in n for n in res.notes), res.notes)
+
+
 class InternetArchiveTests(unittest.TestCase):
     def resolve(self, body=IA_DOCS, titles=None):
         data = copy.deepcopy(LU_XUN)
@@ -248,6 +285,41 @@ class InternetArchiveTests(unittest.TestCase):
     def test_title_only_match_is_ambiguous(self):
         res, _ = self.resolve(IA_PARTIAL, titles=["Wild Grass"])
         self.assertEqual(res.status, "ambiguous")
+
+    def test_the_first_query_asks_for_the_author(self):
+        # 只按篇名查，「Meditations」这类通用篇名会把本人的书挤出前几条（2026-10-30 实跑）
+        _, fetcher = self.resolve()
+        first = unquote(next(u for u in fetcher.calls if u.startswith(IA_SEARCH)).replace("+", " "))
+        for needle in ("creator:(", "(Lu AND Xun)", '"魯迅"'):
+            self.assertIn(needle, first)
+        self.assertEqual(sum(u.startswith(IA_SEARCH) for u in fetcher.calls), 1, "按作者查到了就不再查")
+
+    def test_falls_back_to_title_only_when_the_author_query_finds_nothing(self):
+        def answer(url):
+            docs = [] if "creator%3A" in url else IA_DOCS["response"]["docs"][1:]
+            return "application/json", json.dumps({"response": {"docs": docs}})
+        res, fetcher = self.resolve(answer)
+        self.assertEqual(sum(u.startswith(IA_SEARCH) for u in fetcher.calls), 2)
+        self.assertEqual((res.status, res.hits[0].confidence), ("ambiguous", "partial"))
+
+    def test_public_domain_copies_come_first(self):
+        docs = [{"identifier": "modernreprint01", "title": "A Brief History of Chinese Fiction", "creator": "Lu Xun"},
+                *IA_DOCS["response"]["docs"][:1]]
+        res, _ = self.resolve({"response": {"docs": docs}})
+        self.assertEqual(res.hits[0].targets[0]["identifier"], "briefhistoryofch00luxu",
+                         "权利能放行的副本排第一，批准时默认下它")
+
+    def test_translator_in_editors_counts_as_the_responsible_person(self):
+        # 译本、校注本在 IA 上常只登记译者（Fronto 书信登记为 C. R. Haines，2026-10-30 实跑）
+        data = copy.deepcopy(LU_XUN)
+        data["candidates"][3].update({"creator": "Fronto", "editors": ["C. R. Haines"],
+                                      "titles": ["The Correspondence of Marcus Cornelius Fronto"]})
+        person, candidates = planner.parse_candidates(data)
+        docs = [{"identifier": "correspondenceof01fron", "title": "The Correspondence of Marcus Cornelius Fronto",
+                 "creator": "C.R. Haines"}]
+        session, _ = session_for(routes({"response": {"docs": docs}}))
+        res = by_id(planner.resolve(person, [candidates[3]], session=session))["c04"]
+        self.assertEqual((res.status, res.hits[0].confidence), ("resolved", "exact"))
 
 
 GUTENBERG_CSV = (
