@@ -10,7 +10,7 @@
 - 采集计划自动化（2026-10-24）：分支 `claude/acquisition-planner`（基于 `81e1a0b`），明细见「〇-3」
 
 测试基线：`python -m unittest discover -s tests -p 'test_*.py'`
-结果：`Ran 867 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
+结果：`Ran 874 tests ... OK (skipped=11)`（skipped 来自 `skipUnless`：可选的 PDF/OCR 依赖或私有 raw corpus 不在时跳过，属预期）
 
 ---
 
@@ -128,7 +128,15 @@ CI：`.github/workflows/tests.yml`（PR #3 合入）在 ubuntu + windows × Pyth
 5. **状态表** `_stage_plan`：无候选 → 派 scout；有候选无草稿 / 草稿过期 → 跑 `acquire-plan`；草稿等批准 → ⛔ 受阻（AskUserQuestion + `--approve`）；批准后完成，素材入库一行改提示 `acquire --dry-run` → `acquire`
 6. 入口同步：`commands/distill.md`（0.2 情况 B、1.0 节重写、reduce 禁网段与各补缺段）、`agents/source-researcher.md`（缺的原典追加进候选）、编排 skill、`AGENTS.md`、`docs/ethics-and-legal.md`（目录入口与 robots 事实）、`docs/architecture.md`（阶段图、术语、限界上下文）
 
-测试：`test_acquisition_planner.py`（26，假 fetcher 模拟三站）、`test_acquisition_settings.py`、`test_acquisition_plan_stage.py`（阶段树、状态、简报、入口接线）。还没对真实站点跑过核对：下一次有新人物（raw/ 为空）时实跑一次，看维基文库作者页链接格式、IA 检索返回是否与假数据一致。
+测试：`test_acquisition_planner.py`（33，假 fetcher 模拟三站）、`test_acquisition_settings.py`、`test_acquisition_plan_stage.py`（阶段树、状态、简报、入口接线）。
+
+**真实站点实跑（2026-10-30，只查目录、不下载）**：临时数据根里两个 raw/ 为空的测试人物，候选由编排者按 scout 格式写。墨子：《墨子》在中文维基文库核对通过，展开 54 篇子页面；《墨子閒詁》15 卷；梅贻宝英译、华兹生选译在 IA 上只有借阅本，正确地标「查不到」。马可·奥勒留第一次跑暴露 4 个假数据没覆盖的问题，已修（分支 `claude/acquisition-plan-real-sites`）：
+- 英文维基文库的站内链接渲染成绝对地址 `https://en.wikisource.org/wiki/…`，只认 `/wiki/` 时作者页、译本页都解析出 0 条链接。现在同语言站的绝对地址也算，别的站不算
+- 英文站的《Meditations》是多译本列表页（分类 `Translations pages`），曾被当成正文「已核对」，下载只会得到一张链接表。现在消歧义、多版本、多译本页（`CHOICE_CATEGORIES`）一律「待选定」并列出选项
+- IA 只按篇名查时，通用篇名会把本人的书挤出前 10 条（Meditations 一条都没对上）。现在先按「篇名 + 作者」查，查不到再退回只按篇名；同一部书的多个副本按权利排序，能放行或有公有领域依据的排前
+- 译本、校注本在 IA 上常只登记译者（弗朗托书信 → C. R. Haines）。候选新增可选字段 `editors`（译者、编者、校注者），核对与检索都认，scout 角色定义已写明
+
+修好后重跑：沉思录解析到 IA 上 George Long 译本（NOT_IN_COPYRIGHT，法域未定故待复核），维基文库的 4 个译本列为可选；弗朗托书信解析到 Haines 本（权利未声明，待复核）。`gallery/mozi` 的 3 篇篇名错误可以走这条路重采。
 
 ## 一、阶段 2 / P0 已完成（M1–M4）
 
@@ -306,7 +314,7 @@ claude plugin validate .
 
 1. 人工决定项已全部拍板（见第三节「待人工决定」）；张居正 v6 已过 strict（PR #17）
 2. 墨子试跑第 8–14 条已全部处理；合并单位 `small-corpus` **已实跑通过（2026-10-24）**：鲁迅副本，Sonnet 5.5 high，一个进程 6 分 36 秒、$1.48、30 轮，三个检查点都过，子代理 0；`secondary_sources.json` 为空是语料本身没有二手研究，不是管线问题。（2026-10-20 首次试跑因会话额度 429 没跑起来）
-3. 采集计划（`claude/acquisition-planner`）合入后，下一个 raw/ 为空的新人物实跑一次真实目录核对
+3. 采集计划已对真实站点实跑（墨子、马可·奥勒留，只查目录），暴露的 4 个问题在 `claude/acquisition-plan-real-sites` 修复；还没真的批准、下载过一次（下载要用户同意）
 4. P2 已完成并实测（DeepSeek 冒烟通过）；冒烟里单 judge 打满分，偏松，正式评测别只看一个 judge
 5. 用户同意后用 `mdf run --harness codex|pi` 在 Codex、pi 里各跑一步
 6. 处理完 charlie-munger 后，在 CI 加 `published` 全量 gallery 校验

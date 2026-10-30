@@ -42,7 +42,7 @@
 | 站点 | 用什么核对 | 不用什么、为什么 |
 |------|-----------|-----------------|
 | 维基文库 | 作者页 `/wiki/作者:<名>`、作品页 `/wiki/<篇名>`（robots.txt 放行） | 搜索接口 `/w/api.php`、`/wiki/Special:Search` 对爬虫是 Disallow；本地化的搜索页别名（如 `特殊:搜索`）虽然没被字面列出，用它绕开同样违背站点意图，不用 |
-| Internet Archive | `advancedsearch.php`（robots.txt 放行），排除 `inlibrary` / `printdisabled` / `lendinglibrary` 借阅馆藏 | 借阅类条目不是公开资源 |
+| Internet Archive | `advancedsearch.php`（robots.txt 放行），先按篇名 + 作者查、查不到再只按篇名，排除 `inlibrary` / `printdisabled` / `lendinglibrary` 借阅馆藏 | 借阅类条目不是公开资源 |
 | Project Gutenberg | 离线目录 `pg_catalog.csv`（用户自行下载后 `--gutenberg-catalog` 指定） | 网站禁止自动访问，目录也不在线查 |
 
 目录里查不到的条目不进计划；同名但作者对不上、或落在消歧义页的只标「待选定」，不能批准。计划阶段的权利判断只是预判，下载时 `acquire` 按取回的页面重新判定。
