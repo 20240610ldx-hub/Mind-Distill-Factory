@@ -22,8 +22,9 @@
 
 数据根目录默认是仓库根；init/status/next/doctor/validate 可用 --root 或环境变量
 MDF_DATA_ROOT 指向另一份数据（例如在 git worktree 里查看主仓库的私有语料）。
-转交的子命令里，acquire/index/reduce/stats/clean 认 MDF_DATA_ROOT（acquire/clean 另有 --root），
-publish/manifest 仍以仓库根为准。
+转交的子命令里，acquire/index/reduce/stats/clean/publish 认 MDF_DATA_ROOT（acquire/clean/publish 另有 --root），
+manifest 仍以仓库根为准。gallery/ 入库，publish 与 validate published 总在仓库根（代码根）下读写它，
+数据根在仓库外时也不例外。
 """
 
 import argparse
@@ -141,7 +142,8 @@ def cmd_classify(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     ps = _module("pipeline_status")
     root = _data_root(args.root)
-    stages = ps.collect_status(args.slug, root, check=getattr(args, "check", False))
+    stages = ps.collect_status(args.slug, root, check=getattr(args, "check", False),
+                               gallery_root=Workspace(root).gallery)
     if args.html:
         from datetime import datetime
 
@@ -165,7 +167,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_next(args: argparse.Namespace) -> int:
     ps = _module("pipeline_status")
     root = _data_root(args.root)
-    stages = ps.collect_status(args.slug, root)
+    stages = ps.collect_status(args.slug, root, gallery_root=Workspace(root).gallery)
     nxt = ps.next_stage(stages)
     if args.card:
         print(ps.render_card(args.slug, stages, shard_count=_module("run_unit").shard_count(root, args.slug)), end="")
@@ -230,8 +232,10 @@ def doctor_report(root: Path) -> dict[str, Any]:
             add(rel, True, "可解析")
         except (OSError, ValueError) as e:
             add(rel, False, f"{type(e).__name__}")
-    for rel in ("sources", "output", "gallery"):
+    for rel in ("sources", "output"):
         add(f"数据目录 {rel}/", (root / rel).is_dir(), str(root / rel), required=False)
+    gallery = Workspace(root).gallery  # 发布产物入库，在代码根下
+    add("发布目录 gallery/", gallery.is_dir(), str(gallery), required=False)
     for module, package, extra, purpose in OPTIONAL_DEPS:
         found = importlib.util.find_spec(module) is not None
         add(f"可选依赖 {package}", found, purpose + ("" if found else f"；安装：pip install -e .[{extra}]"), required=False)

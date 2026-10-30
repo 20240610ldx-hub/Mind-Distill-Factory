@@ -337,7 +337,8 @@ def plan_unit(slug: str, step_id: str | None, root: Path, code_root: Path = CODE
     """step_id（步骤 id 或合并单位 id；为空时取下一个未完成的 agent 步骤）落成哪个执行单位（run_unit.RunUnit）。"""
     ps = _sibling("pipeline_status")
     tree = tree or ps.load_stage_tree(code_root)
-    stages = stages if stages is not None else ps.collect_status(slug, root, tree=tree)
+    if stages is None:
+        stages = ps.collect_status(slug, root, tree=tree, gallery_root=Workspace(root, code_root).gallery)
     if step_id is None:
         pending = [s for s in stages if s.state not in ps.FINISHED]
         candidates = [s for s in pending if "agent" in find_step(tree, s.key)[1]["executor"].split("|")]
@@ -360,7 +361,7 @@ def build_brief(slug: str, step_id: str | None, root: Path, code_root: Path = CO
     语料只有 1 个分片时，抽取、合并、原则提取合成一份简报（阶段树 bundles，见 run_unit）。"""
     ps = _sibling("pipeline_status")
     tree = ps.load_stage_tree(code_root)
-    stages = ps.collect_status(slug, root, tree=tree)
+    stages = ps.collect_status(slug, root, tree=tree, gallery_root=Workspace(root, code_root).gallery)
     unit = plan_unit(slug, step_id, root, code_root, tree=tree, stages=stages)
     phase, step = unit.members[0]
     roles = list(dict.fromkeys(r for _, member in unit.members for r in agent_names(member, code_root)))

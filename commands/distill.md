@@ -620,6 +620,11 @@ python scripts/validate_output.py package {slug}
 python scripts/publish_skill.py --slug {slug}
 ```
 
+**读写两个根。** `output/`、`sources/` 从数据根读（`--root` > `MDF_DATA_ROOT` > 仓库根）；`gallery/{slug}/` 与
+`gallery/index.json` 入库，总是写进**本仓库**（代码根，即你所在的 worktree 和分支）。数据根指向主检出时，
+主检出里入库的 `gallery/` 不会被改；发布后在当前分支提交 `gallery/` 的改动。`validate_output.py gallery {slug}`
+同样在本仓库找 gallery，在数据根下运行也一样。
+
 **`output/{slug}/人物档案.md` 不进安装目录**——它只留在 `gallery/{slug}/` 供人阅读。
 把一份第三人称档案放进 skill 目录会诱发人称漂移，违反第一人称沉浸铁律。
 

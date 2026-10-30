@@ -441,13 +441,17 @@ def publish_transaction(
     output_dir: Path,
     is_v6: bool,
     update_index: Callable[[dict], None],
+    *,
+    gallery_root: Path | None = None,
 ) -> list[str]:
     """事务化发布，返回执行记录；失败时抛 PublishError（或原始异常），且旧包与旧 index 已恢复。
 
     update_index 接收解析好的 index 数据并就地修改（通常包一层 apply_index_entry）。
+    root 是数据根（P2 证明读 sources/）。gallery_root 默认 root/gallery（数据根即仓库）；main 传
+    Workspace.gallery：gallery/ 入库，写在代码根下，数据根在仓库外时也不会在数据根下出现 gallery/。
     """
     validator = _load_validator()
-    gallery_root = root / "gallery"
+    gallery_root = gallery_root or root / "gallery"
     gallery_root.mkdir(parents=True, exist_ok=True)
     log = recover_interrupted(gallery_root, slug)
 
@@ -493,7 +497,8 @@ def publish_transaction(
         swapped = True
         _replace_with_retry(index_tmp, index_file)  # 提交点
         committed = True
-        errors = [e for e in validator.validate_published(slug, root) if not e.startswith("WARNING:")]
+        errors = [e for e in validator.validate_published(slug, root, gallery_root=gallery_root)
+                  if not e.startswith("WARNING:")]
         if errors:
             raise PublishError("发布后校验失败，已回滚", errors)
     except BaseException:
@@ -562,10 +567,12 @@ def main() -> int:
              "verdict. The staged published check can never be skipped.",
     )
     parser.add_argument("--notes", help="Custom notes to add/update in gallery/index.json")
-    parser.add_argument("--root", help="数据根目录（默认 MDF_DATA_ROOT，再默认仓库根）")
+    parser.add_argument("--root", help="数据根目录，读 output/ sources/（默认 MDF_DATA_ROOT，再默认仓库根）；"
+                                       "gallery/ 总是写进本仓库")
     args = parser.parse_args()
 
-    # 和其他命令一样认数据根：数据根放在 worktree 之外时，发布不能回仓库根找 output/
+    # 和其他命令一样认数据根：数据根放在 worktree 之外时，发布不能回仓库根找 output/。
+    # gallery/ 反过来写进代码根（入库，跟着当前分支走），见 publish_transaction
     workspace = _load_sibling("workspace").Workspace.resolve(args.root)
     root, code_root = workspace.data_root, workspace.code_root
     slug = args.slug
@@ -642,6 +649,7 @@ def main() -> int:
         log = publish_transaction(
             root, slug, output_dir, v6,
             lambda index: apply_index_entry(index, slug, meta, v6, review_status, args.notes, today),
+            gallery_root=workspace.gallery,
         )
     except PublishError as e:
         print(f"ERROR: {e}", file=sys.stderr)
