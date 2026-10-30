@@ -45,3 +45,8 @@ jobs:
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      # Every gallery package must pass `published` (default mode); known legacy
+      # exceptions live in scripts/validate_gallery_all.py, not here.
+      - name: Validate published gallery
+        run: python scripts/validate_gallery_all.py
